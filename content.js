@@ -2101,6 +2101,12 @@
           // For multi-line ranges, also tint every block in the range so the
           // user gets the same visual treatment as existing range threads.
           paintThreadRange(info.path, startLineToPost, lineToPost);
+          // Anchor the badge at the START of the range. GitHub's source-diff
+          // anchors at the end line, but in rich-diff there are no visible
+          // line numbers — the badge needs to *introduce* the highlighted
+          // range so the eye lands on it first, not after scrolling past the
+          // whole tint band. `element` is the block the user clicked `+` on,
+          // which for a drag-selected range is already the start block.
           renderThreadOnElement(element, newComments);
         }
         const success = document.createElement('div');
@@ -2255,8 +2261,11 @@
     blocksByPath.forEach(arr => arr.sort((a, b) => a.line - b.line));
 
     // For each thread, find nearest mapped block ≤ anchor line. For multi-line
-    // ranges, anchor at the **start** line (so the badge sits at the top of
-    // the highlighted range, not at the bottom).
+    // ranges, anchor at the **start** line so the badge sits at the top of
+    // the highlighted range. GitHub's source-diff anchors at the end line,
+    // but rich-diff has no visible line numbers — the badge needs to introduce
+    // the highlighted range, not conclude it. The yellow tint across
+    // [startLine, endLine] still shows the full extent of the range.
     //
     // Sort threads so that when multiple threads share an anchor element
     // (tables, code blocks — both render the thread *after* the whole
@@ -2273,7 +2282,12 @@
       const blocks = blocksByPath.get(head.path);
       if (!blocks || blocks.length === 0) return;
 
-      // Use startLine when present, otherwise fall back to line.
+      // Anchor at the START line for multi-line threads so the badge sits at
+      // the top of the highlighted range (rich-diff has no line numbers — the
+      // badge needs to be the entry point into the range, not the terminator).
+      // For single-line threads `head.startLine` is null, so we fall back to
+      // `head.line`. The full range is still tinted via `paintThreadRange`
+      // below so the user can see the extent of what the comment refers to.
       const anchorLine = head.startLine != null ? head.startLine : head.line;
 
       let target = blocks[0].element;

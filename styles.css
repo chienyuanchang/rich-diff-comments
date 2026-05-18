@@ -8,7 +8,7 @@
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #0969da;
+  background: var(--bgColor-accent-emphasis, var(--color-accent-emphasis, #0969da));
   color: white;
   border: none;
   cursor: pointer;
@@ -101,7 +101,7 @@ li.grdc-hoverable .grdc-comment-btn {
   padding: 0;
   font-size: 0.75em;
   line-height: 1;
-  color: var(--color-fg-muted, #57606a);
+  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
   background: transparent;
   border: none;
   cursor: pointer;
@@ -117,7 +117,7 @@ li.grdc-hoverable .grdc-comment-btn {
 }
 
 .grdc-collapse-toggle:hover {
-  color: var(--color-fg-default, #24292f);
+  color: var(--fgColor-default, var(--color-fg-default, #24292f));
 }
 
 /* When a section is collapsed, dim its heading so it's clear something is folded. */
@@ -158,9 +158,9 @@ li.grdc-hoverable .grdc-comment-btn {
   position: relative;
   margin: 8px 0;
   padding: 0;
-  border: 1px solid var(--color-border-default, #d0d7de);
+  border: 1px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
   border-radius: 6px;
-  background: var(--color-canvas-default, #ffffff);
+  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
   z-index: 101;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
 }
@@ -169,8 +169,8 @@ li.grdc-hoverable .grdc-comment-btn {
 .grdc-comment-box > .grdc-line-info,
 .grdc-reply-box  > .grdc-line-info {
   padding: 8px 12px;
-  border-bottom: 1px solid var(--color-border-muted, #d8dee4);
-  background: var(--color-canvas-subtle, #f6f8fa);
+  border-bottom: 1px solid var(--borderColor-muted, var(--color-border-muted, #d8dee4));
+  background: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
   border-radius: 6px 6px 0 0;
 }
 
@@ -191,8 +191,8 @@ li.grdc-hoverable .grdc-comment-btn {
   /* Reserve space for ~6 items but cap so it never extends off-screen */
   max-height: min(260px, 50vh);
   overflow-y: auto;
-  background: var(--color-canvas-default, #ffffff);
-  border: 1px solid var(--color-border-default, #d0d7de);
+  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
+  border: 1px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   font-size: 13px;
@@ -204,12 +204,12 @@ li.grdc-hoverable .grdc-comment-btn {
   gap: 8px;
   padding: 6px 10px;
   cursor: pointer;
-  color: var(--color-fg-default, #24292f);
+  color: var(--fgColor-default, var(--color-fg-default, #24292f));
 }
 
 .grdc-mention-active,
 .grdc-mention-item:hover {
-  background: var(--color-accent-subtle, rgba(9, 105, 218, 0.1));
+  background: var(--bgColor-accent-muted, var(--color-accent-subtle, rgba(9, 105, 218, 0.1)));
 }
 
 .grdc-mention-avatar {
@@ -217,11 +217,11 @@ li.grdc-hoverable .grdc-comment-btn {
   height: 20px;
   border-radius: 50%;
   flex: 0 0 auto;
-  background: var(--color-neutral-muted, rgba(175, 184, 193, 0.2));
+  background: var(--bgColor-neutral-muted, var(--color-neutral-muted, rgba(175, 184, 193, 0.2)));
 }
 
 .grdc-mention-name {
-  color: var(--color-fg-muted, #57606a);
+  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
   font-size: 12px;
 }
 
@@ -230,8 +230,8 @@ li.grdc-hoverable .grdc-comment-btn {
   display: flex;
   gap: 0;
   padding: 6px 8px 0;
-  background: var(--color-canvas-subtle, #f6f8fa);
-  border-bottom: 1px solid var(--color-border-muted, #d8dee4);
+  background: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
+  border-bottom: 1px solid var(--borderColor-muted, var(--color-border-muted, #d8dee4));
 }
 
 .grdc-tab {
@@ -242,32 +242,32 @@ li.grdc-hoverable .grdc-comment-btn {
   background: transparent;
   font-size: 12px;
   font-weight: 500;
-  color: var(--color-fg-muted, #57606a);
+  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
   cursor: pointer;
   border-radius: 6px 6px 0 0;
 }
 
 .grdc-tab:hover {
-  color: var(--color-fg-default, #24292f);
+  color: var(--fgColor-default, var(--color-fg-default, #24292f));
 }
 
 .grdc-tab-active {
-  background: var(--color-canvas-default, #ffffff);
-  border-color: var(--color-border-muted, #d8dee4);
-  color: var(--color-fg-default, #24292f);
+  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
+  border-color: var(--borderColor-muted, var(--color-border-muted, #d8dee4));
+  color: var(--fgColor-default, var(--color-fg-default, #24292f));
 }
 
 .grdc-editor-preview {
   padding: 12px;
   min-height: 80px;
   font-size: 13px;
-  color: var(--color-fg-default, #24292f);
-  background: var(--color-canvas-default, #ffffff);
+  color: var(--fgColor-default, var(--color-fg-default, #24292f));
+  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
   border-radius: 0 0 6px 6px;
 }
 
 .grdc-preview-empty {
-  color: var(--color-fg-muted, #57606a);
+  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
   font-style: italic;
   margin: 0;
 }
@@ -277,8 +277,8 @@ li.grdc-hoverable .grdc-comment-btn {
   align-items: center;
   gap: 2px;
   padding: 6px 10px;
-  background: var(--color-canvas-subtle, #f6f8fa);
-  border-bottom: 1px solid var(--color-border-muted, #d8dee4);
+  background: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
+  border-bottom: 1px solid var(--borderColor-muted, var(--color-border-muted, #d8dee4));
 }
 
 .grdc-comment-box > .grdc-editor > .grdc-editor-toolbar {
@@ -295,7 +295,7 @@ li.grdc-hoverable .grdc-comment-btn {
   padding: 0 6px;
   font-size: 12px;
   line-height: 1;
-  color: var(--color-fg-muted, #57606a);
+  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
   background: transparent;
   border: 1px solid transparent;
   border-radius: 4px;
@@ -303,12 +303,12 @@ li.grdc-hoverable .grdc-comment-btn {
 }
 
 .grdc-tb-btn:hover {
-  background: var(--color-action-list-item-default-hover-bg, rgba(208, 215, 222, 0.32));
-  color: var(--color-fg-default, #24292f);
+  background: var(--control-bgColor-hover, var(--color-action-list-item-default-hover-bg, rgba(208, 215, 222, 0.32)));
+  color: var(--fgColor-default, var(--color-fg-default, #24292f));
 }
 
 .grdc-tb-btn:focus-visible {
-  outline: 2px solid var(--color-accent-fg, #0969da);
+  outline: 2px solid var(--fgColor-accent, var(--color-accent-fg, #0969da));
   outline-offset: -2px;
 }
 
@@ -316,7 +316,7 @@ li.grdc-hoverable .grdc-comment-btn {
   width: 1px;
   height: 16px;
   margin: 0 4px;
-  background: var(--color-border-default, #d0d7de);
+  background: var(--borderColor-default, var(--color-border-default, #d0d7de));
 }
 
 .grdc-editor-textarea {
@@ -328,8 +328,8 @@ li.grdc-hoverable .grdc-comment-btn {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 13px;
   line-height: 1.5;
-  color: var(--color-fg-default, #24292f);
-  background: var(--color-canvas-default, #ffffff);
+  color: var(--fgColor-default, var(--color-fg-default, #24292f));
+  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
   resize: none; /* auto-grow handles height */
   box-sizing: border-box;
   overflow-y: auto;
@@ -337,7 +337,7 @@ li.grdc-hoverable .grdc-comment-btn {
 
 .grdc-editor-textarea:focus {
   outline: none;
-  box-shadow: inset 0 0 0 1px var(--color-accent-emphasis, #0969da);
+  box-shadow: inset 0 0 0 1px var(--bgColor-accent-emphasis, var(--color-accent-emphasis, #0969da));
 }
 
 .grdc-comment-actions {
@@ -345,8 +345,8 @@ li.grdc-hoverable .grdc-comment-btn {
   gap: 8px;
   justify-content: flex-end;
   padding: 8px 12px;
-  background: var(--color-canvas-subtle, #f6f8fa);
-  border-top: 1px solid var(--color-border-muted, #d8dee4);
+  background: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
+  border-top: 1px solid var(--borderColor-muted, var(--color-border-muted, #d8dee4));
   border-radius: 0 0 6px 6px;
 }
 
@@ -356,37 +356,41 @@ li.grdc-hoverable .grdc-comment-btn {
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  border: 1px solid var(--color-btn-border, rgba(31, 35, 40, 0.15));
+  border: 1px solid var(--button-default-borderColor-rest, var(--color-btn-border, rgba(31, 35, 40, 0.15)));
   font-family: inherit;
 }
 
 .grdc-btn-primary {
-  background: var(--color-btn-primary-bg, #1f883d);
-  color: var(--color-btn-primary-text, #ffffff);
-  border-color: var(--color-btn-primary-border, rgba(31, 35, 40, 0.15));
+  background: var(--button-primary-bgColor-rest, var(--color-btn-primary-bg, #1f883d));
+  color: var(--button-primary-fgColor-rest, var(--color-btn-primary-text, #ffffff));
+  border-color: var(--button-primary-borderColor-rest, var(--color-btn-primary-border, rgba(31, 35, 40, 0.15)));
 }
 
 .grdc-btn-primary:hover:not(:disabled) {
-  background: var(--color-btn-primary-hover-bg, #1a7f37);
+  background: var(--button-primary-bgColor-hover, var(--color-btn-primary-hover-bg, #1a7f37));
+  border-color: var(--button-primary-borderColor-hover, var(--color-btn-primary-border, rgba(31, 35, 40, 0.15)));
 }
 
 .grdc-btn-primary:disabled {
+  background: var(--button-primary-bgColor-disabled, var(--color-btn-primary-bg, #1f883d));
+  color: var(--button-primary-fgColor-disabled, var(--color-btn-primary-text, #ffffff));
   opacity: 0.6;
   cursor: not-allowed;
 }
 
 .grdc-btn-cancel {
-  background: var(--color-btn-bg, #f6f8fa);
-  color: var(--color-btn-text, #24292f);
+  background: var(--button-default-bgColor-rest, var(--color-btn-bg, #f6f8fa));
+  color: var(--button-default-fgColor-rest, var(--color-btn-text, #24292f));
 }
 
 .grdc-btn-cancel:hover:not(:disabled) {
-  background: var(--color-btn-hover-bg, #f3f4f6);
+  background: var(--button-default-bgColor-hover, var(--color-btn-hover-bg, #f3f4f6));
+  border-color: var(--button-default-borderColor-hover, var(--color-btn-border, rgba(31, 35, 40, 0.15)));
 }
 
 .grdc-line-info {
   font-size: 11px;
-  color: var(--color-fg-muted, #656d76);
+  color: var(--fgColor-muted, var(--color-fg-muted, #656d76));
   display: flex;
   align-items: center;
   gap: 6px;
@@ -398,16 +402,16 @@ li.grdc-hoverable .grdc-comment-btn {
   width: 60px;
   padding: 1px 4px;
   font-size: 11px;
-  border: 1px solid var(--color-border-default, #d0d7de);
+  border: 1px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
   border-radius: 3px;
-  background: var(--color-canvas-default, #ffffff);
-  color: var(--color-fg-default, #24292f);
+  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
+  color: var(--fgColor-default, var(--color-fg-default, #24292f));
 }
 
 .grdc-line-input:focus,
 .grdc-line-start-input:focus {
   outline: none;
-  border-color: #0969da;
+  border-color: var(--bgColor-accent-emphasis, var(--color-accent-emphasis, #0969da));
   box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.2);
 }
 
@@ -415,30 +419,30 @@ li.grdc-hoverable .grdc-comment-btn {
    highlight every mapped block between the anchor and the cursor — same
    visual idea as GitHub's source-diff yellow range band. */
 .grdc-range-hover {
-  background: var(--color-attention-subtle, #fff8c5) !important;
-  box-shadow: inset 2px 0 0 var(--color-attention-emphasis, #9a6700);
+  background: var(--bgColor-attention-muted, var(--color-attention-subtle, #fff8c5)) !important;
+  box-shadow: inset 2px 0 0 var(--bgColor-attention-emphasis, var(--color-attention-emphasis, #9a6700));
 }
 
 /* Persistent range tint for existing multi-line comment threads. Quieter
    than the drag-hover state: just a colored left bar, no full background,
    so it doesn't visually compete with the comment badge. */
 .grdc-thread-range {
-  box-shadow: inset 3px 0 0 var(--color-attention-emphasis, #d4a72c);
+  box-shadow: inset 3px 0 0 var(--bgColor-attention-emphasis, var(--color-attention-emphasis, #d4a72c));
   padding-left: 6px;
 }
 
 .grdc-line-hint {
-  color: #57606a;
+  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
 }
 
 .grdc-success {
-  color: #2da44e;
+  color: var(--fgColor-success, var(--color-success-fg, #2da44e));
   font-size: 12px;
   margin-top: 6px;
 }
 
 .grdc-error {
-  color: #cf222e;
+  color: var(--fgColor-danger, var(--color-danger-fg, #cf222e));
   font-size: 12px;
   margin-top: 6px;
 }
@@ -453,23 +457,23 @@ li.grdc-hoverable .grdc-comment-btn {
   display: inline-block;
   padding: 2px 8px;
   font-size: 12px;
-  color: #0969da;
-  background: #ddf4ff;
-  border: 1px solid #b6e3ff;
+  color: var(--fgColor-accent, var(--color-accent-fg, #0969da));
+  background: var(--bgColor-accent-muted, var(--color-accent-subtle, #ddf4ff));
+  border: 1px solid var(--borderColor-accent-muted, var(--color-accent-muted, #b6e3ff));
   border-radius: 12px;
   cursor: pointer;
   user-select: none;
 }
 
 .grdc-thread-badge:hover {
-  background: #b6e3ff;
+  background: var(--borderColor-accent-muted, var(--color-accent-muted, #b6e3ff));
 }
 
 .grdc-thread-body {
   margin-top: 6px;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
   overflow: hidden;
 }
 
@@ -501,7 +505,7 @@ li.grdc-hoverable .grdc-comment-btn {
   top: -1px;
   bottom: 0;
   width: 2px;
-  background: #d0d7de;
+  background: var(--borderColor-default, var(--color-border-default, #d0d7de));
 }
 
 .grdc-comment-header {
@@ -510,7 +514,7 @@ li.grdc-hoverable .grdc-comment-btn {
   gap: 6px;
   margin-bottom: 2px;
   font-size: 13px;
-  color: #24292f;
+  color: var(--fgColor-default, var(--color-fg-default, #24292f));
   position: relative;
 }
 
@@ -519,11 +523,11 @@ li.grdc-hoverable .grdc-comment-btn {
    smaller weight + tighter color so it reads close to GitHub's UI. */
 .grdc-comment-header > strong {
   font-weight: 600;
-  color: #1f2328;
+  color: var(--fgColor-default, var(--color-fg-default, #1f2328));
 }
 
 .grdc-comment-time {
-  color: #59636e;
+  color: var(--fgColor-muted, var(--color-fg-muted, #59636e));
   font-weight: 400;
   font-size: 12px;
 }
@@ -535,15 +539,15 @@ li.grdc-hoverable .grdc-comment-btn {
   border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
-  color: #656d76;
+  color: var(--fgColor-muted, var(--color-fg-muted, #656d76));
   font-size: 16px;
   line-height: 1;
   padding: 2px 6px;
 }
 .grdc-comment-menu:hover {
-  background: #f6f8fa;
-  border-color: #d0d7de;
-  color: #24292f;
+  background: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
+  border-color: var(--borderColor-default, var(--color-border-default, #d0d7de));
+  color: var(--fgColor-default, var(--color-fg-default, #24292f));
 }
 .grdc-comment-menu:disabled {
   opacity: 0.5;
@@ -555,10 +559,10 @@ li.grdc-hoverable .grdc-comment-btn {
   right: 0;
   top: 22px;
   z-index: 200;
-  background: #fff;
-  border: 1px solid #d0d7de;
+  background: var(--overlay-bgColor, var(--color-canvas-overlay, #fff));
+  border: 1px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+  box-shadow: var(--color-shadow-large, 0 8px 24px rgba(140, 149, 159, 0.2));
   min-width: 120px;
   padding: 4px 0;
   display: flex;
@@ -570,17 +574,17 @@ li.grdc-hoverable .grdc-comment-btn {
   text-align: left;
   padding: 6px 12px;
   font-size: 13px;
-  color: #24292f;
+  color: var(--fgColor-default, var(--color-fg-default, #24292f));
   cursor: pointer;
 }
 .grdc-menu-item:hover {
-  background: #f6f8fa;
+  background: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
 }
 .grdc-menu-delete {
-  color: #cf222e;
+  color: var(--fgColor-danger, var(--color-danger-fg, #cf222e));
 }
 .grdc-menu-delete:hover {
-  background: #ffebe9;
+  background: var(--bgColor-danger-muted, var(--color-danger-subtle, #ffebe9));
 }
 
 .grdc-comment-edit {
@@ -589,7 +593,7 @@ li.grdc-hoverable .grdc-comment-btn {
 
 .grdc-comment-body {
   font-size: 13px;
-  color: var(--color-fg-default, #24292f);
+  color: var(--fgColor-default, var(--color-fg-default, #24292f));
   line-height: 1.45;
   word-wrap: break-word;
 }
@@ -616,12 +620,12 @@ li.grdc-hoverable .grdc-comment-btn {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 0.92em;
   padding: 0.15em 0.35em;
-  background: var(--color-neutral-muted, rgba(175, 184, 193, 0.2));
+  background: var(--bgColor-neutral-muted, var(--color-neutral-muted, rgba(175, 184, 193, 0.2)));
   border-radius: 4px;
 }
 .grdc-comment-body.markdown-body pre {
   padding: 8px 10px;
-  background: var(--color-canvas-subtle, #f6f8fa);
+  background: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
   border-radius: 6px;
   overflow-x: auto;
 }
@@ -631,8 +635,8 @@ li.grdc-hoverable .grdc-comment-btn {
 }
 .grdc-comment-body.markdown-body blockquote {
   padding-left: 0.8em;
-  color: var(--color-fg-muted, #57606a);
-  border-left: 3px solid var(--color-border-default, #d0d7de);
+  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
+  border-left: 3px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
 }
 .grdc-comment-body.markdown-body img {
   max-width: 100%;
@@ -655,12 +659,12 @@ li.grdc-hoverable .grdc-comment-btn {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 0.92em;
   padding: 0.15em 0.35em;
-  background: var(--color-neutral-muted, rgba(175, 184, 193, 0.2));
+  background: var(--bgColor-neutral-muted, var(--color-neutral-muted, rgba(175, 184, 193, 0.2)));
   border-radius: 4px;
 }
 .grdc-editor-preview pre {
   padding: 8px 10px;
-  background: var(--color-canvas-subtle, #f6f8fa);
+  background: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
   border-radius: 6px;
   overflow-x: auto;
 }
@@ -670,8 +674,8 @@ li.grdc-hoverable .grdc-comment-btn {
 }
 .grdc-editor-preview blockquote {
   padding-left: 0.8em;
-  color: var(--color-fg-muted, #57606a);
-  border-left: 3px solid var(--color-border-default, #d0d7de);
+  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
+  border-left: 3px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
 }
 
 .grdc-comment-link {
@@ -682,14 +686,14 @@ li.grdc-hoverable .grdc-comment-btn {
      (overriding the menu's default `margin-left: auto`). */
   margin-left: auto;
   font-size: 11px;
-  color: #59636e;
+  color: var(--fgColor-muted, var(--color-fg-muted, #59636e));
   text-decoration: none;
   opacity: 0.75;
   white-space: nowrap;
 }
 
 .grdc-comment-link:hover {
-  color: #0969da;
+  color: var(--fgColor-accent, var(--color-accent-fg, #0969da));
   text-decoration: underline;
   opacity: 1;
 }
@@ -704,9 +708,9 @@ li.grdc-hoverable .grdc-comment-btn {
 /* ── Thread state: resolved / outdated ────────────────────────────────── */
 
 .grdc-thread-resolved .grdc-thread-badge {
-  color: #57606a;
-  background: #eaeef2;
-  border-color: #d0d7de;
+  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
+  background: var(--bgColor-neutral-muted, var(--color-neutral-muted, #eaeef2));
+  border-color: var(--borderColor-default, var(--color-border-default, #d0d7de));
   opacity: 0.85;
 }
 
@@ -715,17 +719,17 @@ li.grdc-hoverable .grdc-comment-btn {
 }
 
 .grdc-thread-outdated .grdc-thread-badge {
-  background: #fff8c5;
-  border-color: #d4a72c;
-  color: #7d4e00;
+  background: var(--bgColor-attention-muted, var(--color-attention-subtle, #fff8c5));
+  border-color: var(--borderColor-attention-muted, var(--color-attention-muted, #d4a72c));
+  color: var(--fgColor-attention, var(--color-attention-fg, #7d4e00));
 }
 
 /* ── Thread actions (reply / resolve) ─────────────────────────────────── */
 
 .grdc-thread-actions {
   padding: 8px 12px;
-  background: #f6f8fa;
-  border-top: 1px solid #d8dee4;
+  background: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
+  border-top: 1px solid var(--borderColor-muted, var(--color-border-muted, #d8dee4));
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
@@ -736,8 +740,8 @@ li.grdc-hoverable .grdc-comment-btn {
 .grdc-reply-box {
   flex: 1 1 100%;
   margin-top: 8px;
-  background: var(--color-canvas-default, #ffffff);
-  border: 1px solid var(--color-border-default, #d0d7de);
+  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
+  border: 1px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
   border-radius: 6px;
   overflow: hidden;
 }

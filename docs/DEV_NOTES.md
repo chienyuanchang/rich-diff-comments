@@ -279,6 +279,78 @@ Fixes (both needed):
 
 Tracked as P0 in [FEATURES.md → Correctness](./FEATURES.md#correctness).
 
+## CSS theming: always use Primer variables with a fallback chain
+
+The extension's injected UI must work in both GitHub's light and dark themes (and on GitHub Enterprise installs that may still ship the legacy Primer CSS). Every color value in `styles.css` should use a **three-level fallback chain**:
+
+```css
+background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
+              ^^^^^^^^^^^^^^^^^   ^^^^^^^^^^^^^^^^^^^^^^^   ^^^^^^^
+              new Primer (2024+)  legacy Primer (<2024)     literal hex
+```
+
+Why all three:
+
+1. **New Primer names** (`--bgColor-default`, `--fgColor-muted`, `--button-primary-bgColor-rest`, etc.) are what GitHub.com currently defines on PR pages. These resolve to the right value in whichever theme the user has selected via Settings → Appearance.
+2. **Legacy Primer names** (`--color-canvas-default`, `--color-fg-muted`, `--color-btn-primary-bg`, etc.) are still defined on older GitHub Enterprise Server installs and some other GitHub-hosted pages. Keeping them in the chain protects users on those deployments.
+3. **Literal hex fallback** is the last line of defense — used only when neither variable is defined (e.g. a future GitHub redesign that removes both). Always pick the **light-theme** hex as the literal; never use a dark-mode hex as the fallback or light-mode users will see broken colors if the variables ever disappear.
+
+### Common mappings
+
+| What you want | New name | Legacy name | Literal (light) |
+|---|---|---|---|
+| Default text | `--fgColor-default` | `--color-fg-default` | `#1f2328` |
+| Muted text | `--fgColor-muted` | `--color-fg-muted` | `#59636e` |
+| Default background | `--bgColor-default` | `--color-canvas-default` | `#ffffff` |
+| Subtle / secondary background | `--bgColor-muted` | `--color-canvas-subtle` | `#f6f8fa` |
+| Overlay / popover background | `--overlay-bgColor` | `--color-canvas-overlay` | `#ffffff` |
+| Default border | `--borderColor-default` | `--color-border-default` | `#d0d7de` |
+| Muted border | `--borderColor-muted` | `--color-border-muted` | `#d8dee4` |
+| Accent (link) text | `--fgColor-accent` | `--color-accent-fg` | `#0969da` |
+| Solid accent fill (e.g. `+` button) | `--bgColor-accent-emphasis` | `--color-accent-emphasis` | `#0969da` |
+| Subtle accent fill (e.g. badge) | `--bgColor-accent-muted` | `--color-accent-subtle` | `#ddf4ff` |
+| Success text | `--fgColor-success` | `--color-success-fg` | `#2da44e` |
+| Danger text | `--fgColor-danger` | `--color-danger-fg` | `#cf222e` |
+| Attention (yellow) bg | `--bgColor-attention-muted` | `--color-attention-subtle` | `#fff8c5` |
+| Attention border | `--borderColor-attention-muted` | `--color-attention-muted` | `#d4a72c` |
+| Primary button (rest / hover / disabled) | `--button-primary-bgColor-rest` / `-hover` / `-disabled` | `--color-btn-primary-bg` / `-hover-bg` | `#1f883d` / `#1a7f37` |
+| Default button (rest / hover) | `--button-default-bgColor-rest` / `-hover` | `--color-btn-bg` / `-hover-bg` | `#f6f8fa` / `#f3f4f6` |
+
+### How to verify
+
+In DevTools on a GitHub PR page (both light and dark themes), inject a probe element with our class and inspect computed styles:
+
+```js
+const probe = document.createElement('div');
+probe.className = 'grdc-comment-box';
+document.body.appendChild(probe);
+console.log(getComputedStyle(probe).backgroundColor); // dark-mode: rgb(13, 17, 23) — light: rgb(255, 255, 255)
+probe.remove();
+```
+
+If a freshly-added rule shows the literal hex in BOTH themes, the variable name is wrong or missing. Cross-check the full list of GitHub-defined variables with the diagnostic snippet in [the history of the dark-mode migration](#).
+
+### How to discover GitHub's current variable names
+
+GitHub's Primer team renames variables periodically. To enumerate every CSS custom property defined on a PR page (sorted, deduplicated, filtered to color-relevant ones), run this in the DevTools console:
+
+```js
+const vars = new Set();
+for (const s of document.styleSheets) {
+  try {
+    for (const r of s.cssRules) {
+      if (r.style) for (let i = 0; i < r.style.length; i++) {
+        const p = r.style[i];
+        if (p.startsWith('--') && /color|bg|fg|border/i.test(p)) vars.add(p);
+      }
+    }
+  } catch {} // skip CORS-blocked stylesheets
+}
+console.log([...vars].sort().join('\n'));
+```
+
+The output is the universe of color tokens you have to choose from. When in doubt, pick the one whose name most directly describes what you want.
+
 ## Debugging recipes
 
 All extension logs are prefixed `[GRDC]`. Useful queries in DevTools:

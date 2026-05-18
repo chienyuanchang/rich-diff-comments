@@ -32,3 +32,4 @@ Initial release as an independent third-party extension.
 - Manifest V3.
 - Tested on Chrome, Edge, Brave, Vivaldi, Arc, and other Chromium-based browsers.
 - Activates on `https://github.com/*/pull/*` pages.
+- **Light and dark theme support** — uses GitHub's own Primer design tokens so the comment UI matches whichever theme the user has selected (per-account theme on github.com, not OS theme).

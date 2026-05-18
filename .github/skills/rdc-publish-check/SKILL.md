@@ -158,7 +158,40 @@ This checks that:
 - All files listed in `manifest.json` `"content_scripts.js"` are present in the zip.
 - No development-only files leaked in (`tests/`, `docs/`, `design/`, `test_md_files/`, `package.json`, `node_modules/`, `.git/`, `local-only/`).
 
-### 7. Submit
+### 7. Tag and publish the GitHub Release
+
+Before submitting to the stores, publish a GitHub Release for the version. This:
+
+- Creates a permanent versioned anchor on the repo (`v<version>` tag).
+- Gives users a sideload-ready download mirror (helpful for early adopters and anyone who can't / won't install from the stores).
+- Attaches a SHA256 checksum so users can verify the zip.
+- Uses the matching `## [<version>]` section from `CHANGELOG.md` as the release body — **not** `CHROME_SUBMISSION.md`, which is reviewer-facing form copy, not user-facing release notes.
+
+Run:
+
+```powershell
+.\.github\skills\rdc-publish-check\scripts\github-release.ps1
+```
+
+The script:
+
+1. Reads version from `manifest.json` and verifies `releases/<version>/rdc-<version>.zip` exists (run `release-prep.ps1` first if missing).
+2. Extracts the `## [<version>]` block from `CHANGELOG.md` into `releases/<version>/RELEASE_NOTES.md`. Fails loudly if the entry doesn't exist.
+3. Generates a SHA256 of the zip into `releases/<version>/rdc-<version>.zip.sha256`.
+4. Creates an annotated git tag `v<version>` (skips if it already exists).
+5. Pushes the tag to `origin` (skip with `-SkipPush`).
+6. Calls `gh release create` with the zip + checksum attached and the extracted notes as the release body.
+
+Useful flags:
+
+- `-Draft` — create the release as a draft so it's visible only to maintainers until manually published. Recommended if you want one more look at the rendered notes on GitHub before going live.
+- `-SkipRelease` — prepare everything locally (notes, checksum, tag) but skip the `gh release create` call. Useful for inspecting `RELEASE_NOTES.md` before publishing.
+- `-SkipPush` — don't push the tag (dry run).
+- `-Force` — overwrite existing `RELEASE_NOTES.md` / `.sha256` files in the release folder.
+
+**Prerequisite:** `gh auth login` must have completed in this shell against the GitHub account that owns the repo. For this project that's the personal `chienyuanchang` account, not the `_microsoft` EMU account. The script aborts with a clear message if `gh` is not authenticated.
+
+### 8. Submit
 
 Follow [docs/PUBLISHING.md → Chrome Web Store: step-by-step](../../../docs/PUBLISHING.md#chrome-web-store-step-by-step) and [Edge Add-ons: step-by-step](../../../docs/PUBLISHING.md#edge-add-ons-step-by-step).
 

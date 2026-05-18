@@ -3,3 +3,6 @@ local-only/
 
 # Node test artifacts (none yet, but in case we add deps later)
 node_modules/
+
+# Release artifacts — reproducible via release-prep.ps1
+releases/

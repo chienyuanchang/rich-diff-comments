@@ -1,0 +1,5 @@
+# Local-only docs and test fixtures — not part of the published extension.
+local-only/
+
+# Node test artifacts (none yet, but in case we add deps later)
+node_modules/

@@ -1,0 +1,743 @@
+/* Rich Diff Comments for GitHub — Overlay Styles */
+
+.grdc-comment-btn {
+  position: absolute;
+  left: -30px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #0969da;
+  color: white;
+  border: none;
+  cursor: pointer;
+  /* Use flex centering for the inline SVG `+` icon. We use an SVG instead
+     of the literal `+` text character because the glyph's optical center
+     sits above its typographic center in most fonts, leaving the text
+     version visually high even with flex centering. The SVG path is
+     drawn at viewBox center (7,7) so it's pixel-perfect regardless of
+     host font / line-height. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 100;
+}
+
+.grdc-comment-btn svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.grdc-hoverable:hover > .grdc-comment-btn {
+  opacity: 1;
+}
+
+/* Only show the `+` on the deepest hovered block. Without this, hovering a
+   nested `<li>` makes both the nested item AND its outer `<li>` match
+   `:hover` (CSS hover propagates up the ancestor chain), so two `+` buttons
+   appear at once. `:has()` lets us hide the ancestor's `+` whenever any
+   descendant `.grdc-hoverable` is being hovered. */
+.grdc-hoverable:has(.grdc-hoverable:hover) > .grdc-comment-btn {
+  opacity: 0;
+}
+
+.grdc-hoverable {
+  position: relative;
+}
+
+.grdc-hoverable:hover {
+  background: rgba(9, 105, 218, 0.04);
+  border-radius: 4px;
+}
+
+/* When the host is a <td> (table-cell), absolute positioning still works,
+   but `left: -30px` may fall outside the table. Pull the button inward. */
+td.grdc-hoverable {
+  position: relative;
+}
+td.grdc-hoverable .grdc-comment-btn {
+  left: 2px;
+  top: 4px;
+  transform: none;
+}
+td.grdc-hoverable:hover {
+  background: rgba(9, 105, 218, 0.06);
+}
+
+/* <pre> can be wide; keep button visible at the left edge */
+pre.grdc-hoverable .grdc-comment-btn {
+  left: 4px;
+  top: 4px;
+  transform: none;
+}
+
+/* `<li>` may contain a nested `<ul>` / `<ol>`. The default centering
+   (`top: 50%`) puts the button at the vertical center of the whole list
+   item, which for a nested list is in the MIDDLE of the nested content —
+   making the outer `+` overlap rows that already have their own `+`. Anchor
+   to the first line of text instead so each visible row has exactly one
+   `+` aligned to its own line. */
+li.grdc-hoverable .grdc-comment-btn {
+  top: 4px;
+  transform: none;
+}
+
+/* ── Section collapse toggle (on headings H1–H6) ──────────────────────── */
+
+.grdc-collapsible {
+  /* Make room for the inline toggle button without disturbing GitHub's heading layout. */
+  position: relative;
+}
+
+.grdc-collapse-toggle {
+  display: inline-block;
+  width: 1.1em;
+  margin-right: 0.25em;
+  padding: 0;
+  font-size: 0.75em;
+  line-height: 1;
+  color: var(--color-fg-muted, #57606a);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  vertical-align: middle;
+}
+
+.grdc-collapsible:hover .grdc-collapse-toggle,
+.grdc-collapse-toggle:focus-visible,
+.grdc-section-collapsed .grdc-collapse-toggle {
+  opacity: 1;
+}
+
+.grdc-collapse-toggle:hover {
+  color: var(--color-fg-default, #24292f);
+}
+
+/* When a section is collapsed, dim its heading so it's clear something is folded. */
+.grdc-section-collapsed {
+  opacity: 0.7;
+}
+
+/* Hide the bodies of collapsed sections. `!important` is intentional —
+   GitHub's prose-diff CSS sometimes sets `display` on these elements and we
+   want to win. */
+.grdc-collapsed-hidden {
+  display: none !important;
+}
+
+/* ── Comment box: native-style look (matches .timeline-comment-form) ─── */
+/* Uses GitHub's CSS variables when available so we follow light/dark theme.  */
+
+/* Light defensive reset on our chrome roots: covers the rare case where our
+   element gets injected inside an `<ins>` / `<del>` / `<u>` and would inherit
+   a browser-default decoration. Computed-style verification has shown the
+   common GitHub diff "underlines" you see in rich-diff are actually painted
+   on adjacent prose elements (not on our box) — they look adjacent to our
+   chrome but don't bleed into it. */
+.grdc-comment-box,
+.grdc-reply-box,
+.grdc-existing-thread,
+.grdc-comment-btn,
+.grdc-collapse-toggle {
+  text-decoration: none;
+  font-style: normal;
+}
+
+.grdc-comment-link:hover {
+  text-decoration: underline;
+}
+
+.grdc-comment-box {
+  position: relative;
+  margin: 8px 0;
+  padding: 0;
+  border: 1px solid var(--color-border-default, #d0d7de);
+  border-radius: 6px;
+  background: var(--color-canvas-default, #ffffff);
+  z-index: 101;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+/* File · line · code-block hint */
+.grdc-comment-box > .grdc-line-info,
+.grdc-reply-box  > .grdc-line-info {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border-muted, #d8dee4);
+  background: var(--color-canvas-subtle, #f6f8fa);
+  border-radius: 6px 6px 0 0;
+}
+
+/* Toolbar + textarea wrapper */
+.grdc-editor {
+  display: flex;
+  flex-direction: column;
+  position: relative; /* anchor for @-mention dropdown */
+}
+
+/* @-mention autocomplete dropdown.
+   `position: fixed` so it escapes any clipping ancestor (e.g. the reply box
+   has `overflow: hidden` for its border-radius). Coordinates are set in JS
+   via `getBoundingClientRect`. */
+.grdc-mention-dropdown {
+  position: fixed;
+  z-index: 10000;
+  /* Reserve space for ~6 items but cap so it never extends off-screen */
+  max-height: min(260px, 50vh);
+  overflow-y: auto;
+  background: var(--color-canvas-default, #ffffff);
+  border: 1px solid var(--color-border-default, #d0d7de);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  font-size: 13px;
+}
+
+.grdc-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: var(--color-fg-default, #24292f);
+}
+
+.grdc-mention-active,
+.grdc-mention-item:hover {
+  background: var(--color-accent-subtle, rgba(9, 105, 218, 0.1));
+}
+
+.grdc-mention-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--color-neutral-muted, rgba(175, 184, 193, 0.2));
+}
+
+.grdc-mention-name {
+  color: var(--color-fg-muted, #57606a);
+  font-size: 12px;
+}
+
+/* Write / Preview tabs */
+.grdc-editor-tabs {
+  display: flex;
+  gap: 0;
+  padding: 6px 8px 0;
+  background: var(--color-canvas-subtle, #f6f8fa);
+  border-bottom: 1px solid var(--color-border-muted, #d8dee4);
+}
+
+.grdc-tab {
+  padding: 6px 12px;
+  margin-bottom: -1px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-fg-muted, #57606a);
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+}
+
+.grdc-tab:hover {
+  color: var(--color-fg-default, #24292f);
+}
+
+.grdc-tab-active {
+  background: var(--color-canvas-default, #ffffff);
+  border-color: var(--color-border-muted, #d8dee4);
+  color: var(--color-fg-default, #24292f);
+}
+
+.grdc-editor-preview {
+  padding: 12px;
+  min-height: 80px;
+  font-size: 13px;
+  color: var(--color-fg-default, #24292f);
+  background: var(--color-canvas-default, #ffffff);
+  border-radius: 0 0 6px 6px;
+}
+
+.grdc-preview-empty {
+  color: var(--color-fg-muted, #57606a);
+  font-style: italic;
+  margin: 0;
+}
+
+.grdc-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 10px;
+  background: var(--color-canvas-subtle, #f6f8fa);
+  border-bottom: 1px solid var(--color-border-muted, #d8dee4);
+}
+
+.grdc-comment-box > .grdc-editor > .grdc-editor-toolbar {
+  /* When directly inside the comment box, sit flush under the line-info header */
+  border-top: none;
+}
+
+.grdc-tb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--color-fg-muted, #57606a);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.grdc-tb-btn:hover {
+  background: var(--color-action-list-item-default-hover-bg, rgba(208, 215, 222, 0.32));
+  color: var(--color-fg-default, #24292f);
+}
+
+.grdc-tb-btn:focus-visible {
+  outline: 2px solid var(--color-accent-fg, #0969da);
+  outline-offset: -2px;
+}
+
+.grdc-tb-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--color-border-default, #d0d7de);
+}
+
+.grdc-editor-textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 0 0 6px 6px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-fg-default, #24292f);
+  background: var(--color-canvas-default, #ffffff);
+  resize: none; /* auto-grow handles height */
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.grdc-editor-textarea:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--color-accent-emphasis, #0969da);
+}
+
+.grdc-comment-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 8px 12px;
+  background: var(--color-canvas-subtle, #f6f8fa);
+  border-top: 1px solid var(--color-border-muted, #d8dee4);
+  border-radius: 0 0 6px 6px;
+}
+
+.grdc-btn {
+  padding: 5px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--color-btn-border, rgba(31, 35, 40, 0.15));
+  font-family: inherit;
+}
+
+.grdc-btn-primary {
+  background: var(--color-btn-primary-bg, #1f883d);
+  color: var(--color-btn-primary-text, #ffffff);
+  border-color: var(--color-btn-primary-border, rgba(31, 35, 40, 0.15));
+}
+
+.grdc-btn-primary:hover:not(:disabled) {
+  background: var(--color-btn-primary-hover-bg, #1a7f37);
+}
+
+.grdc-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.grdc-btn-cancel {
+  background: var(--color-btn-bg, #f6f8fa);
+  color: var(--color-btn-text, #24292f);
+}
+
+.grdc-btn-cancel:hover:not(:disabled) {
+  background: var(--color-btn-hover-bg, #f3f4f6);
+}
+
+.grdc-line-info {
+  font-size: 11px;
+  color: var(--color-fg-muted, #656d76);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.grdc-line-input,
+.grdc-line-start-input {
+  width: 60px;
+  padding: 1px 4px;
+  font-size: 11px;
+  border: 1px solid var(--color-border-default, #d0d7de);
+  border-radius: 3px;
+  background: var(--color-canvas-default, #ffffff);
+  color: var(--color-fg-default, #24292f);
+}
+
+.grdc-line-input:focus,
+.grdc-line-start-input:focus {
+  outline: none;
+  border-color: #0969da;
+  box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.2);
+}
+
+/* While dragging from one `+` to another to set a multi-line comment range,
+   highlight every mapped block between the anchor and the cursor — same
+   visual idea as GitHub's source-diff yellow range band. */
+.grdc-range-hover {
+  background: var(--color-attention-subtle, #fff8c5) !important;
+  box-shadow: inset 2px 0 0 var(--color-attention-emphasis, #9a6700);
+}
+
+/* Persistent range tint for existing multi-line comment threads. Quieter
+   than the drag-hover state: just a colored left bar, no full background,
+   so it doesn't visually compete with the comment badge. */
+.grdc-thread-range {
+  box-shadow: inset 3px 0 0 var(--color-attention-emphasis, #d4a72c);
+  padding-left: 6px;
+}
+
+.grdc-line-hint {
+  color: #57606a;
+}
+
+.grdc-success {
+  color: #2da44e;
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.grdc-error {
+  color: #cf222e;
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+/* ── Existing Comment Threads ─────────────────────────────────────────── */
+
+.grdc-existing-thread {
+  margin: 4px 0 8px 0;
+}
+
+.grdc-thread-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: #0969da;
+  background: #ddf4ff;
+  border: 1px solid #b6e3ff;
+  border-radius: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.grdc-thread-badge:hover {
+  background: #b6e3ff;
+}
+
+.grdc-thread-body {
+  margin-top: 6px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.grdc-thread-comment {
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid #eaeef2;
+}
+
+.grdc-thread-comment:last-child {
+  border-bottom: none;
+  padding-bottom: 8px;
+}
+
+/* Timeline-style vertical rail connecting replies (matches GitHub's
+   source-diff review thread look). Every comment after the first gets an
+   indent + a thin vertical line on its left edge. The rails on adjacent
+   replies butt together via `top: -1px` so the 1px hairline between
+   comments doesn't break the rail visually. The first comment (the
+   thread head) intentionally has no rail — GitHub's UI works the same
+   way. */
+.grdc-thread-comment + .grdc-thread-comment {
+  position: relative;
+  padding-left: 24px;
+}
+.grdc-thread-comment + .grdc-thread-comment::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: -1px;
+  bottom: 0;
+  width: 2px;
+  background: #d0d7de;
+}
+
+.grdc-comment-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 2px;
+  font-size: 13px;
+  color: #24292f;
+  position: relative;
+}
+
+/* Username: GitHub uses semibold-ish weight at the comment header.
+   `<strong>` already gives 700 in most user-agents — nudge slightly
+   smaller weight + tighter color so it reads close to GitHub's UI. */
+.grdc-comment-header > strong {
+  font-weight: 600;
+  color: #1f2328;
+}
+
+.grdc-comment-time {
+  color: #59636e;
+  font-weight: 400;
+  font-size: 12px;
+}
+
+/* `…` menu trigger on each owned comment. Pushed to the far right. */
+.grdc-comment-menu {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #656d76;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+.grdc-comment-menu:hover {
+  background: #f6f8fa;
+  border-color: #d0d7de;
+  color: #24292f;
+}
+.grdc-comment-menu:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.grdc-comment-menu-popover {
+  position: absolute;
+  right: 0;
+  top: 22px;
+  z-index: 200;
+  background: #fff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+  min-width: 120px;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+}
+.grdc-menu-item {
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #24292f;
+  cursor: pointer;
+}
+.grdc-menu-item:hover {
+  background: #f6f8fa;
+}
+.grdc-menu-delete {
+  color: #cf222e;
+}
+.grdc-menu-delete:hover {
+  background: #ffebe9;
+}
+
+.grdc-comment-edit {
+  margin-top: 6px;
+}
+
+.grdc-comment-body {
+  font-size: 13px;
+  color: var(--color-fg-default, #24292f);
+  line-height: 1.45;
+  word-wrap: break-word;
+}
+
+/* Plain (non-HTML) body keeps line breaks. The .markdown-body variant
+   already comes with block-level elements rendered by GitHub. */
+.grdc-comment-body:not(.markdown-body) {
+  white-space: pre-wrap;
+}
+
+/* Tame GitHub-rendered HTML bodies inside our compact thread layout */
+.grdc-comment-body.markdown-body > :first-child { margin-top: 0; }
+.grdc-comment-body.markdown-body > :last-child  { margin-bottom: 0; }
+.grdc-comment-body.markdown-body p,
+.grdc-comment-body.markdown-body ul,
+.grdc-comment-body.markdown-body ol,
+.grdc-comment-body.markdown-body blockquote,
+.grdc-comment-body.markdown-body pre {
+  margin: 0 0 8px 0;
+}
+.grdc-comment-body.markdown-body ul,
+.grdc-comment-body.markdown-body ol { padding-left: 1.5em; }
+.grdc-comment-body.markdown-body code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.92em;
+  padding: 0.15em 0.35em;
+  background: var(--color-neutral-muted, rgba(175, 184, 193, 0.2));
+  border-radius: 4px;
+}
+.grdc-comment-body.markdown-body pre {
+  padding: 8px 10px;
+  background: var(--color-canvas-subtle, #f6f8fa);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.grdc-comment-body.markdown-body pre code {
+  padding: 0;
+  background: transparent;
+}
+.grdc-comment-body.markdown-body blockquote {
+  padding-left: 0.8em;
+  color: var(--color-fg-muted, #57606a);
+  border-left: 3px solid var(--color-border-default, #d0d7de);
+}
+.grdc-comment-body.markdown-body img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Same rules for the Preview pane */
+.grdc-editor-preview > :first-child { margin-top: 0; }
+.grdc-editor-preview > :last-child  { margin-bottom: 0; }
+.grdc-editor-preview p,
+.grdc-editor-preview ul,
+.grdc-editor-preview ol,
+.grdc-editor-preview blockquote,
+.grdc-editor-preview pre {
+  margin: 0 0 8px 0;
+}
+.grdc-editor-preview ul,
+.grdc-editor-preview ol { padding-left: 1.5em; }
+.grdc-editor-preview code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.92em;
+  padding: 0.15em 0.35em;
+  background: var(--color-neutral-muted, rgba(175, 184, 193, 0.2));
+  border-radius: 4px;
+}
+.grdc-editor-preview pre {
+  padding: 8px 10px;
+  background: var(--color-canvas-subtle, #f6f8fa);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.grdc-editor-preview pre code {
+  padding: 0;
+  background: transparent;
+}
+.grdc-editor-preview blockquote {
+  padding-left: 0.8em;
+  color: var(--color-fg-muted, #57606a);
+  border-left: 3px solid var(--color-border-default, #d0d7de);
+}
+
+.grdc-comment-link {
+  /* Now lives in the comment header next to the timestamp. Pushed to the
+     far right via `margin-left: auto` so it sits opposite the username.
+     If the comment is the user's own and the `⋯` menu is also present,
+     the next sibling selector below tucks the menu right beside the link
+     (overriding the menu's default `margin-left: auto`). */
+  margin-left: auto;
+  font-size: 11px;
+  color: #59636e;
+  text-decoration: none;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.grdc-comment-link:hover {
+  color: #0969da;
+  text-decoration: underline;
+  opacity: 1;
+}
+
+/* When the link is present, the menu sits immediately after it (no
+   auto-margin) so both right-side items huddle together. Without this,
+   both would grab `margin-left: auto` and Flexbox would push them apart. */
+.grdc-comment-link + .grdc-comment-menu {
+  margin-left: 4px;
+}
+
+/* ── Thread state: resolved / outdated ────────────────────────────────── */
+
+.grdc-thread-resolved .grdc-thread-badge {
+  color: #57606a;
+  background: #eaeef2;
+  border-color: #d0d7de;
+  opacity: 0.85;
+}
+
+.grdc-thread-resolved .grdc-thread-body {
+  opacity: 0.7;
+}
+
+.grdc-thread-outdated .grdc-thread-badge {
+  background: #fff8c5;
+  border-color: #d4a72c;
+  color: #7d4e00;
+}
+
+/* ── Thread actions (reply / resolve) ─────────────────────────────────── */
+
+.grdc-thread-actions {
+  padding: 8px 12px;
+  background: #f6f8fa;
+  border-top: 1px solid #d8dee4;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Reply box: same native-style chrome as the comment box, but inside the
+   existing thread actions row. */
+.grdc-reply-box {
+  flex: 1 1 100%;
+  margin-top: 8px;
+  background: var(--color-canvas-default, #ffffff);
+  border: 1px solid var(--color-border-default, #d0d7de);
+  border-radius: 6px;
+  overflow: hidden;
+}

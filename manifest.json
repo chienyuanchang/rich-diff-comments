@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Rich Diff Comments for GitHub",
+  "version": "1.0.0",
+  "description": "Comment, reply, resolve, and collapse sections directly in GitHub PR rich-diff (rendered markdown) view.",
+  "author": "chienyuanchang",
+  "homepage_url": "https://github.com/chienyuanchang/rich-diff-comments",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "host_permissions": ["https://github.com/*"],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://github.com/*/pull/*"
+      ],
+      "js": ["src/lib/textMatch.js", "src/lib/responses.js", "src/lib/tableRows.js", "src/lib/markdownPreview.js", "src/lib/codeBlocks.js", "content.js"],
+      "css": ["styles.css"]
+    }
+  ]
+}

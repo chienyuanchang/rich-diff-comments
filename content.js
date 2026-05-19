@@ -2824,9 +2824,27 @@
   let reinitTimer = null;
   function scheduleReinit() {
     if (reinitTimer) return;
-    reinitTimer = setTimeout(() => {
+    // Capture scroll position BEFORE the 500ms debounce window. GitHub's own
+    // React optimistic updates (e.g. after we post a reply) trigger our
+    // MutationObserver, which triggers this scheduler, which runs `init()` —
+    // and `init()` calls `clearInjectedDom()` + full rebuild, which would
+    // otherwise reset the page to scrollY=0 because every block we'd
+    // previously sized with injected `+` buttons / threads is gone for a
+    // frame. Restoring after `init()` finishes keeps the user where they
+    // were (e.g. reading the thread they just replied to). URL-navigation
+    // re-inits go through a different code path (`maybeInit` directly) and
+    // intentionally land at top, so this restore only fires for
+    // mutation-driven re-inits.
+    const savedScrollY = window.scrollY;
+    reinitTimer = setTimeout(async () => {
       reinitTimer = null;
-      init();
+      await init();
+      // Restore after the next paint so layout has settled. Use both
+      // `requestAnimationFrame` and a microtask fallback in case the page is
+      // backgrounded (rAF doesn't fire for hidden tabs).
+      const restore = () => window.scrollTo(0, savedScrollY);
+      requestAnimationFrame(restore);
+      Promise.resolve().then(restore);
     }, 500);
   }
 

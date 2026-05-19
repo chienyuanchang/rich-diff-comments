@@ -2150,6 +2150,7 @@
           // whole tint band. `element` is the block the user clicked `+` on,
           // which for a drag-selected range is already the start block.
           renderThreadOnElement(element, newComments);
+          buildThreadsSidebar();
         }
         const success = document.createElement('div');
         success.className = 'grdc-success';
@@ -2616,6 +2617,7 @@
               });
             }
             box.remove();
+            buildThreadsSidebar();
           } else {
             const err = document.createElement('div');
             err.className = 'grdc-error';
@@ -2712,6 +2714,15 @@
     //      tacking it on at the bottom (the previous walker just appended).
     const anchorKey = buildAnchorKey({ path: head.path, line: head.line, startLine: head.startLine });
     thread.dataset.grdcAnchor = anchorKey;
+    // Stash sidebar-relevant metadata on the element so the threads sidebar
+    // can read it without re-deriving from `existingComments`. Keeps the
+    // sidebar a pure DOM consumer of `.grdc-existing-thread` elements.
+    thread.dataset.grdcThreadId = String(threadId);
+    thread.dataset.grdcUser = head.user || '';
+    const snippet = (head.body || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    thread.dataset.grdcSnippet = snippet;
+    thread.dataset.grdcPath = head.path || '';
+    thread.dataset.grdcLine = String(head.line ?? '');
     const peers = document.querySelectorAll(`.grdc-existing-thread[data-grdc-anchor="${CSS.escape(anchorKey)}"]`);
     if (peers.length > 0) {
       peers[peers.length - 1].after(thread);
@@ -2767,7 +2778,275 @@
         'grdc-range-hover'
       );
     });
+    // Note: `.grdc-sidebar` is NOT cleared here — `buildThreadsSidebar()`
+    // re-uses the existing shell when present to preserve user-set state
+    // (collapsed, unresolved-only filter) across re-inits. The sidebar's
+    // own list is rebuilt inside `buildThreadsSidebar()`.
   }
+
+  // ── UI: Threads sidebar ────────────────────────────────────────────────────
+  //
+  // A right-docked floating panel listing every existing thread in DOM order.
+  // Each card scrolls to its thread on click. Header carries prev/next nav
+  // (`↑` / `↓` plus an `n / total` count) and a chord-keyboard binding
+  // (`g j` / `g k`). Includes an "Unresolved only" filter toggle. Hidden
+  // entirely when there are 0 threads on the page. Collapsed state and the
+  // filter state persist in `localStorage` (per origin, not per repo — a
+  // user's preference travels across PRs).
+  //
+  // Source of truth: queries `.grdc-existing-thread` elements after
+  // `renderExistingComments()` has populated them. Each carries a
+  // `data-grdc-snippet` / `data-grdc-user` / `data-grdc-path` /
+  // `data-grdc-line` / `data-grdc-thread-id` plus the `grdc-thread-resolved`
+  // / `grdc-thread-outdated` classes. The sidebar is a pure consumer.
+
+  const SIDEBAR_COLLAPSE_KEY = 'grdc_sidebar_collapsed';
+  const SIDEBAR_FILTER_KEY = 'grdc_sidebar_unresolved_only';
+  const SIDEBAR_POS_KEY = 'grdc_sidebar_pos';
+  const SIDEBAR_SIZE_KEY = 'grdc_sidebar_size';
+  let sidebarCurrentIdx = 0;
+
+  // Drag-to-move on the header. Position persists in `localStorage` as
+  // `{left, top}` in viewport coordinates. We clamp to keep at least 80px
+  // of the header on-screen so a window resize can't strand the sidebar.
+  function attachSidebarDrag(sidebar, handle) {
+    handle.addEventListener('mousedown', (e) => {
+      // Ignore drags that start on a button (collapse / prev / next).
+      if (e.target.closest('button')) return;
+      e.preventDefault();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const rect = sidebar.getBoundingClientRect();
+      const startLeft = rect.left;
+      const startTop = rect.top;
+      sidebar.classList.add('grdc-sidebar-dragging');
+      const onMove = (ev) => {
+        let nextLeft = startLeft + (ev.clientX - startX);
+        let nextTop = startTop + (ev.clientY - startY);
+        // Clamp so at least 80px stays visible on each side.
+        const minLeft = 80 - rect.width;
+        const maxLeft = window.innerWidth - 80;
+        const minTop = 0;
+        const maxTop = window.innerHeight - 40;
+        nextLeft = Math.max(minLeft, Math.min(maxLeft, nextLeft));
+        nextTop = Math.max(minTop, Math.min(maxTop, nextTop));
+        sidebar.style.left = `${nextLeft}px`;
+        sidebar.style.top = `${nextTop}px`;
+        sidebar.style.right = 'auto';
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        sidebar.classList.remove('grdc-sidebar-dragging');
+        try {
+          localStorage.setItem(SIDEBAR_POS_KEY, JSON.stringify({
+            left: parseFloat(sidebar.style.left),
+            top: parseFloat(sidebar.style.top),
+          }));
+        } catch (_) {}
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+
+  function applySidebarPersistedPos(sidebar) {
+    try {
+      const raw = localStorage.getItem(SIDEBAR_POS_KEY);
+      if (raw) {
+        const { left, top } = JSON.parse(raw);
+        if (Number.isFinite(left) && Number.isFinite(top)) {
+          sidebar.style.left = `${left}px`;
+          sidebar.style.top = `${top}px`;
+          sidebar.style.right = 'auto';
+        }
+      }
+    } catch (_) {}
+    try {
+      const raw = localStorage.getItem(SIDEBAR_SIZE_KEY);
+      if (raw) {
+        const { width, height } = JSON.parse(raw);
+        if (Number.isFinite(width)) sidebar.style.width = `${width}px`;
+        if (Number.isFinite(height)) sidebar.style.height = `${height}px`;
+      }
+    } catch (_) {}
+  }
+
+  // Persist resize: watch for size changes via ResizeObserver and write to
+  // localStorage on a debounce so we don't thrash storage during the drag.
+  function observeSidebarResize(sidebar) {
+    if (typeof ResizeObserver === 'undefined') return;
+    let writeTimer = null;
+    const ro = new ResizeObserver(() => {
+      if (sidebar.classList.contains('grdc-sidebar-collapsed')) return;
+      clearTimeout(writeTimer);
+      writeTimer = setTimeout(() => {
+        try {
+          localStorage.setItem(SIDEBAR_SIZE_KEY, JSON.stringify({
+            width: sidebar.offsetWidth,
+            height: sidebar.offsetHeight,
+          }));
+        } catch (_) {}
+      }, 250);
+    });
+    ro.observe(sidebar);
+  }
+
+  function buildThreadsSidebar() {
+    const threadEls = Array.from(document.querySelectorAll('.grdc-existing-thread'));
+    let sidebar = document.querySelector('.grdc-sidebar');
+
+    // No threads → remove the sidebar entirely.
+    if (threadEls.length === 0) {
+      sidebar?.remove();
+      return;
+    }
+
+    const unresolvedOnly = localStorage.getItem(SIDEBAR_FILTER_KEY) === '1';
+    const collapsed = localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === '1';
+
+    // Create shell on first build; reuse it on re-init so user state survives.
+    if (!sidebar) {
+      sidebar = document.createElement('div');
+      sidebar.className = 'grdc-sidebar';
+      sidebar.setAttribute('role', 'complementary');
+      sidebar.setAttribute('aria-label', 'Review threads');
+      sidebar.innerHTML = `
+        <div class="grdc-sidebar-header">
+          <button class="grdc-sidebar-collapse" title="Collapse / expand sidebar" aria-label="Toggle sidebar">☰</button>
+          <button class="grdc-sidebar-prev" title="Previous thread (g k)" aria-label="Previous thread">↑</button>
+          <span class="grdc-sidebar-count" aria-live="polite"></span>
+          <button class="grdc-sidebar-next" title="Next thread (g j)" aria-label="Next thread">↓</button>
+        </div>
+        <label class="grdc-sidebar-filter">
+          <input type="checkbox" class="grdc-sidebar-filter-cb">
+          Unresolved only
+        </label>
+        <div class="grdc-sidebar-list" role="list"></div>
+      `;
+      document.body.appendChild(sidebar);
+
+      const headerEl = sidebar.querySelector('.grdc-sidebar-header');
+      attachSidebarDrag(sidebar, headerEl);
+      applySidebarPersistedPos(sidebar);
+      observeSidebarResize(sidebar);
+
+      sidebar.querySelector('.grdc-sidebar-collapse').addEventListener('click', () => {
+        const isCollapsed = sidebar.classList.toggle('grdc-sidebar-collapsed');
+        try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, isCollapsed ? '1' : '0'); } catch (_) {}
+      });
+      sidebar.querySelector('.grdc-sidebar-prev').addEventListener('click', () => sidebarJump(-1));
+      sidebar.querySelector('.grdc-sidebar-next').addEventListener('click', () => sidebarJump(+1));
+      sidebar.querySelector('.grdc-sidebar-filter-cb').addEventListener('change', (e) => {
+        try { localStorage.setItem(SIDEBAR_FILTER_KEY, e.target.checked ? '1' : '0'); } catch (_) {}
+        buildThreadsSidebar();
+      });
+    }
+
+    // Apply persisted state.
+    sidebar.classList.toggle('grdc-sidebar-collapsed', collapsed);
+    const filterCb = sidebar.querySelector('.grdc-sidebar-filter-cb');
+    if (filterCb.checked !== unresolvedOnly) filterCb.checked = unresolvedOnly;
+
+    // Rebuild the list. Threads in DOM order already — they were inserted in
+    // sorted (path, line) order by renderExistingComments.
+    const list = sidebar.querySelector('.grdc-sidebar-list');
+    list.innerHTML = '';
+    const visible = threadEls.filter(t =>
+      !unresolvedOnly || !t.classList.contains('grdc-thread-resolved'));
+    visible.forEach((threadEl, idx) => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'grdc-sidebar-card' +
+        (threadEl.classList.contains('grdc-thread-resolved') ? ' grdc-sidebar-card-resolved' : '') +
+        (threadEl.classList.contains('grdc-thread-outdated') ? ' grdc-sidebar-card-outdated' : '');
+      card.setAttribute('role', 'listitem');
+      const user = threadEl.dataset.grdcUser || 'unknown';
+      const snippet = threadEl.dataset.grdcSnippet || '(no body)';
+      const path = threadEl.dataset.grdcPath || '';
+      const line = threadEl.dataset.grdcLine || '';
+      const file = path.split('/').pop() || path;
+      const tags = [];
+      if (threadEl.classList.contains('grdc-thread-resolved')) tags.push('✓ resolved');
+      if (threadEl.classList.contains('grdc-thread-outdated')) tags.push('outdated');
+      card.innerHTML = `
+        <div class="grdc-sidebar-card-head">
+          <span class="grdc-sidebar-card-user">${escapeHtml(user)}</span>
+          <span class="grdc-sidebar-card-loc">${escapeHtml(file)}:${escapeHtml(line)}</span>
+        </div>
+        <div class="grdc-sidebar-card-body">${escapeHtml(snippet)}</div>
+        ${tags.length ? `<div class="grdc-sidebar-card-tags">${tags.map(t => escapeHtml(t)).join(' · ')}</div>` : ''}
+      `;
+      card.addEventListener('click', () => {
+        sidebarCurrentIdx = idx;
+        scrollToThread(threadEl);
+        updateSidebarCount();
+      });
+      list.appendChild(card);
+    });
+
+    // Snap currentIdx to a valid range for the new list.
+    if (sidebarCurrentIdx >= visible.length) sidebarCurrentIdx = visible.length - 1;
+    if (sidebarCurrentIdx < 0) sidebarCurrentIdx = 0;
+    updateSidebarCount();
+  }
+
+  function updateSidebarCount() {
+    const sidebar = document.querySelector('.grdc-sidebar');
+    if (!sidebar) return;
+    const cards = sidebar.querySelectorAll('.grdc-sidebar-card');
+    const countEl = sidebar.querySelector('.grdc-sidebar-count');
+    if (cards.length === 0) {
+      countEl.textContent = '0';
+    } else {
+      countEl.textContent = `${sidebarCurrentIdx + 1} / ${cards.length}`;
+    }
+    cards.forEach((c, i) => c.classList.toggle('grdc-sidebar-card-active', i === sidebarCurrentIdx));
+  }
+
+  function sidebarJump(delta) {
+    const sidebar = document.querySelector('.grdc-sidebar');
+    if (!sidebar) return;
+    const cards = sidebar.querySelectorAll('.grdc-sidebar-card');
+    if (cards.length === 0) return;
+    sidebarCurrentIdx = (sidebarCurrentIdx + delta + cards.length) % cards.length;
+    cards[sidebarCurrentIdx].click();
+  }
+
+  function scrollToThread(threadEl) {
+    threadEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    // Flash the badge so the user sees where they landed.
+    const badge = threadEl.querySelector('.grdc-thread-badge') || threadEl;
+    badge.classList.add('grdc-thread-flash');
+    setTimeout(() => badge.classList.remove('grdc-thread-flash'), 1200);
+  }
+
+  // Keyboard chord: `g` followed within 600ms by `j` (next) or `k` (prev).
+  // Single-key `j`/`k` would collide with GitHub's own bindings. Bound once
+  // at script load (not inside `init`) so it survives re-inits.
+  let _gChordArmed = false;
+  let _gChordTimer = null;
+  document.addEventListener('keydown', (e) => {
+    // Ignore when typing into any input/textarea/contenteditable.
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (_gChordArmed && (e.key === 'j' || e.key === 'k')) {
+      e.preventDefault();
+      sidebarJump(e.key === 'j' ? +1 : -1);
+      _gChordArmed = false;
+      clearTimeout(_gChordTimer);
+      return;
+    }
+    if (e.key === 'g') {
+      _gChordArmed = true;
+      clearTimeout(_gChordTimer);
+      _gChordTimer = setTimeout(() => { _gChordArmed = false; }, 600);
+    } else {
+      _gChordArmed = false;
+      clearTimeout(_gChordTimer);
+    }
+  }, true);
 
   async function init() {
     prInfo = parsePRUrl();
@@ -2808,6 +3087,7 @@
     existingComments = await commentsPromise;
     console.log(`[GRDC] Fetched ${existingComments.length} existing comments`);
     renderExistingComments();
+    buildThreadsSidebar();
 
     // Pre-warm @-mention suggestions in the background so the first `@` keystroke
     // doesn't trigger a 50KB PR HTML fetch + suggestions request synchronously.
@@ -2860,7 +3140,8 @@
               node.classList?.contains('grdc-collapse-toggle') ||
               node.classList?.contains('grdc-reply-box') ||
               node.classList?.contains('grdc-comment-edit') ||
-              node.classList?.contains('grdc-comment-menu-popover')) continue;
+              node.classList?.contains('grdc-comment-menu-popover') ||
+              node.classList?.contains('grdc-sidebar')) continue;
           if (node.classList?.contains('markdown-body') ||
               node.classList?.contains('rich-diff-level-one') ||
               node.querySelector?.('.prose-diff .markdown-body')) {

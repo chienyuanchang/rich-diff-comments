@@ -6,7 +6,8 @@ All notable changes to Rich Diff Comments for GitHub. Follows [Keep a Changelog]
 
 ### Added
 
-- **Threads sidebar (v1).** Right-docked collapsible panel listing every thread on the current page — author, snippet, file:line, resolved/outdated tags. Click a card to smooth-scroll to the thread (with a brief flash). Header `↑` `n / total` `↓` prev/next buttons; same nav via the `g j` / `g k` keyboard chord. "Unresolved only" toggle. Collapsed state and filter state persist in `localStorage`. Auto-hides when the page has no threads. Foundation for the planned Outline tab and quick-reply card UI — see [FEATURES.md → Threads sidebar](docs/FEATURES.md).
+- **Threads sidebar (v1).** Right-docked collapsible panel listing every thread on the current page — author, snippet, file:line, resolved/outdated tags. Click a card to smooth-scroll to the thread (with a brief flash). Header `↑` `n / total` `↓` prev/next buttons; same nav via the `g j` / `g k` keyboard chord. "Unresolved only" toggle. Drag the header to move; drag the bottom-right corner to resize. Collapsed state, filter state, position, and size all persist in `localStorage`. Auto-hides when the page has no threads. Foundation for the planned Outline tab and quick-reply card UI — see [FEATURES.md → Threads sidebar](docs/FEATURES.md).
+- **Pure sidebar helpers** extracted to `src/lib/sidebar.js`: `buildSnippet`, `clampDragPos`, `nextWrappingIndex`. Covered by 21 new unit tests in `tests/sidebar.test.js`.
 
 ### Fixed
 

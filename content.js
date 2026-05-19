@@ -29,6 +29,9 @@
     formatTimeAgo,
     buildAnchorKey,
     parseLineFromAnchor,
+    buildSnippet,
+    clampDragPos,
+    nextWrappingIndex,
   } = (typeof window !== 'undefined' && window.GRDC) || {};
 
   // Wrap findTextInSource so we can keep the per-file diagnostic counter behavior
@@ -2719,7 +2722,7 @@
     // sidebar a pure DOM consumer of `.grdc-existing-thread` elements.
     thread.dataset.grdcThreadId = String(threadId);
     thread.dataset.grdcUser = head.user || '';
-    const snippet = (head.body || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    const snippet = buildSnippet(head.body, 80);
     thread.dataset.grdcSnippet = snippet;
     thread.dataset.grdcPath = head.path || '';
     thread.dataset.grdcLine = String(head.line ?? '');
@@ -2821,17 +2824,14 @@
       const startTop = rect.top;
       sidebar.classList.add('grdc-sidebar-dragging');
       const onMove = (ev) => {
-        let nextLeft = startLeft + (ev.clientX - startX);
-        let nextTop = startTop + (ev.clientY - startY);
-        // Clamp so at least 80px stays visible on each side.
-        const minLeft = 80 - rect.width;
-        const maxLeft = window.innerWidth - 80;
-        const minTop = 0;
-        const maxTop = window.innerHeight - 40;
-        nextLeft = Math.max(minLeft, Math.min(maxLeft, nextLeft));
-        nextTop = Math.max(minTop, Math.min(maxTop, nextTop));
-        sidebar.style.left = `${nextLeft}px`;
-        sidebar.style.top = `${nextTop}px`;
+        const { left, top } = clampDragPos(
+          { left: startLeft, top: startTop, width: rect.width },
+          { dx: ev.clientX - startX, dy: ev.clientY - startY },
+          { width: window.innerWidth, height: window.innerHeight },
+          80
+        );
+        sidebar.style.left = `${left}px`;
+        sidebar.style.top = `${top}px`;
         sidebar.style.right = 'auto';
       };
       const onUp = () => {
@@ -3009,7 +3009,7 @@
     if (!sidebar) return;
     const cards = sidebar.querySelectorAll('.grdc-sidebar-card');
     if (cards.length === 0) return;
-    sidebarCurrentIdx = (sidebarCurrentIdx + delta + cards.length) % cards.length;
+    sidebarCurrentIdx = nextWrappingIndex(sidebarCurrentIdx, delta, cards.length);
     cards[sidebarCurrentIdx].click();
   }
 

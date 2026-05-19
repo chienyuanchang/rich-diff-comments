@@ -62,7 +62,7 @@ What works today, what's planned, and what we deliberately won't do.
 
 ### Testing
 
-- [x] **74 unit tests** for pure helpers (line matching, response parsing, markersMap parsing, table arithmetic, markdown preview, HTML escaping, time formatting) using Node's built-in `node:test` — zero dependencies
+- [x] **124 unit tests** for pure helpers (line matching, response parsing, markersMap parsing, table arithmetic, markdown preview, HTML escaping, time formatting, sidebar helpers) using Node's built-in `node:test` — zero dependencies
 - [x] **Regression tests** for every bug in the changelog
 - [x] **Manual test checklist** in DEV_NOTES for DOM/network paths not covered by unit tests
 
@@ -135,13 +135,15 @@ Features below are in scope when they cover a workflow gap **on the rich-diff pa
 
   **v1 cut (shipped in 1.0.3):** ✅
   - [x] Right-docked collapsible panel; collapsed state persists in `localStorage`.
+  - [x] **Draggable** (grab header) and **resizable** (bottom-right corner); position and size persist in `localStorage`.
   - [x] List of all threads on the current page in DOM order: author, snippet of first comment, status tags (resolved / outdated), file:line.
   - [x] Click a card → smooth-scroll to thread + brief flash highlight on the badge.
-  - [x] Header: `↑` `n / total` `↓` prev/next buttons. Count badge updates as the user navigates.
+  - [x] Header: `↑` `n / total` `↓` prev/next buttons. Count badge updates as the user navigates. Visible even when the panel is collapsed.
   - [x] Keyboard chord `g j` / `g k` fires prev/next; ignores keystrokes inside inputs / textareas / contenteditable.
   - [x] "Unresolved only" toggle filters the list; state persists in `localStorage`.
   - [x] Rebuilds after every `renderExistingComments()` so post/reply/resolve stay in sync.
   - [x] Auto-hides when there are 0 threads on the page.
+  - [x] Pure helpers (`buildSnippet`, `clampDragPos`, `nextWrappingIndex`) extracted to [src/lib/sidebar.js](../src/lib/sidebar.js) with 21 unit tests.
 
   **v1.1 (next):** Outline tab — heading tree (H1–H6) with per-section thread counts (`Architecture · 3 💬`), click-to-jump, highlights active section by scroll position. Collapse-all / Expand-all toolbar ("Collapse to H2", etc.) that drives the existing per-heading collapse logic.
 

@@ -4,6 +4,10 @@ All notable changes to Rich Diff Comments for GitHub. Follows [Keep a Changelog]
 
 ## [Unreleased]
 
+### Fixed
+
+- **Deleted blocks no longer drift downstream line numbers.** On diffs with deletions, rich-diff still renders the deleted prose (wrapped in `<del>`). The DOM walker used to treat those blocks like any other, fail the text match against the post-change source, and consume a `lastLine + 1` nudge — so every subsequent block was anchored that many lines too early. The walker now detects `<del>` ancestors and skips those blocks entirely (no `+` attached, no line consumed). Commenting directly on deleted lines (which would require posting with `side: "LEFT"` against the base file) is tracked separately in [FEATURES.md](docs/FEATURES.md).
+
 ## [1.0.0] — 2026-05-18
 
 Initial release as an independent third-party extension.

@@ -1174,6 +1174,12 @@
         // Skip mermaid / diagram blocks — they render to SVG with no useful text,
         // and their textual code form (if present) breaks forward-scan matching.
         if (isDiagramBlock(block)) return;
+        // Skip blocks wholly inside a <del> — they're deleted content that
+        // doesn't exist in the post-change source. Attaching a `+` would post
+        // at the wrong (right-side) line; counting them would drift every
+        // downstream block. Commenting on deleted lines (side="LEFT") is a
+        // separate planned feature. See `isInDeletedBlock` for details.
+        if (isInDeletedBlock(block)) return;
         // Skip <p> that lives inside an <li> — the parent <li> already gets a button
         // and the inner <p> would be a duplicate. Standalone <p> (incl. blockquotes)
         // must NOT be skipped, otherwise paragraphs get no `+` at all.
@@ -1292,6 +1298,32 @@
     return false;
   }
 
+  // Detect blocks that sit wholly inside a `<del>` ancestor — GitHub's
+  // prose-diff wraps deleted prose blocks the same way it wraps inserted
+  // ones in `<ins>`. Such blocks don't exist in the post-change source, so
+  // our forward-scan matcher always fails on them and they fall through to
+  // the `lastLine + 1` nudge. Worse, the nudge advances `lastLine` once per
+  // deleted block, so every subsequent block ends up anchored that many
+  // lines too early — cumulative downstream drift on any diff with
+  // deletions. We skip these blocks entirely in `buildLineMap` so no `+` is
+  // rendered and no source line is consumed. Commenting on deleted lines
+  // (which would require posting with `side: "LEFT"` against the BASE
+  // file's line number) is a separate feature tracked in FEATURES.md.
+  //
+  // GitHub's prose-diff also uses a `class="removed"` marker on the block
+  // ITSELF (e.g. `<li class="removed">...</li>`) for whole-block deletions,
+  // without a `<del>` wrapper. We check both: the semantic `<del>` ancestor
+  // AND any `.removed` ancestor (including the block itself).
+  //
+  // Tag/class-only check (matches `topUnderlinedAncestor` style) — no
+  // `getComputedStyle` so we don't trigger a layout recalc per block.
+  function isInDeletedBlock(el) {
+    if (!el) return false;
+    if (el.tagName === 'DEL' || el.tagName === 'S') return true;
+    if (el.classList && el.classList.contains('removed')) return true;
+    return !!(el.closest && el.closest('del, s, .removed'));
+  }
+
   // ── UI: Comment Buttons ────────────────────────────────────────────────────
 
   // For elements that aren't valid parents/siblings for our injected nodes
@@ -1337,7 +1369,17 @@
         break;
       }
       const tag = cur.tagName;
-      if (tag === 'INS' || tag === 'U') top = cur;
+      // <ins>/<u>/.added paint underline; <del>/<s>/.removed paint line-through.
+      // Both propagate to descendants via CSS text-decoration, so our injected
+      // UI inherits the strike/underline if we insert .after() inside their
+      // scope. Escaping to the topmost such ancestor lets the caller place
+      // the box outside the painting scope entirely.
+      if (tag === 'INS' || tag === 'U' || tag === 'DEL' || tag === 'S') {
+        top = cur;
+      } else if (cur.classList && (cur.classList.contains('removed') ||
+                                   cur.classList.contains('added'))) {
+        top = cur;
+      }
       cur = cur.parentElement;
     }
     return top;

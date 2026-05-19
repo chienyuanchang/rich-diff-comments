@@ -32,6 +32,7 @@
     buildSnippet,
     clampDragPos,
     nextWrappingIndex,
+    slugifyHeading,
   } = (typeof window !== 'undefined' && window.GRDC) || {};
 
   // Wrap findTextInSource so we can keep the per-file diagnostic counter behavior
@@ -3048,6 +3049,67 @@
     }
   }, true);
 
+  // ── TOC anchor jumps in rich-diff ───────────────────────────────────────
+  //
+  // On a PR's rich-diff page (`/pull/<n>/changes`) GitHub strips heading
+  // `id="user-content-<slug>"` attributes because the same PR can modify
+  // multiple files with identically-named headings (duplicate ids would be
+  // invalid HTML). The blob view doesn't have this problem because each file
+  // has its own document. The consequence: clicking a heading link in a
+  // rendered TOC (e.g. `[Change Log](#change-log)`) updates the URL hash
+  // but the browser finds no matching target and doesn't scroll.
+  //
+  // Fix: when the hash changes (or is present on load) and the browser's
+  // default scroll didn't land us at a matching element, walk every heading
+  // in the rich-diff prose body, slugify its textContent, and scroll to the
+  // first match. If `?file=<path>` is in the URL, restrict the walk to the
+  // matching file container so headings in other files don't shadow it.
+  //
+  // The `slugifyHeading` helper lives in src/lib/anchors.js (pure, tested).
+  function tryScrollToHashAnchor() {
+    const hash = (window.location.hash || '').replace(/^#/, '');
+    if (!hash) return;
+    // If the browser already found a target with this id/name, native
+    // anchoring handles it — bail.
+    if (document.getElementById(hash) || document.getElementsByName(hash).length) return;
+
+    // Scope to the file matching `?file=<path>` when present; otherwise
+    // search across all rich-diff prose bodies on the page.
+    let scope;
+    try {
+      const fileParam = new URL(window.location.href).searchParams.get('file');
+      if (fileParam) {
+        const containers = document.querySelectorAll('div[id^="diff-"]');
+        for (const c of containers) {
+          if (getFilePath(c) === fileParam) { scope = c; break; }
+        }
+      }
+    } catch (_) {}
+    const roots = scope
+      ? [scope.querySelector('.prose-diff .markdown-body, .prose-diff, .rich-diff-level-one .markdown-body')].filter(Boolean)
+      : document.querySelectorAll('.prose-diff .markdown-body, .prose-diff, .rich-diff-level-one .markdown-body');
+
+    for (const root of roots) {
+      const headings = root.querySelectorAll('h1, h2, h3, h4, h5, h6');
+      for (const h of headings) {
+        if (slugifyHeading(h.textContent) === hash) {
+          // GitHub's PR page has a sticky header (the "Files changed" /
+          // file-nav bar) that covers the top ~60px of the viewport. A
+          // plain `scrollIntoView({ block: 'start' })` aligns the heading
+          // to viewport-top 0 — which is hidden behind the sticky bar.
+          // Compute the absolute target and offset by an estimate of the
+          // sticky-bar height so the heading lands just below it.
+          const STICKY_OFFSET = 120;
+          const top = window.scrollY + h.getBoundingClientRect().top - STICKY_OFFSET;
+          window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+          return;
+        }
+      }
+    }
+  }
+
+  window.addEventListener('hashchange', tryScrollToHashAnchor);
+
   async function init() {
     prInfo = parsePRUrl();
     if (!prInfo) return;
@@ -3088,6 +3150,12 @@
     console.log(`[GRDC] Fetched ${existingComments.length} existing comments`);
     renderExistingComments();
     buildThreadsSidebar();
+
+    // If the page loaded with a heading hash (e.g. user clicked a TOC link
+    // before our init finished), the browser's native scroll-to-anchor will
+    // have already failed silently — GitHub strips heading ids in rich-diff.
+    // Run the slug-matched fallback now that headings are in the DOM.
+    tryScrollToHashAnchor();
 
     // Pre-warm @-mention suggestions in the background so the first `@` keystroke
     // doesn't trigger a 50KB PR HTML fetch + suggestions request synchronously.

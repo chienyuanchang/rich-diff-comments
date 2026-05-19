@@ -17,7 +17,7 @@
       "matches": [
         "https://github.com/*/pull/*"
       ],
-      "js": ["src/lib/textMatch.js", "src/lib/responses.js", "src/lib/tableRows.js", "src/lib/markdownPreview.js", "src/lib/codeBlocks.js", "src/lib/sidebar.js", "content.js"],
+      "js": ["src/lib/textMatch.js", "src/lib/responses.js", "src/lib/tableRows.js", "src/lib/markdownPreview.js", "src/lib/codeBlocks.js", "src/lib/sidebar.js", "src/lib/anchors.js", "content.js"],
       "css": ["styles.css"]
     }
   ]

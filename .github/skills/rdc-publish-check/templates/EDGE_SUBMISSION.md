@@ -25,7 +25,7 @@ The block is HTML-commented so it won't render even if you forget.
 
 ## Package
 
-- **Zip:** `grdc-{{VERSION}}.zip` (in this folder)
+- **Zip:** `rdc-{{VERSION}}.zip` (in this folder)
 - **Manifest version:** `{{VERSION}}`
 
 ## Store listing

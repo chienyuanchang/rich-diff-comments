@@ -275,8 +275,8 @@ Build the publishable zip from the repo root. The store wants the manifest at th
 Drop this in `scripts/package.ps1`:
 
 ```powershell
-# Usage:  .\scripts\package.ps1 [-Output path/to/grdc.zip]
-param([string]$Output = "grdc-$( (Get-Content manifest.json | ConvertFrom-Json).version ).zip")
+# Usage:  .\scripts\package.ps1 [-Output path/to/rdc.zip]
+param([string]$Output = "rdc-$( (Get-Content manifest.json | ConvertFrom-Json).version ).zip")
 
 $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
@@ -302,7 +302,7 @@ Run from the extension root:
 
 ```powershell
 .\scripts\package.ps1
-# → grdc-1.0.0.zip
+# → rdc-1.0.0.zip
 ```
 
 ### Bash / WSL equivalent
@@ -310,7 +310,7 @@ Run from the extension root:
 ```bash
 # From the repo root
 VERSION=$(node -p "require('./manifest.json').version")
-zip -r "grdc-$VERSION.zip" \
+zip -r "rdc-$VERSION.zip" \
   manifest.json content.js styles.css src icons PRIVACY.md \
   -x '*/__pycache__/*' '*.DS_Store'
 ```

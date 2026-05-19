@@ -167,6 +167,41 @@ Same endpoint, different `subjectType`. Verified payload (captured 2026-05 from 
 
 When the range is entirely on the right side (the common case), `startCommitOid === endCommitOid === headOid`.
 
+### LEFT-side comments (on deleted lines)
+
+Same endpoint. Verified payload (captured 2026-05 from GitHub's native source-diff, commenting on a deleted line):
+
+```js
+{
+  comparisonStartOid: <baseOid>,
+  comparisonEndOid:   <headOid>,
+  path: "test_md_files/sample-design-doc.md",
+  line: 4,                            // OLD (base-file) line number
+  side: "left",                       // lowercase
+  subjectType: "line",
+  submitBatch: true,
+  text: "deleted line 4",
+  positioning: {
+    type: "line",
+    baseCommitOid: <baseOid>,
+    commitOid: <baseOid>,             // ← swaps to BASE (RIGHT-side uses head)
+    headCommitOid: <headOid>,
+    line: 4,                          // OLD line
+    path,
+  }
+}
+```
+
+**Diff vs RIGHT-side payload (only three fields change):**
+
+| Field | RIGHT | LEFT |
+|---|---|---|
+| `side` | `"right"` | `"left"` |
+| `positioning.commitOid` | `headOid` | **`baseOid`** |
+| `line` and `positioning.line` | head (post-change) line | **base (old) line** |
+
+`comparisonStartOid`, `comparisonEndOid`, `positioning.baseCommitOid`, `positioning.headCommitOid` stay the same as RIGHT. Multi-line LEFT ranges are not yet captured — the same field-swap pattern is likely to apply (`startSide: "left"`, `positioning.startCommitOid` / `endCommitOid` swap to base, start/end lines from base) but should be verified with another captured payload before shipping.
+
 ## Resolving rendered block → source line
 
 The hardest problem. Approach:

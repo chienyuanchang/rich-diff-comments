@@ -386,6 +386,29 @@ console.log([...vars].sort().join('\n'));
 
 The output is the universe of color tokens you have to choose from. When in doubt, pick the one whose name most directly describes what you want.
 
+### When Primer tokens aren't defined at all (need `prefers-color-scheme` fallback)
+
+The three-level chain assumes one of the two Primer variable names will be defined. **Empirically this is not always true** — on certain PR variants, blob-view-embedded diffs, and some Enterprise themes the `--bgColor-*` tokens simply aren't defined, so our literal hex fallback (`#ffffff`, `#eaf2fb`, etc.) fires *even in dark mode*. The Threads sidebar showed up as a glaring light bar on dark pages in this scenario.
+
+Fix: layered defense via `@media (prefers-color-scheme: dark)` overrides at the bottom of `styles.css` for any opaque surface that the user will see in dark mode. Use `rgba()` for the dark values (not literal hex on the right-hand side of `background:`) so the `cssTheming.test.js` "standalone hex" lint rule still passes — the test only rejects bare hex assignments, not rgba.
+
+Current scope: sidebar shell + header + list + cards + tabs + outline toolbar + inline thread badge. If a new opaque surface is added that uses `--bgColor-default` / `--bgColor-accent-subtle` / similar with a light-mode hex fallback, add a matching entry in the media block.
+
+## Comment header data: avatar + role badge
+
+Each comment in our thread renders an avatar + author-association role badge. Both come from the same `/pull/<n>/changes` route-data payload that already drives login / body / timestamp. Field names vary between GraphQL (camelCase) and REST (snake_case), so parse both:
+
+```js
+avatarUrl: c.author?.avatarUrl || c.author?.avatar_url || c.user?.avatar_url || c.user?.avatarUrl || '',
+authorAssociation: c.authorAssociation || c.author_association || '',
+```
+
+**Avatar fallback:** if the payload doesn't include an avatar URL, derive one from the login via `https://avatars.githubusercontent.com/<login>?s=40`. This URL works for any public GitHub user without API auth — GitHub serves a redirect to the user's current avatar.
+
+**Author association enum** (from GitHub's REST docs): `OWNER`, `MEMBER`, `COLLABORATOR`, `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, `FIRST_TIMER`, `MANNEQUIN`, `NONE`. We render a pill only for the first four (the rest carry no useful reviewer signal). `Owner` gets accent-blue styling; the others get a neutral chip.
+
+> **Not author == PR author.** GitHub's native UI also shows an `Author` pill for the PR opener. That would require knowing the PR author's login separately and comparing — not implemented yet, deferred. The four `author_association` values cover the main "who is this person to the repo" question.
+
 ## Debugging recipes
 
 All extension logs are prefixed `[GRDC]`. Useful queries in DevTools:

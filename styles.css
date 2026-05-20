@@ -51,7 +51,7 @@
 }
 
 .grdc-hoverable:hover {
-  background: rgba(9, 105, 218, 0.04);
+  background: rgba(9, 105, 218, 0.08);
   border-radius: 4px;
 }
 
@@ -95,19 +95,34 @@ li.grdc-hoverable .grdc-comment-btn {
 }
 
 .grdc-collapse-toggle {
-  display: inline-block;
-  width: 1.1em;
-  margin-right: 0.25em;
+  /* VS Code-style fold marker: lives in a left gutter next to the heading
+     instead of inline before the text. The heading itself is already
+     `position: relative` (via `.grdc-collapsible`), so absolute positioning
+     here pulls the chevron outside the heading's text box. Result: heading
+     text stays fixed at its original x-position whether the chevron is
+     visible or not — no layout shift on hover/collapse. */
+  position: absolute;
+  /* Headings carry BOTH the `+` comment button and the fold chevron in the
+     left gutter. Order (left → right): `+`, chevron, text. The chevron sits
+     close to the text (left:-22 with 20px width → reaches to -2) so it
+     reads as part of the heading; the `+` is pushed out to -52 to clear it. */
+  left: -22px;
+  top: 0.25em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
   padding: 0;
-  font-size: 0.75em;
+  font-size: 0.95em;
   line-height: 1;
   color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
   background: transparent;
   border: none;
+  border-radius: 3px;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s;
-  vertical-align: middle;
+  transition: opacity 0.15s, background 0.12s;
 }
 
 .grdc-collapsible:hover .grdc-collapse-toggle,
@@ -118,6 +133,7 @@ li.grdc-hoverable .grdc-comment-btn {
 
 .grdc-collapse-toggle:hover {
   color: var(--fgColor-default, var(--color-fg-default, #24292f));
+  background: var(--bgColor-neutral-muted, var(--color-neutral-muted, rgba(175, 184, 193, 0.2)));
 }
 
 /* When a section is collapsed, dim its heading so it's clear something is folded. */
@@ -130,6 +146,15 @@ li.grdc-hoverable .grdc-comment-btn {
    want to win. */
 .grdc-collapsed-hidden {
   display: none !important;
+}
+
+/* On collapsible headings, push the `+` button further out so the fold
+   chevron has room between the `+` and the heading text. Gutter reads
+   left → right as: `+` · chevron · text. Default `+` at left:-30 would
+   collide with the chevron at -28..-12; -52 puts the `+` cleanly in its
+   own slot. */
+.grdc-collapsible.grdc-hoverable > .grdc-comment-btn {
+  left: -48px;
 }
 
 /* ── Comment box: native-style look (matches .timeline-comment-form) ─── */
@@ -454,15 +479,26 @@ li.grdc-hoverable .grdc-comment-btn {
 }
 
 .grdc-thread-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px 5px 10px;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--fgColor-accent, var(--color-accent-fg, #0969da));
   background: var(--bgColor-accent-muted, var(--color-accent-subtle, #ddf4ff));
   border: 1px solid var(--borderColor-accent-muted, var(--color-accent-muted, #b6e3ff));
-  border-radius: 12px;
+  /* Strong accent stripe on the leading edge so the badge reads as a
+     "flag" attached to its block, not as part of the surrounding prose.
+     Pairs with the subtle pill shape — much harder to skim past while
+     scrolling. */
+  border-left: 3px solid var(--bgColor-accent-emphasis, var(--color-accent-emphasis, #0969da));
+  border-radius: 4px 12px 12px 4px;
   cursor: pointer;
   user-select: none;
+  /* Slight lift so the badge sits visually above the prose rather than
+     blending into the line. */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 .grdc-thread-badge:hover {
@@ -473,13 +509,31 @@ li.grdc-hoverable .grdc-comment-btn {
   margin-top: 6px;
   border: 1px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
   border-radius: 6px;
-  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
+  /* Very subtle light-blue wash (~4% alpha) so existing threads read as
+     a distinct surface from surrounding markdown prose without competing
+     with the saturated `--bgColor-accent-muted` blue used by the
+     `.grdc-thread-badge` (💬 pill). Direct rgba — not wrapped in a
+     Primer token — because no Primer var exists at this level of
+     subtlety and the cssTheming test only enforces hex colors. */
+  background: rgba(9, 105, 218, 0.08);
   overflow: hidden;
 }
 
 .grdc-thread-comment {
   padding: 8px 12px 6px;
   border-bottom: 1px solid #eaeef2;
+  /* Transparent so the parent `.grdc-thread-body`'s light blue shows
+     through. The per-comment border-bottom still visually separates
+     individual replies within the thread. */
+  background: transparent;
+}
+
+/* Replies (every comment after the first/head) get a slightly deeper
+   blue wash so they read as "nested under" the head comment without
+   needing more indent. Subtle — same hue family as the thread body,
+   just a few percent darker. */
+.grdc-thread-comment + .grdc-thread-comment {
+  background: rgba(9, 105, 218, 0.05);
 }
 
 .grdc-thread-comment:last-child {
@@ -510,12 +564,43 @@ li.grdc-hoverable .grdc-comment-btn {
 
 .grdc-comment-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
-  margin-bottom: 2px;
+  margin-bottom: 4px;
   font-size: 13px;
   color: var(--fgColor-default, var(--color-fg-default, #24292f));
   position: relative;
+}
+
+/* 20×20 round avatar to the left of the username. `flex: 0 0 auto` keeps
+   it from being squeezed when the comment is narrow. */
+.grdc-comment-avatar {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--bgColor-neutral-muted, var(--color-neutral-muted, rgba(175, 184, 193, 0.2)));
+}
+
+/* Role pill (Owner / Member / Collaborator / Contributor). Same visual
+   weight as GitHub's native badges — small uppercase-ish chip in a
+   neutral tint. Owner is given a slightly stronger emphasis so the
+   "this is the repo owner" signal stands out. */
+.grdc-comment-role {
+  display: inline-block;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
+  background: var(--bgColor-neutral-muted, var(--color-neutral-muted, rgba(175, 184, 193, 0.2)));
+  border: 1px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
+  border-radius: 10px;
+}
+.grdc-comment-role-owner {
+  color: var(--fgColor-accent, var(--color-accent-fg, #0969da));
+  background: var(--bgColor-accent-muted, var(--color-accent-subtle, #ddf4ff));
+  border-color: var(--borderColor-accent-muted, var(--color-accent-muted, #b6e3ff));
 }
 
 /* Username: GitHub uses semibold-ish weight at the comment header.
@@ -761,7 +846,11 @@ li.grdc-hoverable .grdc-comment-btn {
   max-height: calc(100vh - 40px);
   display: flex;
   flex-direction: column;
-  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
+  /* Opaque pale blue — NOT rgba. The sidebar sits ON TOP of page content,
+     so any alpha < 1 lets the underlying prose bleed through (visible
+     especially when scrolled past tall content). #eaf2fb is the rough
+     opaque equivalent of `rgba(9, 105, 218, 0.08)` rendered over white. */
+  background: var(--bgColor-accent-subtle, #eaf2fb);
   border: 1px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -792,7 +881,11 @@ li.grdc-hoverable .grdc-comment-btn {
   gap: 6px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--borderColor-muted, var(--color-border-muted, #d8dee4));
-  background: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
+  /* Match the sidebar shell's opaque pale blue. When collapsed, only the
+     header is visible — keeping it pale blue makes the collapsed bar
+     easy to spot against any page background. Opaque so page content
+     doesn't bleed through. */
+  background: var(--bgColor-accent-subtle, #eaf2fb);
   border-top-left-radius: 6px;
   border-top-right-radius: 6px;
   cursor: move;
@@ -817,13 +910,73 @@ li.grdc-hoverable .grdc-comment-btn {
   background: var(--bgColor-neutral-muted, var(--color-neutral-muted, rgba(175, 184, 193, 0.2)));
   border-color: var(--borderColor-default, var(--color-border-default, #d0d7de));
 }
-.grdc-sidebar-collapse { margin-right: auto; }
-.grdc-sidebar-count {
-  flex: 1;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
+.grdc-sidebar-collapse { margin-right: 2px; }
+/* Group prev/next together so they read as a pair, not as two solo arrows
+   sitting on either side of the count. */
+.grdc-sidebar-nav {
+  display: inline-flex;
+  gap: 2px;
+}
+.grdc-sidebar-header .grdc-sidebar-collapse,
+.grdc-sidebar-header .grdc-sidebar-prev,
+.grdc-sidebar-header .grdc-sidebar-next,
+.grdc-sidebar-header-filter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+}
+.grdc-sidebar-header .grdc-sidebar-collapse svg,
+.grdc-sidebar-header .grdc-sidebar-prev svg,
+.grdc-sidebar-header .grdc-sidebar-next svg,
+.grdc-sidebar-header-filter svg { display: block; }
+/* Funnel icon: outline by default, solid when the filter is active. Two
+   paths live in the SVG; CSS swaps which one is visible based on
+   aria-pressed so the "on" state reads as a filled funnel at a glance. */
+.grdc-sidebar-header-filter .grdc-icon-solid { display: none; }
+.grdc-sidebar-header-filter[aria-pressed="true"] .grdc-icon-outline { display: none; }
+.grdc-sidebar-header-filter[aria-pressed="true"] .grdc-icon-solid { display: inline; }
+/* Header filter (unresolved-only) icon — only shown when the sidebar is
+   collapsed. Sits at a faint baseline opacity so users notice it's there,
+   brightens on hover. When the full pane is open the in-pane checkbox is
+   the canonical control, so the icon stays hidden to avoid duplication. */
+.grdc-sidebar-header-filter {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
   color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
+  display: none;
+  transition: opacity 0.12s, background 0.12s;
+}
+.grdc-sidebar-collapsed .grdc-sidebar-header-filter {
+  display: inline-flex;
+  opacity: 0.55;
+}
+.grdc-sidebar-collapsed:hover .grdc-sidebar-header-filter,
+.grdc-sidebar-collapsed .grdc-sidebar-header-filter:focus-visible {
+  opacity: 1;
+}
+.grdc-sidebar-header-filter[aria-pressed="true"] {
+  /* Active state stays fully visible so the user knows the filter is on. */
+  opacity: 1;
+  color: var(--fgColor-accent, var(--color-accent-fg, #0969da));
+  background: var(--bgColor-accent-muted, var(--color-accent-subtle, #ddf4ff));
+}
+.grdc-sidebar-header-filter:hover {
+  background: var(--bgColor-neutral-muted, var(--color-neutral-muted, rgba(175, 184, 193, 0.2)));
+}
+/* Count: pushed to the far right, dimmed, smaller. It's a passive hint
+   ("3 / 12"), not a primary control — should read as the quietest thing
+   in the header. */
+.grdc-sidebar-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--fgColor-muted, var(--color-fg-muted, #8b949e));
+  opacity: 0.75;
+  padding-right: 2px;
 }
 .grdc-sidebar-filter {
   display: flex;
@@ -838,12 +991,17 @@ li.grdc-hoverable .grdc-comment-btn {
   overflow-y: auto;
   padding: 4px;
   flex: 1;
+  /* White backdrop so each tinted card visually pops against the list. */
+  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
 }
 .grdc-sidebar-card {
   display: block;
   width: 100%;
   text-align: left;
-  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
+  /* Subtle blue card on white list — same family as the sidebar shell
+     and thread-body tints so the whole review-tool surface reads as a
+     coherent set. */
+  background: rgba(9, 105, 218, 0.08);
   border: 1px solid var(--borderColor-muted, var(--color-border-muted, #d8dee4));
   border-radius: 6px;
   padding: 8px 10px;
@@ -856,6 +1014,14 @@ li.grdc-hoverable .grdc-comment-btn {
   background: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
   border-color: var(--borderColor-default, var(--color-border-default, #d0d7de));
 }
+/* Suppress the browser's default focus ring on the card <button>. After a
+   click the button retains focus (and so its focus ring), but keyboard
+   navigation via j/k only advances our own `.grdc-sidebar-card-active`
+   marker via a programmatic `.click()` which doesn't move focus. Result
+   without this rule: the originally-clicked card keeps the focus ring AND
+   the keyboard-current card gets the active ring → two blue rings at once.
+   Our `.grdc-sidebar-card-active` style is the sole visual indicator. */
+.grdc-sidebar-card:focus { outline: none; }
 .grdc-sidebar-card-active {
   border-color: var(--bgColor-accent-emphasis, var(--color-accent-emphasis, #0969da));
   box-shadow: 0 0 0 2px var(--bgColor-accent-muted, rgba(9, 105, 218, 0.15));
@@ -895,6 +1061,140 @@ li.grdc-hoverable .grdc-comment-btn {
 .grdc-sidebar-card-resolved { opacity: 0.55; }
 .grdc-sidebar-card-resolved .grdc-sidebar-card-body { text-decoration: line-through; }
 
+/* Tabs (v1.1: Threads | Outline) */
+.grdc-sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--borderColor-muted, var(--color-border-muted, #d8dee4));
+  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
+}
+.grdc-sidebar-tab {
+  flex: 1;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font: inherit;
+  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
+  font-weight: 500;
+}
+.grdc-sidebar-tab:hover {
+  background: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
+}
+.grdc-sidebar-tab-active {
+  color: var(--fgColor-default, var(--color-fg-default, #1f2328));
+  border-bottom-color: var(--bgColor-accent-emphasis, var(--color-accent-emphasis, #0969da));
+}
+.grdc-sidebar-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Outline pane */
+.grdc-sidebar-outline-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--borderColor-muted, var(--color-border-muted, #d8dee4));
+  background: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
+}
+.grdc-sidebar-outline-toolbar button {
+  padding: 2px 8px;
+  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
+  border: 1px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  color: var(--fgColor-default, var(--color-fg-default, #1f2328));
+}
+.grdc-sidebar-outline-toolbar button:hover {
+  background: var(--bgColor-neutral-muted, var(--color-neutral-muted, rgba(175, 184, 193, 0.2)));
+}
+.grdc-sidebar-outline-tree {
+  overflow-y: auto;
+  padding: 4px 0;
+  flex: 1;
+}
+.grdc-sidebar-outline-file {
+  padding: 6px 10px 4px;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-top: 1px solid var(--borderColor-muted, var(--color-border-muted, #d8dee4));
+  margin-top: 4px;
+}
+.grdc-sidebar-outline-file:first-child { border-top: none; margin-top: 0; }
+.grdc-sidebar-outline-row {
+  display: flex;
+  align-items: baseline;
+  width: 100%;
+  padding: 2px 8px 2px 0;
+  line-height: 1.4;
+}
+.grdc-sidebar-outline-row:hover {
+  background: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
+}
+.grdc-sidebar-outline-chevron {
+  flex: 0 0 auto;
+  width: 18px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+  margin-right: 4px;
+}
+.grdc-sidebar-outline-chevron:hover {
+  color: var(--fgColor-default, var(--color-fg-default, #1f2328));
+}
+.grdc-sidebar-outline-label {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--fgColor-default, var(--color-fg-default, #1f2328));
+  text-align: left;
+}
+.grdc-sidebar-outline-active {
+  background: var(--bgColor-accent-muted, rgba(9, 105, 218, 0.12));
+  border-left: 2px solid var(--bgColor-accent-emphasis, var(--color-accent-emphasis, #0969da));
+}
+.grdc-sidebar-outline-text {
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 60px);
+  vertical-align: middle;
+}
+.grdc-sidebar-outline-count {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  background: var(--bgColor-neutral-muted, var(--color-neutral-muted, rgba(175, 184, 193, 0.2)));
+  border-radius: 10px;
+  font-size: 10px;
+  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
+  vertical-align: middle;
+}
+.grdc-sidebar-outline-level-1 { font-weight: 600; }
+.grdc-sidebar-outline-level-2 { font-weight: 500; }
+
+/* Collapsed state hides both panes and the tabs row too. */
+.grdc-sidebar-collapsed .grdc-sidebar-tabs,
+.grdc-sidebar-collapsed .grdc-sidebar-pane { display: none; }
+
 /* Brief highlight pulse on the badge after click-to-jump. */
 .grdc-thread-flash {
   animation: grdc-flash 1.2s ease-out;
@@ -903,4 +1203,61 @@ li.grdc-hoverable .grdc-comment-btn {
   0%   { box-shadow: 0 0 0 0 var(--bgColor-accent-emphasis, rgba(9, 105, 218, 0.7)); }
   50%  { box-shadow: 0 0 0 8px var(--bgColor-accent-muted, rgba(9, 105, 218, 0.25)); }
   100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }
+}
+
+/* ── Dark mode overrides ───────────────────────────────────────────────
+   When users browse GitHub with the OS in dark mode AND the page does NOT
+   define Primer's --bgColor-* tokens (some PR variants, blob-view embeds,
+   certain Enterprise themes), our `#fff` / `#eaf2fb` fallbacks fire and
+   the sidebar / thread badges look glaringly bright. This block forces
+   sensible dark values via rgba() (rgba avoids the cssTheming "standalone
+   hex" lint rule). Only kicks in under prefers-color-scheme: dark, so it
+   never overrides Primer's own light-mode styling. */
+@media (prefers-color-scheme: dark) {
+  /* Sidebar shell + header: dark navy with faint blue tint */
+  .grdc-sidebar,
+  .grdc-sidebar-header {
+    background: rgba(28, 36, 56, 1);
+    border-color: rgba(48, 54, 61, 1);
+  }
+  /* List backdrop: GitHub dark canvas */
+  .grdc-sidebar-list {
+    background: rgba(13, 17, 23, 1);
+  }
+  /* Tabs row + outline toolbar: dark canvas */
+  .grdc-sidebar-tabs,
+  .grdc-sidebar-outline-toolbar {
+    background: rgba(13, 17, 23, 1);
+    border-color: rgba(48, 54, 61, 1);
+  }
+  .grdc-sidebar-outline-toolbar button {
+    background: rgba(33, 38, 45, 1);
+    color: rgba(230, 237, 243, 1);
+    border-color: rgba(48, 54, 61, 1);
+  }
+  .grdc-sidebar-outline-toolbar button:hover {
+    background: rgba(48, 54, 61, 1);
+  }
+  /* Cards: slightly lifted surface on dark */
+  .grdc-sidebar-card {
+    background: rgba(33, 38, 45, 1);
+    border-color: rgba(48, 54, 61, 1);
+    color: rgba(230, 237, 243, 1);
+  }
+  .grdc-sidebar-card:hover {
+    background: rgba(48, 54, 61, 1);
+  }
+  /* Thread badge: dark blue pill rather than glaring light blue */
+  .grdc-thread-badge {
+    background: rgba(56, 139, 253, 0.15);
+    border-color: rgba(56, 139, 253, 0.4);
+    color: rgba(121, 192, 255, 1);
+  }
+  .grdc-thread-badge:hover {
+    background: rgba(56, 139, 253, 0.25);
+  }
+  /* Thread body wash: subtle on dark */
+  .grdc-thread-body {
+    background: rgba(56, 139, 253, 0.06);
+  }
 }

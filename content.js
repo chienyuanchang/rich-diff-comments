@@ -33,6 +33,9 @@
     clampDragPos,
     nextWrappingIndex,
     slugifyHeading,
+    buildOutlineTree,
+    attributeThreadsToHeadings,
+    collapseHeadingsAtLevel,
   } = (typeof window !== 'undefined' && window.GRDC) || {};
 
   // Wrap findTextInSource so we can keep the per-file diagnostic counter behavior
@@ -1909,6 +1912,12 @@
     if (willCollapse) collapsedHeadings.add(heading);
     else collapsedHeadings.delete(heading);
     applyCollapseVisuals(heading, toggle, willCollapse);
+    // Notify other UI (e.g. the threads sidebar's Outline pane) so it can
+    // mirror the new state \u2014 hide children rows of a collapsed section,
+    // refresh chevrons, update Fold/Unfold button labels.
+    document.dispatchEvent(new CustomEvent('grdc-section-toggled', {
+      detail: { heading, collapsed: willCollapse },
+    }));
   }
 
   // ── UI: Comment Box ────────────────────────────────────────────────────────
@@ -2265,6 +2274,13 @@
           // helper falls back to sha256(body) which matches in practice.
           bodyVersion: c.bodyVersion || c.body_version || null,
           user: c.author?.login || c.user?.login || 'unknown',
+          // Avatar + role (Owner/Member/Collaborator/Contributor) for the
+          // header. Both come from the same route-data payload as the body.
+          // GraphQL uses camelCase (`avatarUrl`, `authorAssociation`), REST
+          // uses snake_case — check both. Role is rendered as a pill via
+          // CSS only when it's a meaningful label (NONE is suppressed).
+          avatarUrl: c.author?.avatarUrl || c.author?.avatar_url || c.user?.avatar_url || c.user?.avatarUrl || '',
+          authorAssociation: c.authorAssociation || c.author_association || '',
           createdAt: c.createdAt || c.publishedAt || c.created_at || '',
           htmlUrl: c.url || c.htmlUrl || c.html_url || '',
           threadId: thread.id,
@@ -2438,9 +2454,33 @@
       const linkMarkup = c.htmlUrl
         ? `<a class="grdc-comment-link" href="${escapeHtml(c.htmlUrl)}" target="_blank" rel="noopener" title="Open this comment on GitHub">GitHub ↗</a>`
         : '';
+      // Avatar — 20×20 circle next to the username. Falls back to a
+      // GitHub-hosted avatar URL by login if no explicit URL was captured.
+      // The login-based URL (`https://avatars.githubusercontent.com/<login>`)
+      // works for any public GitHub user without requiring API auth.
+      const avatarSrc = c.avatarUrl ||
+        (c.user && c.user !== 'unknown' ? `https://avatars.githubusercontent.com/${encodeURIComponent(c.user)}?s=40` : '');
+      const avatarMarkup = avatarSrc
+        ? `<img class="grdc-comment-avatar" src="${escapeHtml(avatarSrc)}" alt="" width="20" height="20">`
+        : '';
+      // Role pill — Owner / Member / Collaborator / Contributor. Maps
+      // GitHub's `author_association` enum to a short user-facing label.
+      // NONE / FIRST_TIMER / MANNEQUIN are suppressed (no useful signal).
+      const ROLE_LABELS = {
+        OWNER: 'Owner',
+        MEMBER: 'Member',
+        COLLABORATOR: 'Collaborator',
+        CONTRIBUTOR: 'Contributor',
+      };
+      const roleLabel = ROLE_LABELS[c.authorAssociation];
+      const roleMarkup = roleLabel
+        ? `<span class="grdc-comment-role grdc-comment-role-${c.authorAssociation.toLowerCase()}">${roleLabel}</span>`
+        : '';
       comment.innerHTML = `
         <div class="grdc-comment-header">
+          ${avatarMarkup}
           <strong>${escapeHtml(c.user)}</strong>
+          ${roleMarkup}
           <span class="grdc-comment-time">${escapeHtml(timeAgo)}</span>
           ${linkMarkup}
           ${menuMarkup}
@@ -2808,7 +2848,9 @@
   const SIDEBAR_FILTER_KEY = 'grdc_sidebar_unresolved_only';
   const SIDEBAR_POS_KEY = 'grdc_sidebar_pos';
   const SIDEBAR_SIZE_KEY = 'grdc_sidebar_size';
+  const SIDEBAR_TAB_KEY = 'grdc_sidebar_tab';
   let sidebarCurrentIdx = 0;
+  let outlineActiveObserver = null; // IntersectionObserver for active-section highlight
 
   // Drag-to-move on the header. Position persists in `localStorage` as
   // `{left, top}` in viewport coordinates. We clamp to keep at least 80px
@@ -2914,16 +2956,44 @@
       sidebar.setAttribute('aria-label', 'Review threads');
       sidebar.innerHTML = `
         <div class="grdc-sidebar-header">
-          <button class="grdc-sidebar-collapse" title="Collapse / expand sidebar" aria-label="Toggle sidebar">☰</button>
-          <button class="grdc-sidebar-prev" title="Previous thread (g k)" aria-label="Previous thread">↑</button>
+          <button class="grdc-sidebar-collapse" title="Collapse / expand sidebar" aria-label="Toggle sidebar">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75Zm0 5A.75.75 0 0 1 1.75 7h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.75Zm0 5a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1-.75-.75Z"/></svg>
+          </button>
+          <span class="grdc-sidebar-nav">
+            <button class="grdc-sidebar-prev" title="Previous thread (k)" aria-label="Previous thread">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M3.22 9.78a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 1 1-1.06 1.06L8 5.81 4.28 9.78a.75.75 0 0 1-1.06 0Z"/></svg>
+            </button>
+            <button class="grdc-sidebar-next" title="Next thread (j)" aria-label="Next thread">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12.78 6.22a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 7.28a.75.75 0 1 1 1.06-1.06L8 10.19l3.72-3.97a.75.75 0 0 1 1.06 0Z"/></svg>
+            </button>
+          </span>
+          <button class="grdc-sidebar-header-filter" title="Unresolved only" aria-label="Toggle unresolved only" aria-pressed="false">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path class="grdc-icon-outline" fill="currentColor" fill-rule="evenodd" d="M.75 3A.75.75 0 0 1 1.5 2.25h13a.75.75 0 0 1 .6 1.2L10 10.25v3.25a.75.75 0 0 1-1.2.6l-2.5-1.88a.75.75 0 0 1-.3-.6V10.25L.9 3.45A.75.75 0 0 1 .75 3Zm2.25.75 4.6 6.13a.75.75 0 0 1 .15.45v1.69l1 .75v-2.44a.75.75 0 0 1 .15-.45L13.5 3.75h-10.5Z"/>
+              <path class="grdc-icon-solid" fill="currentColor" d="M.75 3A.75.75 0 0 1 1.5 2.25h13a.75.75 0 0 1 .6 1.2L10 10.25v3.25a.75.75 0 0 1-1.2.6l-2.5-1.88a.75.75 0 0 1-.3-.6V10.25L.9 3.45A.75.75 0 0 1 .75 3Z"/>
+            </svg>
+          </button>
           <span class="grdc-sidebar-count" aria-live="polite"></span>
-          <button class="grdc-sidebar-next" title="Next thread (g j)" aria-label="Next thread">↓</button>
         </div>
-        <label class="grdc-sidebar-filter">
-          <input type="checkbox" class="grdc-sidebar-filter-cb">
-          Unresolved only
-        </label>
-        <div class="grdc-sidebar-list" role="list"></div>
+        <div class="grdc-sidebar-tabs" role="tablist">
+          <button class="grdc-sidebar-tab grdc-sidebar-tab-active" data-grdc-tab="threads" role="tab" aria-selected="true">Threads</button>
+          <button class="grdc-sidebar-tab" data-grdc-tab="outline" role="tab" aria-selected="false">Outline</button>
+        </div>
+        <div class="grdc-sidebar-pane grdc-sidebar-pane-threads" data-grdc-pane="threads">
+          <label class="grdc-sidebar-filter">
+            <input type="checkbox" class="grdc-sidebar-filter-cb">
+            Unresolved only
+          </label>
+          <div class="grdc-sidebar-list" role="list"></div>
+        </div>
+        <div class="grdc-sidebar-pane grdc-sidebar-pane-outline" data-grdc-pane="outline" hidden>
+          <div class="grdc-sidebar-outline-toolbar">
+            <button class="grdc-sidebar-fold-level" data-level="2" title="Fold all H2 sections">Fold H2</button>
+            <button class="grdc-sidebar-fold-level" data-level="3" title="Fold all H3 sections">Fold H3</button>
+            <button class="grdc-sidebar-expand-all" title="Expand every section">Expand all</button>
+          </div>
+          <div class="grdc-sidebar-outline-tree"></div>
+        </div>
       `;
       document.body.appendChild(sidebar);
 
@@ -2940,7 +3010,38 @@
       sidebar.querySelector('.grdc-sidebar-next').addEventListener('click', () => sidebarJump(+1));
       sidebar.querySelector('.grdc-sidebar-filter-cb').addEventListener('change', (e) => {
         try { localStorage.setItem(SIDEBAR_FILTER_KEY, e.target.checked ? '1' : '0'); } catch (_) {}
+        // Sync the header icon's pressed state.
+        const hf = sidebar.querySelector('.grdc-sidebar-header-filter');
+        if (hf) hf.setAttribute('aria-pressed', e.target.checked ? 'true' : 'false');
         buildThreadsSidebar();
+      });
+      // Header filter icon — duplicates the in-pane checkbox so it stays
+      // reachable in collapsed mode. Toggling either updates the other.
+      sidebar.querySelector('.grdc-sidebar-header-filter').addEventListener('click', () => {
+        const cb = sidebar.querySelector('.grdc-sidebar-filter-cb');
+        cb.checked = !cb.checked;
+        cb.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+
+      // Tab switching. Active state persists in `localStorage` per origin.
+      sidebar.querySelectorAll('.grdc-sidebar-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          const target = tab.dataset.grdcTab;
+          setSidebarTab(sidebar, target);
+        });
+      });
+
+      // Outline toolbar: "Fold H<N>" folds every section at that exact
+      // level (additive — doesn't touch other levels). "Expand all" clears
+      // every collapsed section.
+      sidebar.querySelectorAll('.grdc-sidebar-fold-level').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const level = parseInt(btn.dataset.level, 10);
+          foldOutlineAtLevel(level);
+        });
+      });
+      sidebar.querySelector('.grdc-sidebar-expand-all').addEventListener('click', () => {
+        expandAllOutlineSections();
       });
     }
 
@@ -2948,6 +3049,8 @@
     sidebar.classList.toggle('grdc-sidebar-collapsed', collapsed);
     const filterCb = sidebar.querySelector('.grdc-sidebar-filter-cb');
     if (filterCb.checked !== unresolvedOnly) filterCb.checked = unresolvedOnly;
+    const headerFilter = sidebar.querySelector('.grdc-sidebar-header-filter');
+    if (headerFilter) headerFilter.setAttribute('aria-pressed', unresolvedOnly ? 'true' : 'false');
 
     // Rebuild the list. Threads in DOM order already — they were inserted in
     // sorted (path, line) order by renderExistingComments.
@@ -2990,6 +3093,261 @@
     if (sidebarCurrentIdx >= visible.length) sidebarCurrentIdx = visible.length - 1;
     if (sidebarCurrentIdx < 0) sidebarCurrentIdx = 0;
     updateSidebarCount();
+
+    // Build / refresh the Outline pane in the same pass.
+    buildOutlinePane(sidebar);
+
+    // Restore the active tab from localStorage (or default to threads).
+    const savedTab = localStorage.getItem(SIDEBAR_TAB_KEY) || 'threads';
+    setSidebarTab(sidebar, savedTab);
+  }
+
+  // Walk the rich-diff DOM and collect every heading (H1–H6) with metadata
+  // the Outline pane needs. Each entry: `{el, id, level, text, slug, line,
+  // file}`. `line` is read from our `fileLineMap` when available; falls back
+  // to null so unmapped headings still show up but don't drive thread
+  // attribution. `file` is the file path (from `fileLineMap`) when present,
+  // null otherwise — used to scope thread attribution to the right file.
+  function collectHeadings() {
+    const out = [];
+    // GitHub's PR rich-diff wraps changes in several overlapping containers
+    // (`.prose-diff`, `.prose-diff .markdown-body`, `.rich-diff-level-one
+    // .markdown-body`). Without care we'd walk the same heading twice via
+    // different ancestor matches and the outline would duplicate every row.
+    // Approach: collect all candidate roots, then dedupe at the HEADING
+    // level via a `Set` keyed by element identity \u2014 each `<h1>`..`<h6>`
+    // contributes one outline entry no matter how many root selectors
+    // matched its ancestors.
+    const roots = document.querySelectorAll('.prose-diff .markdown-body, .prose-diff, .rich-diff-level-one .markdown-body');
+    const seen = new Set();
+    let idCounter = 0;
+    for (const root of roots) {
+      const hs = root.querySelectorAll('h1, h2, h3, h4, h5, h6');
+      for (const h of hs) {
+        if (seen.has(h)) continue;
+        seen.add(h);
+        // Skip headings inside a `.removed` block.
+        if (isInDeletedBlock(h)) continue;
+        const info = fileLineMap.get(h);
+        // The doc's own collapse toggle (`<button class="grdc-collapse-toggle">\u25be</button>`)
+        // is a child of the heading, so `h.textContent` would include its
+        // `\u25be` / `\u25b8` glyph and we'd end up rendering two chevrons per row
+        // in the outline. Build the text from non-toggle child nodes only.
+        let text = '';
+        for (const child of h.childNodes) {
+          if (child.nodeType === Node.ELEMENT_NODE && child.classList?.contains('grdc-collapse-toggle')) continue;
+          text += child.textContent || '';
+        }
+        text = text.trim();
+        out.push({
+          el: h,
+          id: `grdc-outline-${idCounter++}`,
+          level: parseInt(h.tagName.slice(1), 10),
+          text,
+          slug: slugifyHeading(text),
+          line: info?.line ?? null,
+          file: info?.path ?? null,
+        });
+      }
+    }
+    return out;
+  }
+
+  function buildOutlinePane(sidebar) {
+    const headings = collectHeadings();
+    const tab = sidebar.querySelector('.grdc-sidebar-tab[data-grdc-tab="outline"]');
+
+    // Hide the Outline tab when the page has fewer than 3 headings — not
+    // enough structure to be useful, and a 1-heading file would just
+    // duplicate the file title.
+    if (headings.length < 3) {
+      tab.hidden = true;
+      // If outline was the active tab, fall back to threads.
+      if (localStorage.getItem(SIDEBAR_TAB_KEY) === 'outline') {
+        try { localStorage.setItem(SIDEBAR_TAB_KEY, 'threads'); } catch (_) {}
+      }
+      return;
+    }
+    tab.hidden = false;
+
+    // Per-heading thread counts. `existingComments` is keyed by threadId; we
+    // need a flat list `[{line, path}, ...]` of HEADs only (one per thread).
+    const seenThreads = new Set();
+    const threadHeads = [];
+    for (const c of (existingComments || [])) {
+      if (seenThreads.has(c.threadId)) continue;
+      seenThreads.add(c.threadId);
+      threadHeads.push({ line: c.line, path: c.path });
+    }
+    const counts = attributeThreadsToHeadings(headings, threadHeads);
+
+    // Build the nested tree and render it as a flat indented list (simpler
+    // than nested ULs — we own the visual indentation via padding).
+    const tree = buildOutlineTree(headings);
+    const treeEl = sidebar.querySelector('.grdc-sidebar-outline-tree');
+    treeEl.innerHTML = '';
+
+    // Multi-file mode: group by file when more than one file contributes
+    // headings. Render the file path as an un-clickable label above each
+    // group.
+    const fileSet = new Set(headings.map(h => h.file).filter(Boolean));
+    const multiFile = fileSet.size > 1;
+    let currentFile = null;
+
+    function renderNode(node, indent) {
+      // File group label (only emitted at depth 0 in multi-file mode when
+      // the file changes).
+      if (multiFile && indent === 0 && node.file && node.file !== currentFile) {
+        currentFile = node.file;
+        const label = document.createElement('div');
+        label.className = 'grdc-sidebar-outline-file';
+        label.textContent = node.file.split('/').pop() || node.file;
+        treeEl.appendChild(label);
+      }
+      const row = document.createElement('div');
+      row.className = `grdc-sidebar-outline-row grdc-sidebar-outline-level-${node.level}`;
+      row.dataset.grdcHeadingId = node.id;
+      row.style.paddingLeft = `${8 + indent * 12}px`;
+
+      const isCollapsed = node.el.classList.contains('grdc-section-collapsed');
+
+      // Per-row chevron — click to fold/unfold THIS section only.
+      const chevron = document.createElement('span');
+      chevron.className = 'grdc-sidebar-outline-chevron';
+      chevron.textContent = isCollapsed ? '▸' : '▾';
+      chevron.title = isCollapsed ? 'Expand section' : 'Collapse section';
+      chevron.addEventListener('click', (e) => {
+        e.stopPropagation();
+        node.el.querySelector('.grdc-collapse-toggle')?.click();
+        // The toggleSection handler dispatches `grdc-section-toggled` which
+        // triggers a sidebar rebuild — no need to update DOM here.
+      });
+      row.appendChild(chevron);
+
+      // Main clickable label — scrolls to the heading.
+      const label = document.createElement('button');
+      label.type = 'button';
+      label.className = 'grdc-sidebar-outline-label';
+      const n = counts.get(node) || 0;
+      const countHtml = n > 0 ? ` <span class="grdc-sidebar-outline-count">${n} 💬</span>` : '';
+      label.innerHTML = `<span class="grdc-sidebar-outline-text">${escapeHtml(node.text || '(untitled)')}</span>${countHtml}`;
+      label.addEventListener('click', () => {
+        sidebar.querySelectorAll('.grdc-sidebar-outline-row.grdc-sidebar-outline-active')
+          .forEach(r => r.classList.remove('grdc-sidebar-outline-active'));
+        row.classList.add('grdc-sidebar-outline-active');
+        scrollToWithStickyOffset(node.el);
+      });
+      row.appendChild(label);
+
+      treeEl.appendChild(row);
+
+      // Only render children if THIS section is currently expanded. When
+      // the section is collapsed (in the doc), the sidebar mirrors that by
+      // hiding the descendant rows too. They reappear on expand.
+      if (!isCollapsed) {
+        for (const child of node.children) renderNode(child, indent + 1);
+      }
+    }
+    for (const top of tree) renderNode(top, 0);
+
+    // Sync the Fold/Unfold button labels to current state.
+    updateFoldButtonLabels(sidebar, headings);
+
+    // Active-section highlight: which heading is currently nearest the top
+    // of the visible area. Use IntersectionObserver with a margin that
+    // mirrors the sticky offset, so the section "becomes active" when its
+    // heading scrolls under the sticky bar.
+    if (outlineActiveObserver) outlineActiveObserver.disconnect();
+    if (typeof IntersectionObserver !== 'undefined') {
+      const visibleHeadings = new Set();
+      outlineActiveObserver = new IntersectionObserver((entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) visibleHeadings.add(e.target);
+          else visibleHeadings.delete(e.target);
+        }
+        // Pick the topmost currently-intersecting heading.
+        let topmost = null;
+        let topY = Infinity;
+        for (const el of visibleHeadings) {
+          const y = el.getBoundingClientRect().top;
+          if (y < topY) { topY = y; topmost = el; }
+        }
+        sidebar.querySelectorAll('.grdc-sidebar-outline-row.grdc-sidebar-outline-active')
+          .forEach(r => r.classList.remove('grdc-sidebar-outline-active'));
+        if (topmost) {
+          const match = headings.find(h => h.el === topmost);
+          if (match) {
+            const row = sidebar.querySelector(`.grdc-sidebar-outline-row[data-grdc-heading-id="${match.id}"]`);
+            if (row) row.classList.add('grdc-sidebar-outline-active');
+          }
+        }
+      }, { rootMargin: '-120px 0px -70% 0px' });
+      headings.forEach(h => outlineActiveObserver.observe(h.el));
+    }
+  }
+
+  function setSidebarTab(sidebar, target) {
+    if (!sidebar) return;
+    // If outline tab is hidden (page has <3 headings) and user tried to
+    // switch to it, fall back to threads.
+    const outlineTab = sidebar.querySelector('.grdc-sidebar-tab[data-grdc-tab="outline"]');
+    if (target === 'outline' && outlineTab?.hidden) target = 'threads';
+    sidebar.querySelectorAll('.grdc-sidebar-tab').forEach(t => {
+      const isActive = t.dataset.grdcTab === target;
+      t.classList.toggle('grdc-sidebar-tab-active', isActive);
+      t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+    sidebar.querySelectorAll('.grdc-sidebar-pane').forEach(p => {
+      p.hidden = p.dataset.grdcPane !== target;
+    });
+    try { localStorage.setItem(SIDEBAR_TAB_KEY, target); } catch (_) {}
+  }
+
+  function foldOutlineAtLevel(level) {
+    // Smart toggle: if every heading at this level is currently expanded,
+    // fold them all; otherwise unfold every one at this level. "Some
+    // collapsed, some not" prefers fold-the-rest so a second click
+    // unambiguously reverses the action.
+    const headings = collectHeadings();
+    const atLevel = headings.filter(h => h.level === level);
+    if (atLevel.length === 0) return;
+    const anyExpanded = atLevel.some(h => !h.el.classList.contains('grdc-section-collapsed'));
+    for (const h of atLevel) {
+      const isCollapsed = h.el.classList.contains('grdc-section-collapsed');
+      // anyExpanded → fold all (collapse those that aren't already).
+      // !anyExpanded (all already collapsed) → unfold them.
+      const shouldClick = anyExpanded ? !isCollapsed : isCollapsed;
+      if (shouldClick) h.el.querySelector('.grdc-collapse-toggle')?.click();
+    }
+    // The toggles dispatch `grdc-section-toggled` which triggers a sidebar
+    // rebuild, so we don't need to call buildOutlinePane here.
+  }
+
+  function expandAllOutlineSections() {
+    const headings = collectHeadings();
+    for (const h of headings) {
+      if (!h.el.classList.contains('grdc-section-collapsed')) continue;
+      h.el.querySelector('.grdc-collapse-toggle')?.click();
+    }
+  }
+
+  // Update the Fold/Unfold button labels based on the current state of
+  // sections at each level. Called after every outline rebuild.
+  function updateFoldButtonLabels(sidebar, headings) {
+    sidebar.querySelectorAll('.grdc-sidebar-fold-level').forEach(btn => {
+      const level = parseInt(btn.dataset.level, 10);
+      const atLevel = headings.filter(h => h.level === level);
+      if (atLevel.length === 0) {
+        btn.hidden = true;
+        return;
+      }
+      btn.hidden = false;
+      const anyExpanded = atLevel.some(h => !h.el.classList.contains('grdc-section-collapsed'));
+      btn.textContent = anyExpanded ? `Fold H${level}` : `Unfold H${level}`;
+      btn.title = anyExpanded
+        ? `Fold all H${level} sections`
+        : `Unfold all H${level} sections`;
+    });
   }
 
   function updateSidebarCount() {
@@ -3012,6 +3370,11 @@
     if (cards.length === 0) return;
     sidebarCurrentIdx = nextWrappingIndex(sidebarCurrentIdx, delta, cards.length);
     cards[sidebarCurrentIdx].click();
+    // Keep the active card visible inside the sidebar list \u2014 the click
+    // handler scrolls the document to the thread, but doesn't touch the
+    // sidebar's own scroll. Without this, pressing j past the bottom of
+    // the visible list leaves the new active card off-screen.
+    cards[sidebarCurrentIdx].scrollIntoView({ block: 'nearest' });
   }
 
   function scrollToThread(threadEl) {
@@ -3022,30 +3385,49 @@
     setTimeout(() => badge.classList.remove('grdc-thread-flash'), 1200);
   }
 
-  // Keyboard chord: `g` followed within 600ms by `j` (next) or `k` (prev).
-  // Single-key `j`/`k` would collide with GitHub's own bindings. Bound once
-  // at script load (not inside `init`) so it survives re-inits.
-  let _gChordArmed = false;
-  let _gChordTimer = null;
+  // Keyboard navigation:
+  //   `j` / `k` — next / previous thread (vim-style)
+  //   `h` / `l` — first / last thread
+  // GitHub's PR pages don't bind these single-key shortcuts on the
+  // Files-changed tab (the page-level `g j` / `g k` chord is GitHub's
+  // "go to bottom / top of page"; we deliberately don't shadow it).
+  // Skipped when the user is typing into any input / textarea /
+  // contenteditable. Bound once at script load so it survives re-inits.
   document.addEventListener('keydown', (e) => {
     // Ignore when typing into any input/textarea/contenteditable.
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (_gChordArmed && (e.key === 'j' || e.key === 'k')) {
-      e.preventDefault();
-      sidebarJump(e.key === 'j' ? +1 : -1);
-      _gChordArmed = false;
-      clearTimeout(_gChordTimer);
-      return;
-    }
-    if (e.key === 'g') {
-      _gChordArmed = true;
-      clearTimeout(_gChordTimer);
-      _gChordTimer = setTimeout(() => { _gChordArmed = false; }, 600);
-    } else {
-      _gChordArmed = false;
-      clearTimeout(_gChordTimer);
+    // Only fire when the sidebar exists and has at least one thread —
+    // otherwise we'd swallow plain `j`/`k` on pages where we have nothing
+    // to navigate to.
+    const sidebar = document.querySelector('.grdc-sidebar');
+    if (!sidebar) return;
+    const cards = sidebar.querySelectorAll('.grdc-sidebar-card');
+    if (cards.length === 0) return;
+    switch (e.key) {
+      case 'j':
+        e.preventDefault();
+        sidebarJump(+1);
+        return;
+      case 'k':
+        e.preventDefault();
+        sidebarJump(-1);
+        return;
+      case 'h':
+        // First thread.
+        e.preventDefault();
+        sidebarCurrentIdx = 0;
+        cards[0].click();
+        cards[0].scrollIntoView({ block: 'nearest' });
+        return;
+      case 'l':
+        // Last thread.
+        e.preventDefault();
+        sidebarCurrentIdx = cards.length - 1;
+        cards[cards.length - 1].click();
+        cards[cards.length - 1].scrollIntoView({ block: 'nearest' });
+        return;
     }
   }, true);
 
@@ -3066,6 +3448,17 @@
   // matching file container so headings in other files don't shadow it.
   //
   // The `slugifyHeading` helper lives in src/lib/anchors.js (pure, tested).
+  // Scroll an element to just below GitHub's sticky header. The sticky bar
+  // ("Files changed" / file-nav) covers the top ~80px of the viewport; a
+  // plain `scrollIntoView({ block: 'start' })` aligns to viewport-top 0
+  // which is hidden. Shared by the TOC-anchor jump and the Outline tab.
+  function scrollToWithStickyOffset(el) {
+    if (!el) return;
+    const STICKY_OFFSET = 120;
+    const top = window.scrollY + el.getBoundingClientRect().top - STICKY_OFFSET;
+    window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  }
+
   function tryScrollToHashAnchor() {
     const hash = (window.location.hash || '').replace(/^#/, '');
     if (!hash) return;
@@ -3093,15 +3486,7 @@
       const headings = root.querySelectorAll('h1, h2, h3, h4, h5, h6');
       for (const h of headings) {
         if (slugifyHeading(h.textContent) === hash) {
-          // GitHub's PR page has a sticky header (the "Files changed" /
-          // file-nav bar) that covers the top ~60px of the viewport. A
-          // plain `scrollIntoView({ block: 'start' })` aligns the heading
-          // to viewport-top 0 — which is hidden behind the sticky bar.
-          // Compute the absolute target and offset by an estimate of the
-          // sticky-bar height so the heading lands just below it.
-          const STICKY_OFFSET = 120;
-          const top = window.scrollY + h.getBoundingClientRect().top - STICKY_OFFSET;
-          window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+          scrollToWithStickyOffset(h);
           return;
         }
       }
@@ -3109,6 +3494,24 @@
   }
 
   window.addEventListener('hashchange', tryScrollToHashAnchor);
+
+  // Whenever any section toggles (sidebar chevron, fold/unfold button, or
+  // the heading's own collapse chevron in the doc), rebuild the outline
+  // pane so its rows hide/show in sync with the doc and the Fold/Unfold
+  // button labels stay accurate. Debounced so the smart-toggle / Expand
+  // all paths — which click N collapse toggles in a row — trigger ONE
+  // rebuild at the end rather than N rebuilds. Without this, expanding
+  // 13 sections meant 13 full outline rebuilds + IntersectionObserver
+  // reconnects, visibly stuttering on screen.
+  let _outlineRebuildTimer = null;
+  document.addEventListener('grdc-section-toggled', () => {
+    if (_outlineRebuildTimer) return;
+    _outlineRebuildTimer = setTimeout(() => {
+      _outlineRebuildTimer = null;
+      const sidebar = document.querySelector('.grdc-sidebar');
+      if (sidebar) buildOutlinePane(sidebar);
+    }, 50);
+  });
 
   async function init() {
     prInfo = parsePRUrl();

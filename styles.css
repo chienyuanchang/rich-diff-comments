@@ -505,6 +505,24 @@ li.grdc-hoverable .grdc-comment-btn {
   background: var(--borderColor-accent-muted, var(--color-accent-muted, #b6e3ff));
 }
 
+/* Disclosure chevron inside the badge. Rotates 90° clockwise (= points
+   right) when the thread is collapsed, matching GitHub's `▾` ↔ `▸`
+   disclosure pattern. Width is fixed so the badge doesn't reflow as
+   the glyph rotates. */
+.grdc-thread-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+  transition: transform 0.12s ease;
+}
+.grdc-thread-chevron svg { display: block; }
+.grdc-thread-collapsed .grdc-thread-chevron {
+  transform: rotate(-90deg);
+}
+
 .grdc-thread-body {
   margin-top: 6px;
   border: 1px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
@@ -582,10 +600,10 @@ li.grdc-hoverable .grdc-comment-btn {
   background: var(--bgColor-neutral-muted, var(--color-neutral-muted, rgba(175, 184, 193, 0.2)));
 }
 
-/* Role pill (Owner / Member / Collaborator / Contributor). Same visual
-   weight as GitHub's native badges — small uppercase-ish chip in a
-   neutral tint. Owner is given a slightly stronger emphasis so the
-   "this is the repo owner" signal stands out. */
+/* Role pill (Owner / Member / Collaborator / Contributor / Author /
+   First-time contributor). All roles use the same neutral chip styling
+   to match GitHub's native source-diff thread look — no special color
+   per role. */
 .grdc-comment-role {
   display: inline-block;
   padding: 0 6px;
@@ -596,11 +614,6 @@ li.grdc-hoverable .grdc-comment-btn {
   background: var(--bgColor-neutral-muted, var(--color-neutral-muted, rgba(175, 184, 193, 0.2)));
   border: 1px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
   border-radius: 10px;
-}
-.grdc-comment-role-owner {
-  color: var(--fgColor-accent, var(--color-accent-fg, #0969da));
-  background: var(--bgColor-accent-muted, var(--color-accent-subtle, #ddf4ff));
-  border-color: var(--borderColor-accent-muted, var(--color-accent-muted, #b6e3ff));
 }
 
 /* Username: GitHub uses semibold-ish weight at the comment header.

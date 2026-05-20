@@ -392,6 +392,34 @@
     return getViewerLogin._cached;
   }
 
+  // PR author login — needed to render the "Author" pill in comment headers
+  // (GitHub's UI calls the PR opener "Author"). The login isn't on each
+  // comment object, so we read it once from the page. Sources tried:
+  //   1. A meta tag if GitHub happens to expose one.
+  //   2. The `.gh-header-meta a.author` link in the PR header (present on
+  //      every PR sub-page including /files).
+  //   3. Embedded route-data JSON: `"pullRequest":{...,"author":{"login":"X"}`
+  //      — scanned as a regex over <script> contents.
+  // Cached for the page's lifetime.
+  function getPRAuthorLogin() {
+    if (getPRAuthorLogin._cached !== undefined) return getPRAuthorLogin._cached;
+    let login = '';
+    // 2. DOM link in the PR header.
+    const authorLink = document.querySelector('.gh-header-meta a.author, .gh-header-meta .author');
+    if (authorLink) login = (authorLink.textContent || '').trim();
+    // 3. Embedded JSON fallback.
+    if (!login) {
+      for (const s of document.querySelectorAll('script')) {
+        const txt = s.textContent || '';
+        if (!txt.includes('"pullRequest"') || !txt.includes('"author"')) continue;
+        const m = txt.match(/"pullRequest"\s*:\s*\{[^}]*"author"\s*:\s*\{[^}]*"login"\s*:\s*"([^"]+)"/);
+        if (m) { login = m[1]; break; }
+      }
+    }
+    getPRAuthorLogin._cached = login || null;
+    return getPRAuthorLogin._cached;
+  }
+
   // SHA-256 hex digest of a UTF-8 string using the WebCrypto API. Used to
   // compute `body_version` for update_review_comment.
   async function sha256Hex(input) {
@@ -917,6 +945,12 @@
 
   document.addEventListener('click', (e) => {
     if (!looksLikeDiffToggle(e.target)) return;
+    // Refresh the threads sidebar after the toggle completes — when the
+    // user switches to source-diff our threads stay in the DOM (just
+    // hidden), so `buildThreadsSidebar` itself decides whether to keep
+    // showing the sidebar based on whether `.prose-diff` is visible.
+    // Wrapped in a short delay so GitHub's toggle handler finishes first.
+    setTimeout(() => { try { buildThreadsSidebar(); } catch (_) {} }, 100);
     if (!sourceDiffDirty) {
       console.log('[GRDC] Diff-toggle clicked but no pending mutation — letting GitHub handle it normally.');
       return;
@@ -2415,10 +2449,17 @@
     const lineLabel = (startLineForBadge != null && startLineForBadge !== endLineForBadge)
       ? ` · lines ${startLineForBadge}–${endLineForBadge}`
       : (endLineForBadge != null ? ` · line ${endLineForBadge}` : '');
-    badge.textContent = `💬 ${comments.length} comment${comments.length > 1 ? 's' : ''}${lineLabel}${stateLabel}`;
+    // Chevron + label. Chevron rotates -90° when the thread is collapsed
+    // (CSS-driven, see `.grdc-thread-collapsed .grdc-thread-chevron`) so
+    // the badge reads as a GitHub-style disclosure: `v open` ↔ `> closed`.
+    // SVG chevron-down (Octicon shape) — sharper than the unicode glyph
+    // and crisp at any zoom.
+    badge.innerHTML = `<span class="grdc-thread-chevron" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M12.78 5.22a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 6.28a.75.75 0 0 1 1.06-1.06L8 8.94l3.72-3.72a.75.75 0 0 1 1.06 0Z"/></svg></span><span class="grdc-thread-label">${comments.length} comment${comments.length > 1 ? 's' : ''}${escapeHtml(lineLabel)}${escapeHtml(stateLabel)}</span>`;
     badge.addEventListener('click', () => {
       const body = thread.querySelector('.grdc-thread-body');
-      body.style.display = body.style.display === 'none' ? 'block' : 'none';
+      const nowCollapsed = body.style.display !== 'none';
+      body.style.display = nowCollapsed ? 'none' : 'block';
+      thread.classList.toggle('grdc-thread-collapsed', nowCollapsed);
     });
     thread.appendChild(badge);
 
@@ -2426,6 +2467,7 @@
     body.className = 'grdc-thread-body';
     // Auto-expand unresolved threads, keep resolved ones collapsed by default
     body.style.display = isResolved ? 'none' : 'block';
+    if (isResolved) thread.classList.add('grdc-thread-collapsed');
 
     const commentList = document.createElement('div');
     commentList.className = 'grdc-thread-comments';
@@ -2463,24 +2505,39 @@
       const avatarMarkup = avatarSrc
         ? `<img class="grdc-comment-avatar" src="${escapeHtml(avatarSrc)}" alt="" width="20" height="20">`
         : '';
-      // Role pill — Owner / Member / Collaborator / Contributor. Maps
-      // GitHub's `author_association` enum to a short user-facing label.
-      // NONE / FIRST_TIMER / MANNEQUIN are suppressed (no useful signal).
+      // Role pill — Owner / Member / Collaborator / Contributor /
+      // First-time contributor / First-timer. Maps GitHub's
+      // `author_association` enum to the same labels GitHub's native
+      // source-diff thread renders. MANNEQUIN (migrated-account
+      // placeholder) and NONE (no relationship) are suppressed — GitHub
+      // doesn't show a pill for those either.
       const ROLE_LABELS = {
         OWNER: 'Owner',
         MEMBER: 'Member',
         COLLABORATOR: 'Collaborator',
         CONTRIBUTOR: 'Contributor',
+        FIRST_TIME_CONTRIBUTOR: 'First-time contributor',
+        FIRST_TIMER: 'First-timer',
       };
       const roleLabel = ROLE_LABELS[c.authorAssociation];
       const roleMarkup = roleLabel
         ? `<span class="grdc-comment-role grdc-comment-role-${c.authorAssociation.toLowerCase()}">${roleLabel}</span>`
+        : '';
+      // "Author" pill — render when the comment author is the PR opener.
+      // Separate from the role pill so both can appear (GitHub native UI
+      // shows `Owner` `Author` together when the repo owner opens their
+      // own PR). Same neutral chip styling as the role pill.
+      const prAuthorLogin = getPRAuthorLogin();
+      const isPRAuthor = !!(prAuthorLogin && c.user && c.user.toLowerCase() === prAuthorLogin.toLowerCase());
+      const authorMarkup = isPRAuthor
+        ? `<span class="grdc-comment-role grdc-comment-role-author">Author</span>`
         : '';
       comment.innerHTML = `
         <div class="grdc-comment-header">
           ${avatarMarkup}
           <strong>${escapeHtml(c.user)}</strong>
           ${roleMarkup}
+          ${authorMarkup}
           <span class="grdc-comment-time">${escapeHtml(timeAgo)}</span>
           ${linkMarkup}
           ${menuMarkup}
@@ -2848,6 +2905,12 @@
   const SIDEBAR_FILTER_KEY = 'grdc_sidebar_unresolved_only';
   const SIDEBAR_POS_KEY = 'grdc_sidebar_pos';
   const SIDEBAR_SIZE_KEY = 'grdc_sidebar_size';
+  // Floors must match the CSS `min-width` / `min-height` on `.grdc-sidebar`.
+  // We clamp persisted sizes on both read and write so a transient narrow
+  // render (e.g. during initial paint before content settles) can't poison
+  // localStorage with a tiny size that the next page load would honor.
+  const SIDEBAR_MIN_WIDTH = 220;
+  const SIDEBAR_MIN_HEIGHT = 120;
   const SIDEBAR_TAB_KEY = 'grdc_sidebar_tab';
   let sidebarCurrentIdx = 0;
   let outlineActiveObserver = null; // IntersectionObserver for active-section highlight
@@ -2909,8 +2972,8 @@
       const raw = localStorage.getItem(SIDEBAR_SIZE_KEY);
       if (raw) {
         const { width, height } = JSON.parse(raw);
-        if (Number.isFinite(width)) sidebar.style.width = `${width}px`;
-        if (Number.isFinite(height)) sidebar.style.height = `${height}px`;
+        if (Number.isFinite(width) && width >= SIDEBAR_MIN_WIDTH) sidebar.style.width = `${width}px`;
+        if (Number.isFinite(height) && height >= SIDEBAR_MIN_HEIGHT) sidebar.style.height = `${height}px`;
       }
     } catch (_) {}
   }
@@ -2925,9 +2988,14 @@
       clearTimeout(writeTimer);
       writeTimer = setTimeout(() => {
         try {
+          const w = sidebar.offsetWidth;
+          const h = sidebar.offsetHeight;
+          // Don't persist obviously-bogus sizes. Anything below the CSS
+          // min-* is a transient render glitch, not a user resize.
+          if (w < SIDEBAR_MIN_WIDTH || h < SIDEBAR_MIN_HEIGHT) return;
           localStorage.setItem(SIDEBAR_SIZE_KEY, JSON.stringify({
-            width: sidebar.offsetWidth,
-            height: sidebar.offsetHeight,
+            width: w,
+            height: h,
           }));
         } catch (_) {}
       }, 250);
@@ -2938,6 +3006,21 @@
   function buildThreadsSidebar() {
     const threadEls = Array.from(document.querySelectorAll('.grdc-existing-thread'));
     let sidebar = document.querySelector('.grdc-sidebar');
+
+    // Hide the sidebar when the user switches away from rich-diff (e.g.
+    // back to source-diff view). Our thread elements stay in the DOM —
+    // they're injected into `.prose-diff` which GitHub just hides via
+    // `display: none` — so a threadEls.length check alone isn't enough.
+    // `offsetParent === null` is the standard "is this hidden" probe and
+    // catches both `display: none` and detached ancestors. If NO prose-diff
+    // is currently visible, this isn't rich-diff and the sidebar shouldn't
+    // be either.
+    const richDiffVisible = Array.from(document.querySelectorAll('.prose-diff'))
+      .some(el => el.offsetParent !== null);
+    if (!richDiffVisible) {
+      sidebar?.remove();
+      return;
+    }
 
     // No threads → remove the sidebar entirely.
     if (threadEls.length === 0) {

@@ -405,9 +405,11 @@ authorAssociation: c.authorAssociation || c.author_association || '',
 
 **Avatar fallback:** if the payload doesn't include an avatar URL, derive one from the login via `https://avatars.githubusercontent.com/<login>?s=40`. This URL works for any public GitHub user without API auth — GitHub serves a redirect to the user's current avatar.
 
-**Author association enum** (from GitHub's REST docs): `OWNER`, `MEMBER`, `COLLABORATOR`, `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, `FIRST_TIMER`, `MANNEQUIN`, `NONE`. We render a pill only for the first four (the rest carry no useful reviewer signal). `Owner` gets accent-blue styling; the others get a neutral chip.
+**Author association enum** (from GitHub's REST docs): `OWNER`, `MEMBER`, `COLLABORATOR`, `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, `FIRST_TIMER`, `MANNEQUIN`, `NONE`. We render a pill for the first six (matching what GitHub's native source-diff shows). `MANNEQUIN` (migrated-account placeholder) and `NONE` (no relationship) are suppressed because GitHub doesn't show a badge for those either. All pills share the same neutral chip styling — GitHub does NOT color-code per role.
 
-> **Not author == PR author.** GitHub's native UI also shows an `Author` pill for the PR opener. That would require knowing the PR author's login separately and comparing — not implemented yet, deferred. The four `author_association` values cover the main "who is this person to the repo" question.
+**The `Author` pill is separate.** GitHub also renders an `Author` badge for the user who *opened the PR*. This isn't a field on the comment — it's a comparison between the comment author's login and the PR author's login. To support it we added `getPRAuthorLogin()` (alongside `getViewerLogin()`) which reads the PR author from the `.gh-header-meta a.author` link in the PR header DOM, with a fallback regex over embedded route-data JSON (`"pullRequest":{...,"author":{"login":"X"}`). Cached for the page's lifetime. If both probes fail, the Author pill simply doesn't render — no error.
+
+When the comment author is both the repo owner AND the PR opener, both pills render side by side (`Owner` `Author`), matching GitHub native.
 
 ## Debugging recipes
 

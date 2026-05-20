@@ -23,6 +23,7 @@ All notable changes to Rich Diff Comments for GitHub. Follows [Keep a Changelog]
 - **Scroll position is preserved across re-renders.** After you reply, edit, delete, or resolve a comment, the page no longer jumps to the top — you stay anchored on the thread you were reading.
 - **Deleted blocks no longer shift line numbers.** Comments on lines after a deleted block were sometimes off by one (per deleted block) because the deleted prose still appears in rich-diff. They're now correctly skipped, so line numbers stay accurate. Comments attached next to deleted blocks also no longer pick up strikethrough styling from the surrounding text.
 - **Comment badges respect dark mode.** On pages where GitHub didn't fully define its theme tokens, the badge could appear with a bright light-mode background even when the rest of the page was dark. The badge now uses dark-mode-appropriate colors in that situation.
+- **Section collapse stops at the right place.** Clicking the fold chevron next to a heading could collapse content past the next same-level heading when GitHub's rich-diff grouped hunks into sibling containers. The fold now correctly stops at the next heading at the same or shallower level.
 
 ## [1.0.0] — 2026-05-18
 

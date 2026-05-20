@@ -1797,6 +1797,16 @@
     while (cur) {
       const curLevel = headingLevel(cur);
       if (curLevel != null && curLevel <= level) break;
+      // GitHub's prose-diff occasionally wraps a later hunk (containing the
+      // *next* same-level heading) inside a sibling container. The walker
+      // wouldn't see that heading via `tagName` alone — peek into the
+      // subtree for any heading at level <= ours and stop if found, so
+      // we don't pull content from the next section into the fold.
+      const desc = cur.querySelector?.('h1, h2, h3, h4, h5, h6');
+      if (desc) {
+        const dLevel = headingLevel(desc);
+        if (dLevel != null && dLevel <= level) break;
+      }
       if (!isOurInjectedNode(cur)) out.push(cur);
       cur = cur.nextElementSibling;
     }
@@ -1866,6 +1876,13 @@
     while (cur) {
       const curLevel = headingLevel(cur);
       if (curLevel != null && curLevel <= level) break;
+      // Mirror the descendant-heading check from `siblingsToHide` — stop
+      // when a sibling container wraps the next same-or-shallower heading.
+      const desc = cur.querySelector?.('h1, h2, h3, h4, h5, h6');
+      if (desc) {
+        const dLevel = headingLevel(desc);
+        if (dLevel != null && dLevel <= level) break;
+      }
       out.push(cur);
       cur = cur.nextElementSibling;
     }
@@ -3034,11 +3051,26 @@
       return;
     }
 
-    // No threads → remove the sidebar entirely.
-    if (threadEls.length === 0) {
+    // Decide whether to keep the sidebar at all. The sidebar hosts BOTH
+    // tabs (Threads + Outline), so the right "should this exist" check
+    // is "do we have something to show in EITHER tab":
+    //   - Threads tab is useful when there's at least one thread.
+    //   - Outline tab is useful when there are >= 3 headings on the page
+    //     (matches the auto-hide threshold inside `buildOutlinePane`).
+    // If both are empty, drop the sidebar — no value adding chrome.
+    const headingCount = document.querySelectorAll(
+      '.prose-diff .markdown-body h1, .prose-diff .markdown-body h2, .prose-diff .markdown-body h3, .prose-diff .markdown-body h4, .prose-diff .markdown-body h5, .prose-diff .markdown-body h6'
+    ).length;
+    const outlineUseful = headingCount >= 3;
+    if (threadEls.length === 0 && !outlineUseful) {
       sidebar?.remove();
       return;
     }
+    // Threads list is empty but Outline still has content (e.g. user
+    // deleted all their comments on a long design doc) — keep the sidebar
+    // and auto-switch to the Outline tab so the user immediately sees
+    // why the sidebar is still there.
+    const forceOutlineTab = threadEls.length === 0 && outlineUseful;
 
     const unresolvedOnly = localStorage.getItem(SIDEBAR_FILTER_KEY) === '1';
     const collapsed = localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === '1';
@@ -3147,6 +3179,14 @@
     const headerFilter = sidebar.querySelector('.grdc-sidebar-header-filter');
     if (headerFilter) headerFilter.setAttribute('aria-pressed', unresolvedOnly ? 'true' : 'false');
 
+    // When Threads is empty but Outline still has content, force-switch
+    // to the Outline tab. Also rebuild the outline pane since its content
+    // (heading list) may have changed since the last render.
+    if (forceOutlineTab) {
+      buildOutlinePane(sidebar);
+      setSidebarTab(sidebar, 'outline');
+    }
+
     // Rebuild the list. Threads in DOM order already — they were inserted in
     // sorted (path, line) order by renderExistingComments.
     const list = sidebar.querySelector('.grdc-sidebar-list');
@@ -3203,9 +3243,13 @@
     // Build / refresh the Outline pane in the same pass.
     buildOutlinePane(sidebar);
 
-    // Restore the active tab from localStorage (or default to threads).
+    // Pick the active tab. Normally we honor the user's last choice;
+    // when threads is empty but Outline isn't, force-switch to Outline
+    // so the empty Threads list doesn't look like "the sidebar is
+    // broken". Doesn't persist — once threads are back, the user's
+    // saved preference resumes.
     const savedTab = localStorage.getItem(SIDEBAR_TAB_KEY) || 'threads';
-    setSidebarTab(sidebar, savedTab);
+    setSidebarTab(sidebar, forceOutlineTab ? 'outline' : savedTab);
   }
 
   // Walk the rich-diff DOM and collect every heading (H1–H6) with metadata

@@ -411,6 +411,25 @@ authorAssociation: c.authorAssociation || c.author_association || '',
 
 When the comment author is both the repo owner AND the PR opener, both pills render side by side (`Owner` `Author`), matching GitHub native.
 
+## Section collapse: peek inside sibling containers for boundary headings
+
+`siblingsToHide(heading)` / `sectionRoots(heading)` walk forward from a heading, gathering elements until they hit a heading at the same or shallower level. The naive Strategy 1 (`heading.nextElementSibling` loop, check `cur.tagName`) is correct in flat HTML but **fails on GitHub's prose-diff** because the renderer occasionally groups later hunks inside their own wrapper `<div>`. Example:
+
+```html
+<h3>Phase 3</h3>
+<p>Phase 3 content...</p>
+<div class="prose-diff-hunk">
+  <h3>Phase 4</h3>        <!-- boundary, but walker sees the <div>, not the <h3> -->
+  <p>Phase 4 content...</p>
+</div>
+```
+
+Strategy 1 sees the `<div>` as a non-heading and walks into Phase 4's content. Fix: also peek for any descendant heading at level <= ours inside each walker via `cur.querySelector('h1, h2, h3, h4, h5, h6')`, and stop when the first descendant is a boundary. This was missing from Strategy 1; Strategy 2 already had it. Both helpers now share the same boundary detection.
+
+The fix is safe (won't over-fold) because:
+- We only stop when the descendant level is `<=` ours. An `<h4>` inside a wrapper while we're folding an `<h3>` is interior content (level 4 > 3) and stays included.
+- `querySelector` returns document-order first match, so it finds the topmost (most likely boundary-relevant) heading, not a deeply nested one.
+
 ## Keeping the threads sidebar in sync
 
 The sidebar reads its data straight off the rendered thread DOM (`.grdc-existing-thread[data-grdc-*]`), not from `existingComments` or `routeData`. That means every mutation that affects what the sidebar shows must trigger a sidebar rebuild — but the *right* rebuild path differs by mutation type:

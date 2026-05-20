@@ -2796,6 +2796,17 @@
           resolveBtn.textContent = '✓';
           // Update visual state immediately
           thread.classList.toggle('grdc-thread-resolved', currentResolved);
+          // Refresh the badge label so the "✓ resolved" tag appears /
+          // disappears in sync with the class toggle. Without this, the
+          // text built at initial render stays stale across toggles.
+          const labelEl = badge.querySelector('.grdc-thread-label');
+          if (labelEl) {
+            const bits = [];
+            if (currentResolved) bits.push('✓ resolved');
+            if (isOutdated) bits.push('outdated');
+            const newStateLabel = bits.length ? ` · ${bits.join(' · ')}` : '';
+            labelEl.textContent = `${comments.length} comment${comments.length > 1 ? 's' : ''}${lineLabel}${newStateLabel}`;
+          }
           // Collapse the thread body when resolving (matches initial-render
           // behavior where resolved threads start collapsed), expand on
           // unresolve so the user can see what they're un-resolving.

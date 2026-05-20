@@ -13,13 +13,19 @@ test('buildSnippet — collapses whitespace and trims', () => {
   assert.equal(buildSnippet('  hello   world\n\nfoo  '), 'hello world foo');
 });
 
-test('buildSnippet — truncates to maxLen', () => {
-  assert.equal(buildSnippet('abcdefghij', 5), 'abcde');
+test('buildSnippet — truncates to maxLen and appends ellipsis', () => {
+  assert.equal(buildSnippet('abcdefghij', 5), 'abcde\u2026');
 });
 
-test('buildSnippet — default maxLen is 80', () => {
-  const long = 'x'.repeat(120);
-  assert.equal(buildSnippet(long).length, 80);
+test('buildSnippet — does NOT append ellipsis when no truncation happened', () => {
+  assert.equal(buildSnippet('short', 80), 'short');
+});
+
+test('buildSnippet — default maxLen is 80 (plus 1 char for ellipsis when truncated)', () => {
+  const long = 'a'.repeat(200);
+  // 80 chars + the trailing ellipsis character
+  assert.equal(buildSnippet(long).length, 81);
+  assert.ok(buildSnippet(long).endsWith('\u2026'));
 });
 
 test('buildSnippet — null / undefined return empty string', () => {
@@ -33,9 +39,9 @@ test('buildSnippet — non-string input is coerced', () => {
 
 test('buildSnippet — invalid maxLen falls back to default', () => {
   const long = 'x'.repeat(120);
-  assert.equal(buildSnippet(long, 0).length, 80);
-  assert.equal(buildSnippet(long, -1).length, 80);
-  assert.equal(buildSnippet(long, NaN).length, 80);
+  assert.equal(buildSnippet(long, 0).length, 81);
+  assert.equal(buildSnippet(long, -1).length, 81);
+  assert.equal(buildSnippet(long, NaN).length, 81);
 });
 
 // ───────────────────────────────────────────────────────────────────────────

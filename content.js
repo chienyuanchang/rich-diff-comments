@@ -2609,6 +2609,11 @@
                   : escapeHtml(text);
                 editorWrap.remove();
                 bodyEl.style.display = '';
+                // Refresh the sidebar so the card snippet stays in sync
+                // with the edited body (only matters when the edited
+                // comment is the thread head, but scheduleReinit is
+                // debounced + cheap so we run it unconditionally).
+                scheduleReinit();
               } else {
                 const err = document.createElement('div');
                 err.className = 'grdc-error';
@@ -2651,6 +2656,10 @@
               if (!commentList.children.length) {
                 thread.remove();
               }
+              // Refresh the sidebar so the deleted comment / thread
+              // disappears from the cards list (and the head snippet
+              // updates if the deleted comment was the head).
+              scheduleReinit();
             } else {
               menuBtn.disabled = false;
               const err = document.createElement('div');
@@ -2774,6 +2783,9 @@
           // behavior where resolved threads start collapsed), expand on
           // unresolve so the user can see what they're un-resolving.
           if (body) body.style.display = currentResolved ? 'none' : 'block';
+          // Refresh the sidebar so the card's "resolved" tag + filter
+          // visibility (Unresolved-only) react to the toggle.
+          buildThreadsSidebar();
           setTimeout(() => {
             resolveBtn.textContent = currentResolved ? 'Unresolve' : 'Resolve';
             resolveBtn.disabled = false;
@@ -3156,12 +3168,23 @@
       const tags = [];
       if (threadEl.classList.contains('grdc-thread-resolved')) tags.push('✓ resolved');
       if (threadEl.classList.contains('grdc-thread-outdated')) tags.push('outdated');
+      // Mark cards whose snippet was truncated by buildSnippet (ends with
+      // a `…`). The CSS then paints an obvious "more" pill at the
+      // bottom-right of the body so the truncation is unmissable, not
+      // just a faint trailing dot. Visual clamp (CSS line-clamp) is
+      // handled separately by the browser; this targets the *character*
+      // truncation case where the raw body was longer than maxLen.
+      const isTruncated = snippet.endsWith('\u2026');
+      const bodyClass = 'grdc-sidebar-card-body' + (isTruncated ? ' grdc-sidebar-card-body-truncated' : '');
+      // When the truncated pill is shown, strip the trailing `…` from the
+      // text so we don't render two ellipses (one inline, one in the pill).
+      const bodyText = isTruncated ? snippet.slice(0, -1).trimEnd() : snippet;
       card.innerHTML = `
         <div class="grdc-sidebar-card-head">
           <span class="grdc-sidebar-card-user">${escapeHtml(user)}</span>
           <span class="grdc-sidebar-card-loc">${escapeHtml(file)}:${escapeHtml(line)}</span>
         </div>
-        <div class="grdc-sidebar-card-body">${escapeHtml(snippet)}</div>
+        <div class="${bodyClass}">${escapeHtml(bodyText)}</div>
         ${tags.length ? `<div class="grdc-sidebar-card-tags">${tags.map(t => escapeHtml(t)).join(' · ')}</div>` : ''}
       `;
       card.addEventListener('click', () => {

@@ -21,12 +21,14 @@
 
   // Build a single-line snippet from a (possibly multi-line) comment body
   // for display in a sidebar card. Collapses whitespace, trims, truncates
-  // to `maxLen` characters. Defensive against null/undefined input.
+  // to `maxLen` characters. Appends an ellipsis when truncation actually
+  // dropped content (so the user knows there's more). Defensive against
+  // null/undefined input.
   function buildSnippet(body, maxLen) {
     if (body == null) return '';
     const max = Number.isFinite(maxLen) && maxLen > 0 ? maxLen : 80;
     const flat = String(body).replace(/\s+/g, ' ').trim();
-    return flat.length > max ? flat.slice(0, max) : flat;
+    return flat.length > max ? flat.slice(0, max).trimEnd() + '\u2026' : flat;
   }
 
   // Clamp a candidate sidebar position so at least `margin` pixels stay

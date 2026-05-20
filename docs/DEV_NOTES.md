@@ -411,6 +411,31 @@ authorAssociation: c.authorAssociation || c.author_association || '',
 
 When the comment author is both the repo owner AND the PR opener, both pills render side by side (`Owner` `Author`), matching GitHub native.
 
+## Keeping the threads sidebar in sync
+
+The sidebar reads its data straight off the rendered thread DOM (`.grdc-existing-thread[data-grdc-*]`), not from `existingComments` or `routeData`. That means every mutation that affects what the sidebar shows must trigger a sidebar rebuild — but the *right* rebuild path differs by mutation type:
+
+| Mutation | Refresh path | Why |
+|---|---|---|
+| Post new comment | `buildThreadsSidebar()` | New `.grdc-existing-thread` is already injected by the post handler; sidebar just needs to enumerate elements again. |
+| Reply to thread | `buildThreadsSidebar()` | Same — existing thread's comment-count and snippet aren't sidebar inputs (sidebar shows the *head* snippet only). |
+| **Edit comment** | `scheduleReinit()` | The sidebar snippet lives in `thread.dataset.grdcSnippet`, set during `renderThreadOnElement` from `head.body`. An edit changes the head body but doesn't update the dataset — `scheduleReinit` re-runs the full pipeline (route-data fetch → `renderExistingComments` → fresh dataset → `buildThreadsSidebar`). |
+| **Delete comment** | `scheduleReinit()` | If the deleted comment was the thread head, the new head's body becomes the sidebar snippet — same dataset issue as edit. |
+| Resolve / unresolve | `buildThreadsSidebar()` | The "resolved" tag in the card comes from `threadEl.classList.contains('grdc-thread-resolved')`, which the toggle already updates locally. No dataset refresh needed. |
+
+**Rule of thumb:** if the mutation could change the *thread head's snippet text* or the *head comment's identity*, use `scheduleReinit()`. Otherwise `buildThreadsSidebar()` is enough and avoids the full route-data refetch.
+
+The sidebar also auto-hides when the user toggles away from rich-diff:
+
+```js
+// In buildThreadsSidebar, before doing any work:
+const richDiffVisible = Array.from(document.querySelectorAll('.prose-diff'))
+  .some(el => el.offsetParent !== null);
+if (!richDiffVisible) { sidebar?.remove(); return; }
+```
+
+`offsetParent === null` is the standard "is this hidden via display:none or a detached ancestor" probe — catches GitHub's source-diff toggle (which `display: none`s `.prose-diff` rather than removing it). A click listener on rich/source-diff toggles also re-runs `buildThreadsSidebar` after a 100ms delay so the sidebar appears immediately when toggling back to rich-diff.
+
 ## Debugging recipes
 
 All extension logs are prefixed `[GRDC]`. Useful queries in DevTools:

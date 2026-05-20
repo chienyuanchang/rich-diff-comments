@@ -1063,6 +1063,34 @@ li.grdc-hoverable .grdc-comment-btn {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  position: relative;
+}
+/* Prominent "more content hidden" indicator. Replaces the faint trailing
+   `…` character with a clearly-visible filled pill in the bottom-right
+   corner of the card body — like GitHub's "Show more" affordance but
+   compact. Only added when buildSnippet had to character-truncate the
+   body (caller adds `.grdc-sidebar-card-body-truncated`). */
+.grdc-sidebar-card-body-truncated {
+  padding-right: 22px; /* reserve space for the pill */
+}
+.grdc-sidebar-card-body-truncated::after {
+  content: '…';
+  position: absolute;
+  right: 4px;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 14px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--fgColor-default, var(--color-fg-default, #1f2328));
+  background: var(--bgColor-accent-muted, var(--color-accent-subtle, #ddf4ff));
+  border: 1px solid var(--borderColor-accent-muted, var(--color-accent-muted, #b6e3ff));
+  border-radius: 4px;
 }
 .grdc-sidebar-card-tags {
   margin-top: 4px;

@@ -1787,59 +1787,10 @@
   // GitHub's prose-diff sometimes wraps the heading and its body in the same
   // container; sometimes they live in adjacent containers. We try direct
   // siblings first; if none, walk through the parent's next-sibling chain too.
+  // Walker logic lives in src/lib/sectionCollapse.js so it can be unit-tested
+  // against a fake DOM without jsdom.
   function siblingsToHide(heading) {
-    const level = headingLevel(heading);
-    if (!level) return [];
-    const out = [];
-
-    // Strategy 1: direct siblings under same parent.
-    let cur = heading.nextElementSibling;
-    while (cur) {
-      const curLevel = headingLevel(cur);
-      if (curLevel != null && curLevel <= level) break;
-      // GitHub's prose-diff occasionally wraps a later hunk (containing the
-      // *next* same-level heading) inside a sibling container. The walker
-      // wouldn't see that heading via `tagName` alone — peek into the
-      // subtree for any heading at level <= ours and stop if found, so
-      // we don't pull content from the next section into the fold.
-      const desc = cur.querySelector?.('h1, h2, h3, h4, h5, h6');
-      if (desc) {
-        const dLevel = headingLevel(desc);
-        if (dLevel != null && dLevel <= level) break;
-      }
-      if (!isOurInjectedNode(cur)) out.push(cur);
-      cur = cur.nextElementSibling;
-    }
-
-    // Strategy 2: if no NON-INJECTED siblings found (rare in normal markdown
-    // but happens in GitHub's hunk-wrapped prose-diff — and ALSO when our own
-    // thread badge is the only direct sibling, leaving the actual content in
-    // a later parent), walk the parent's next-sibling chain too. We hide
-    // anything until we encounter another heading at our level or higher,
-    // OR we leave the rich-diff container.
-    if (out.length === 0) {
-      const richDiff = heading.closest('.prose-diff, .markdown-body');
-      let parent = heading.parentElement;
-      while (parent && parent !== richDiff) {
-        let walker = parent.nextElementSibling;
-        while (walker) {
-          // Stop if this element or its first descendant heading would be a
-          // boundary heading (level <= ours).
-          const ownLevel = headingLevel(walker);
-          if (ownLevel != null && ownLevel <= level) return out;
-          const desc = walker.querySelector('h1, h2, h3, h4, h5, h6');
-          if (desc) {
-            const dLevel = headingLevel(desc);
-            if (dLevel != null && dLevel <= level) return out;
-          }
-          if (!isOurInjectedNode(walker)) out.push(walker);
-          walker = walker.nextElementSibling;
-        }
-        parent = parent.parentElement;
-      }
-    }
-
-    return out;
+    return window.GRDC.collectSiblingsToHide(heading, { isInjected: isOurInjectedNode });
   }
 
   function applyCollapseVisuals(heading, toggle, collapsed) {
@@ -1866,52 +1817,9 @@
   // Collect every element that belongs to `heading`'s section, INCLUDING
   // our own injected nodes (which `siblingsToHide` filters out). Used by
   // fold/restore to find thread bodies and comment boxes inside the section.
+  // Walker logic lives in src/lib/sectionCollapse.js — see siblingsToHide.
   function sectionRoots(heading) {
-    const level = headingLevel(heading);
-    if (!level) return [];
-
-    const out = [];
-    // Strategy 1: direct siblings.
-    let cur = heading.nextElementSibling;
-    while (cur) {
-      const curLevel = headingLevel(cur);
-      if (curLevel != null && curLevel <= level) break;
-      // Mirror the descendant-heading check from `siblingsToHide` — stop
-      // when a sibling container wraps the next same-or-shallower heading.
-      const desc = cur.querySelector?.('h1, h2, h3, h4, h5, h6');
-      if (desc) {
-        const dLevel = headingLevel(desc);
-        if (dLevel != null && dLevel <= level) break;
-      }
-      out.push(cur);
-      cur = cur.nextElementSibling;
-    }
-
-    // Strategy 2: cross-parent walk if Strategy 1 found nothing non-injected.
-    const hasContent = out.some((el) => !isOurInjectedNode(el));
-    if (!hasContent) {
-      const richDiff = heading.closest('.prose-diff, .markdown-body');
-      let parent = heading.parentElement;
-      while (parent && parent !== richDiff) {
-        let walker = parent.nextElementSibling;
-        let stopped = false;
-        while (walker) {
-          const ownLevel = headingLevel(walker);
-          if (ownLevel != null && ownLevel <= level) { stopped = true; break; }
-          const desc = walker.querySelector('h1, h2, h3, h4, h5, h6');
-          if (desc) {
-            const dLevel = headingLevel(desc);
-            if (dLevel != null && dLevel <= level) { stopped = true; break; }
-          }
-          out.push(walker);
-          walker = walker.nextElementSibling;
-        }
-        if (stopped) break;
-        parent = parent.parentElement;
-      }
-    }
-
-    return out;
+    return window.GRDC.collectSectionRoots(heading, { isInjected: isOurInjectedNode });
   }
 
   // Fold our injected chrome inside a collapsed section: thread bodies close
@@ -2527,16 +2435,9 @@
       // `author_association` enum to the same labels GitHub's native
       // source-diff thread renders. MANNEQUIN (migrated-account
       // placeholder) and NONE (no relationship) are suppressed — GitHub
-      // doesn't show a pill for those either.
-      const ROLE_LABELS = {
-        OWNER: 'Owner',
-        MEMBER: 'Member',
-        COLLABORATOR: 'Collaborator',
-        CONTRIBUTOR: 'Contributor',
-        FIRST_TIME_CONTRIBUTOR: 'First-time contributor',
-        FIRST_TIMER: 'First-timer',
-      };
-      const roleLabel = ROLE_LABELS[c.authorAssociation];
+      // doesn't show a pill for those either. Logic lives in
+      // src/lib/roles.js so it can be unit-tested.
+      const roleLabel = window.GRDC.roleLabel(c.authorAssociation);
       const roleMarkup = roleLabel
         ? `<span class="grdc-comment-role grdc-comment-role-${c.authorAssociation.toLowerCase()}">${roleLabel}</span>`
         : '';
@@ -2545,7 +2446,7 @@
       // shows `Owner` `Author` together when the repo owner opens their
       // own PR). Same neutral chip styling as the role pill.
       const prAuthorLogin = getPRAuthorLogin();
-      const isPRAuthor = !!(prAuthorLogin && c.user && c.user.toLowerCase() === prAuthorLogin.toLowerCase());
+      const isPRAuthor = window.GRDC.isPRAuthor(c.user, prAuthorLogin);
       const authorMarkup = isPRAuthor
         ? `<span class="grdc-comment-role grdc-comment-role-author">Author</span>`
         : '';
@@ -3012,8 +2913,9 @@
       const raw = localStorage.getItem(SIDEBAR_SIZE_KEY);
       if (raw) {
         const { width, height } = JSON.parse(raw);
-        if (Number.isFinite(width) && width >= SIDEBAR_MIN_WIDTH) sidebar.style.width = `${width}px`;
-        if (Number.isFinite(height) && height >= SIDEBAR_MIN_HEIGHT) sidebar.style.height = `${height}px`;
+        const clamped = window.GRDC.clampSize(width, height, SIDEBAR_MIN_WIDTH, SIDEBAR_MIN_HEIGHT);
+        if (clamped.width != null) sidebar.style.width = `${clamped.width}px`;
+        if (clamped.height != null) sidebar.style.height = `${clamped.height}px`;
       }
     } catch (_) {}
   }
@@ -3032,10 +2934,11 @@
           const h = sidebar.offsetHeight;
           // Don't persist obviously-bogus sizes. Anything below the CSS
           // min-* is a transient render glitch, not a user resize.
-          if (w < SIDEBAR_MIN_WIDTH || h < SIDEBAR_MIN_HEIGHT) return;
+          const clamped = window.GRDC.clampSize(w, h, SIDEBAR_MIN_WIDTH, SIDEBAR_MIN_HEIGHT);
+          if (clamped.width == null || clamped.height == null) return;
           localStorage.setItem(SIDEBAR_SIZE_KEY, JSON.stringify({
-            width: w,
-            height: h,
+            width: clamped.width,
+            height: clamped.height,
           }));
         } catch (_) {}
       }, 250);

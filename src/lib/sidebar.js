@@ -69,9 +69,24 @@
     return ((c + d) % total + total) % total;
   }
 
+  // Sanity-floor a sidebar size against minimums. Returns `null` for any
+  // dimension that is non-finite or falls below its floor — the caller
+  // skips persisting / applying that dimension so a once-tiny stored size
+  // can't permanently shrink the sidebar across reloads. Used on both
+  // read (load from localStorage) and write (ResizeObserver callback).
+  function clampSize(width, height, minWidth, minHeight) {
+    const okW = Number.isFinite(width) && Number.isFinite(minWidth) && width >= minWidth;
+    const okH = Number.isFinite(height) && Number.isFinite(minHeight) && height >= minHeight;
+    return {
+      width: okW ? width : null,
+      height: okH ? height : null,
+    };
+  }
+
   return {
     buildSnippet,
     clampDragPos,
     nextWrappingIndex,
+    clampSize,
   };
 });

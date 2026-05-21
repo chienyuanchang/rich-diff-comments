@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildSnippet, clampDragPos, nextWrappingIndex } = require('../src/lib/sidebar.js');
+const { buildSnippet, clampDragPos, nextWrappingIndex, clampSize } = require('../src/lib/sidebar.js');
 
 // ───────────────────────────────────────────────────────────────────────────
 // buildSnippet
@@ -129,4 +129,58 @@ test('nextWrappingIndex — invalid curr / delta treated as 0', () => {
 test('nextWrappingIndex — single-item list always returns 0', () => {
   assert.equal(nextWrappingIndex(0, 1, 1), 0);
   assert.equal(nextWrappingIndex(0, -1, 1), 0);
+});
+
+
+// ───────────────────────────────────────────────────────────────────────────
+// clampSize — sanity floor for sidebar dimensions
+// ───────────────────────────────────────────────────────────────────────────
+
+test('clampSize — passes through values at or above the floor', () => {
+  const r = clampSize(400, 600, 220, 120);
+  assert.equal(r.width, 400);
+  assert.equal(r.height, 600);
+});
+
+test('clampSize — value exactly at the floor is allowed', () => {
+  const r = clampSize(220, 120, 220, 120);
+  assert.equal(r.width, 220);
+  assert.equal(r.height, 120);
+});
+
+test('clampSize — width below floor returns null for width, keeps height', () => {
+  const r = clampSize(100, 600, 220, 120);
+  assert.equal(r.width, null);
+  assert.equal(r.height, 600);
+});
+
+test('clampSize — height below floor returns null for height, keeps width', () => {
+  const r = clampSize(400, 50, 220, 120);
+  assert.equal(r.width, 400);
+  assert.equal(r.height, null);
+});
+
+test('clampSize — both below floor returns nulls for both', () => {
+  const r = clampSize(50, 30, 220, 120);
+  assert.equal(r.width, null);
+  assert.equal(r.height, null);
+});
+
+test('clampSize — non-finite width returns null without affecting height', () => {
+  assert.equal(clampSize(NaN, 600, 220, 120).width, null);
+  assert.equal(clampSize(Infinity, 600, 220, 120).width, null);
+  assert.equal(clampSize(undefined, 600, 220, 120).width, null);
+  assert.equal(clampSize(null, 600, 220, 120).width, null);
+});
+
+test('clampSize — non-finite height returns null without affecting width', () => {
+  assert.equal(clampSize(400, NaN, 220, 120).height, null);
+  assert.equal(clampSize(400, Infinity, 220, 120).height, null);
+  assert.equal(clampSize(400, undefined, 220, 120).height, null);
+});
+
+test('clampSize — non-finite minimums return null (defensive)', () => {
+  const r = clampSize(400, 600, NaN, NaN);
+  assert.equal(r.width, null);
+  assert.equal(r.height, null);
 });

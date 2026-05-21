@@ -55,8 +55,12 @@ What it does:
 
 • Hover any paragraph, heading, list item, table row, or code block in rich-diff and a blue "+" appears. Click it, type a comment, click Comment. The comment posts as a real PR review comment on the correct source line.
 • Drag the "+" from one block to another to leave a multi-line range comment.
-• Existing review threads render inline as "💬 N comments" badges, anchored to the rendered block they belong to. Expand a thread to read, reply, resolve, or unresolve — all without leaving rich-diff.
+• Existing review threads render inline as "N comments" badges, anchored to the rendered block they belong to. Expand a thread to read, reply, resolve, or unresolve — all without leaving rich-diff.
 • Comment box matches GitHub's UI: Markdown toolbar, Write / Preview tabs, @mention autocomplete, Cmd/Ctrl+Enter to submit.
+• Threads sidebar — a draggable, resizable panel lists every review thread on the page, with prev / next navigation, an "unresolved only" filter, and j / k / h / l keyboard shortcuts.
+• Outline tab — a heading tree of every modified Markdown file with a comment-count pill per section; click to jump, fold individual sections or bulk-fold by level.
+• Heading anchor links (Table of Contents) work in rich-diff — clicking `[Section](#section)` scrolls to the heading.
+• Avatars and GitHub-native role badges (Author, Owner, Member, Contributor, First-time contributor, …) on every comment.
 • Collapse sections by heading to focus on what's left to review.
 
 No Personal Access Token required — uses your existing GitHub session cookies. Works on public and private repos. No third-party servers, no telemetry, no analytics.

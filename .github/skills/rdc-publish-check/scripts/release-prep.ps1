@@ -1,21 +1,27 @@
-# Prepare a release folder under releases/<version>/ for Chrome and Edge
-# submission.
+# Prepare a release folder under releases/<version>/ containing the
+# packaged zip for Chrome / Edge submission.
+#
+# Submission copy (titles, descriptions, justifications, reviewer notes,
+# search terms, "what's new") is maintained directly in the canonical
+# docs at .github/skills/rdc-publish-check/templates/CHROME_SUBMISSION.md
+# and .github/skills/rdc-publish-check/templates/EDGE_SUBMISSION.md.
+# Update those in-place each release (bump {{VERSION}}, update
+# {{CHANGELOG}}, fill submission notes); the git history of those two
+# files is the audit trail for what was submitted when.
 #
 # Run from the repository root.
 #
 # Usage:
 #   .\.github\skills\rdc-publish-check\scripts\release-prep.ps1
 #       Builds the zip (via package.ps1), creates releases/<version>/,
-#       moves the zip in, and generates CHROME_SUBMISSION.md and
-#       EDGE_SUBMISSION.md from templates with the current version + the
-#       matching CHANGELOG entry baked in.
+#       moves the zip in.
 #
 #   .\.github\skills\rdc-publish-check\scripts\release-prep.ps1 -Force
 #       Overwrites releases/<version>/ if it already exists.
 #
 #   .\.github\skills\rdc-publish-check\scripts\release-prep.ps1 -SkipBuild
 #       Skips running package.ps1 (assumes rdc-<version>.zip already
-#       exists at the extension root or already in the release folder).
+#       exists at the extension root).
 
 [CmdletBinding()]
 param(
@@ -26,7 +32,6 @@ param(
 $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$skillDir = (Resolve-Path (Join-Path $scriptDir "..")).Path
 $root = (Resolve-Path (Join-Path $scriptDir "..\..\..\..")).Path
 Push-Location $root
 
@@ -58,7 +63,7 @@ try {
   if (-not $SkipBuild) {
     Write-Host "  building $zipName via .\scripts\package.ps1" -ForegroundColor Cyan
     & (Join-Path $root "scripts\package.ps1") | Out-Host
-    if ($LASTEXITCODE -ne 0) {
+    if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne $null) {
       throw "package.ps1 failed (exit $LASTEXITCODE)"
     }
   }
@@ -70,43 +75,6 @@ try {
   Move-Item -Force $zipAtRoot (Join-Path $releaseDir $zipName)
   Write-Host "  moved zip -> $releaseDir\$zipName"
 
-  # ── Extract the matching CHANGELOG entry ─────────────────────────────
-  $changelogSnippet = ""
-  if (Test-Path "CHANGELOG.md") {
-    $cl = Get-Content "CHANGELOG.md" -Raw
-    # Match `## [<version>] — <date>` (em-dash) through the next `## ` heading.
-    $pattern = '(?ms)^##\s*\[' + [regex]::Escape($version) + '\][^\n]*\n(.*?)(?=^##\s|\z)'
-    $m = [regex]::Match($cl, $pattern)
-    if ($m.Success) {
-      $changelogSnippet = $m.Groups[1].Value.Trim()
-    } else {
-      Write-Host "  [WARN] no CHANGELOG entry found for $version" -ForegroundColor Yellow
-      $changelogSnippet = "_See [CHANGELOG.md](../../CHANGELOG.md) — entry for $version was not auto-extracted._"
-    }
-  } else {
-    $changelogSnippet = "_No CHANGELOG.md found at repo root._"
-  }
-
-  # ── Render templates ─────────────────────────────────────────────────
-  $templates = @{
-    "CHROME_SUBMISSION.md" = Join-Path $skillDir "templates\CHROME_SUBMISSION.md"
-    "EDGE_SUBMISSION.md"   = Join-Path $skillDir "templates\EDGE_SUBMISSION.md"
-  }
-
-  foreach ($outName in $templates.Keys) {
-    $tmplPath = $templates[$outName]
-    if (-not (Test-Path $tmplPath)) {
-      throw "template missing: $tmplPath"
-    }
-    $content = Get-Content $tmplPath -Raw
-    $content = $content.Replace("{{VERSION}}", $version)
-    $content = $content.Replace("{{CHANGELOG}}", $changelogSnippet)
-
-    $outPath = Join-Path $releaseDir $outName
-    Set-Content -Path $outPath -Value $content -Encoding UTF8
-    Write-Host "  wrote $outPath"
-  }
-
   # ── Done ─────────────────────────────────────────────────────────────
   Write-Host ""
   Write-Host "Release folder ready: $releaseDir" -ForegroundColor Green
@@ -117,10 +85,15 @@ try {
   }
   Write-Host ""
   Write-Host "Next steps:"
-  Write-Host "  1. Upload $releaseDir\$zipName to the Chrome Web Store Developer Console"
-  Write-Host "  2. Paste sections from $releaseDir\CHROME_SUBMISSION.md into the listing form"
-  Write-Host "  3. Repeat for Edge Add-ons using $releaseDir\EDGE_SUBMISSION.md"
+  Write-Host "  1. Verify the canonical submission docs are up to date for v$version :"
+  Write-Host "       .github\skills\rdc-publish-check\templates\CHROME_SUBMISSION.md"
+  Write-Host "       .github\skills\rdc-publish-check\templates\EDGE_SUBMISSION.md"
+  Write-Host "     (version stamp, changelog block, submission notes.)"
+  Write-Host "  2. Upload $releaseDir\$zipName to the Chrome Web Store Developer Console;"
+  Write-Host "     paste sections from the Chrome template into the listing form."
+  Write-Host "  3. Repeat for Edge Add-ons using the Edge template."
 }
 finally {
   Pop-Location
 }
+

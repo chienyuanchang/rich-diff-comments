@@ -61,9 +61,9 @@ If preflight passes, run the existing packager:
 
 This produces `grdc-<version>.zip` at the extension root.
 
-### 3. Prepare the release folder (zip + per-store submission docs)
+### 3. Prepare the release folder (zip only)
 
-After the zip is built, organize it into a per-version release folder along with the Chrome and Edge submission docs:
+Organize the zip into a per-version release folder:
 
 ```powershell
 .\.github\skills\rdc-publish-check\scripts\release-prep.ps1
@@ -74,30 +74,33 @@ This:
 1. Reads the version from `manifest.json`.
 2. Creates `releases/<version>/` (e.g. `releases/1.0.2/`). If the folder already exists, pass `-Force` to overwrite.
 3. Builds the zip via `package.ps1` (skippable with `-SkipBuild` if a zip already exists at the extension root) and **moves** the zip into the release folder.
-4. Extracts the matching `## [<version>]` section from `CHANGELOG.md` to embed as "What's new in this version".
-5. Renders two submission docs from templates in `templates/`:
-   - **`CHROME_SUBMISSION.md`** — every field the Chrome Web Store Developer Console asks for (product details, single purpose, host permission justification, remote code declaration, data-usage checkboxes, privacy policy URL, reviewer testing notes).
-   - **`EDGE_SUBMISSION.md`** — equivalent for Microsoft Edge Partner Center (single-purpose ≤ 1,000 chars, host permission justification ≤ 1,000 chars, user-facing description, reviewer notes ≤ 2,000 chars).
 
 Final folder layout for v1.0.2:
 
 ```
 releases/
 └── 1.0.2/
-    ├── rdc-1.0.0.zip
-    ├── CHROME_SUBMISSION.md
-    └── EDGE_SUBMISSION.md
+    └── rdc-1.0.2.zip
 ```
 
-The two `.md` files are designed to be **copy-paste ready** — each store-form field has its own fenced code block so the dashboard form takes the text exactly as written.
+> **Submission copy is not emitted per release.** Titles, descriptions, justifications, reviewer notes, search terms, and the "What's new" block are maintained directly in two **canonical living docs** under `.github/skills/rdc-publish-check/templates/`. The git history of those two files is the audit trail for what was submitted when. See step 4.
 
-### 4. Review and update the generated submission docs
+### 4. Update the canonical submission docs
 
-The release-prep script renders the docs from templates with only two pieces of per-version substitution: the version number and the matching CHANGELOG section. Most fields (title, summary, single purpose, host permission justification, reviewer testing notes) are **identical for every version**.
+The two submission docs live at:
 
-Before submitting, the agent / user **must** review the generated `CHROME_SUBMISSION.md` and `EDGE_SUBMISSION.md` and update them where needed:
+- `.github/skills/rdc-publish-check/templates/CHROME_SUBMISSION.md` — every field the Chrome Web Store Developer Console asks for (product details, single purpose, host permission justification, remote code declaration, data-usage checkboxes, privacy policy URL, reviewer testing notes).
+- `.github/skills/rdc-publish-check/templates/EDGE_SUBMISSION.md` — equivalent for Microsoft Edge Partner Center, plus an Edge-only **Search terms** section (≤ 7 terms, ≤ 30 chars each, ≤ 21 words total).
+
+Each store-form field has its own fenced code block so the dashboard form takes the text exactly as written.
+
+Before submitting, edit these two files **in place** with the changes for this release. The agent / user **must** review the following items:
 
 #### Always check
+
+- [ ] **`{{VERSION}}` placeholder** — search-and-replace with the new manifest version (`{{VERSION}}` appears in the title and Package section). Two find-replaces total per file.
+
+- [ ] **`{{CHANGELOG}}` placeholder** — replace with the `## [<version>] — <date>` block from `CHANGELOG.md` (Added / Changed / Fixed bullets). If `CHANGELOG.md` is out of date relative to `manifest.json`, fix `CHANGELOG.md` first.
 
 - [ ] **`## Submission notes (edit before submitting)`** at the top of each file. The block is an HTML comment by default. Fill it in if the reviewer needs context that isn't true of every version. Common cases:
   - **Resubmitting after a rejection** — reference the violation code (e.g. "Purple Potassium") and state exactly what changed.
@@ -105,24 +108,23 @@ Before submitting, the agent / user **must** review the generated `CHROME_SUBMIS
   - **Visibility / market changes** — moving from Unlisted to Public, expanding markets.
   - **Major UX changes** that aren't obvious from the description text.
 
-  If there's truly nothing submission-specific, **delete the entire block** (the HTML comment) so the doc reads clean.
+  If there's truly nothing submission-specific, **leave the block as an HTML comment** so the doc reads clean (don't delete it — next release will need it again).
 
-- [ ] **"What's new in this version"** at the bottom — confirm the auto-extracted CHANGELOG section actually reflects what shipped. If `CHANGELOG.md` is out of date relative to `manifest.json` version, the substitution will be missing or wrong. Fix `CHANGELOG.md` first, then re-run `release-prep.ps1 -Force`.
+- [ ] **Description** (the long marketing copy) — update if a feature added in this version belongs in the listing description. Per [Disclosure Requirements](https://developer.chrome.com/docs/webstore/program-policies/disclosure-requirements), all functionality must be disclosed to users. If a new feature is significant enough to appear in screenshots, it should appear in the description.
 
-- [ ] **Description** (the long marketing copy) — only edit if a feature added in this version belongs in the listing description. Per [Disclosure Requirements](https://developer.chrome.com/docs/webstore/program-policies/disclosure-requirements), all functionality must be disclosed to users. If a new feature is significant enough to appear in screenshots, it should appear in the description.
+- [ ] **Permission justification** — if `manifest.json` `permissions` or `host_permissions` changed since the previous version, update the justification text. The current state assumes no `permissions`, only `host_permissions: https://github.com/*`. Versions that add permissions need extra justification paragraphs.
 
-- [ ] **Permission justification** — if `manifest.json` `permissions` or `host_permissions` changed since the previous version, update the justification text. The template assumes the current state of v1.0.3+ (no `permissions`, only `host_permissions: https://github.com/*`). Future versions that add permissions need extra justification paragraphs.
+- [ ] **Behavior text drift** — sanity-check that what the docs describe still matches the shipping code. Easy regressions: badge wording (e.g. `"N comments"` vs an old `"💬 N comments"`), keyboard shortcut keys, sidebar tab names, button labels. When `CHANGELOG.md` has a "Changed" entry that touches user-visible UI, double-check the relevant description bullets and the reviewer "How to test" section.
+
+- [ ] **Search terms** (Edge only) — only edit if the extension picks up a meaningful new keyword. Enforce the limits: ≤ 7 terms, ≤ 30 chars per term, ≤ 21 words total.
 
 #### Don't usually need to edit
 
 - Title, summary, category, language — set once, don't change.
 - Single purpose statement — only changes if the extension scope changes (which would warrant a separate submission anyway).
-- Reviewer testing notes ("how to test" block) — the test steps work for every version of the extension. Only update if the install / activation flow changes.
+- Reviewer testing notes ("how to test" block) — the test steps work for every version of the extension. Only update if the install / activation flow changes, or if a behavior bullet ("Hover any paragraph — a blue + appears") no longer matches the UI.
 - Privacy policy URL — only changes if PRIVACY.md is updated and the gist is re-published.
 
-#### Re-generate after edits
-
-If the edits become substantial enough that you want to bake them back into the templates for future versions (e.g. permanent change to the marketing copy), update the templates in `.github/skills/rdc-publish-check/templates/` and re-run release-prep with `-Force` to overwrite the per-version docs.
 
 ### 5. Prepare screenshots for the store listings
 

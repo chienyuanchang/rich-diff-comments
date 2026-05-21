@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Rich Diff Comments for GitHub",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Comment, reply, resolve, and collapse sections directly in GitHub PR rich-diff (rendered markdown) view.",
   "author": "chienyuanchang",
   "homepage_url": "https://github.com/chienyuanchang/rich-diff-comments",

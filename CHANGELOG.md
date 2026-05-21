@@ -4,6 +4,8 @@ All notable changes to Rich Diff Comments for GitHub. Follows [Keep a Changelog]
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-05-20
+
 ### Added
 
 - **Threads sidebar.** A draggable, resizable panel docked to the right edge of the page that lists every review thread — with author, snippet, file:line, and resolved / outdated tags. Click a card to jump to the thread (the badge briefly flashes so you can see where you landed). The header has prev / next chevrons and a comment counter. Press `j` / `k` for next / previous thread, `h` / `l` for the first / last. A funnel icon toggles "Unresolved only" — visible while the sidebar is collapsed too, so you can filter without expanding. Collapse the sidebar to a slim bar; your collapsed state, filter, position, and size are remembered. Hidden automatically when the page has no threads, and also when you toggle to source-diff view (and back when you toggle to rich-diff).

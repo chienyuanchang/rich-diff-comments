@@ -8,25 +8,26 @@ All notable changes to Rich Diff Comments for GitHub. Follows [Keep a Changelog]
 
 ### Added
 
-- **Threads sidebar is always available on PR rich-diff pages.** The sidebar used to be hidden whenever no `.prose-diff` was visible (e.g. when every file was in source-diff mode on `/changes`, or on small READMEs with fewer than three headings). It now renders on every PR `/files` or `/changes` page so the floating bar is always findable, and you can act on it before any file is opened in rich-diff.
-- **"Render all Markdown files as rich-diff" action.** A new book icon in the sidebar header (and a primary CTA in the empty-state Threads pane) flips every `.md` / `.markdown` file in the PR into rich-diff mode in one click. The script scans the page top-to-bottom behind a translucent "Loading Markdown files…" overlay to force GitHub''s lazy-rendered file headers, clicks each per-file Source→Rendered toggle, then restores your scroll position. Comments on those files load automatically as each rich-diff mounts. Skips files already in rich-diff and bails early once every expected Markdown file has been handled.
-- **Keyboard shortcut to show / hide the threads sidebar.** Press `t` anywhere on a rich-diff page to toggle the sidebar between collapsed and expanded — useful when you''ve collapsed it once and forgotten where the slim bar is. Press `Shift+T` to reset the sidebar''s position, size, and collapsed state to the default right-edge dock; recovers from cases where dragging it on a larger window left it offscreen on a smaller one.
-- **Fold H1 button in the Outline toolbar.** Joins the existing `Fold H2` / `Fold H3` / `Expand all`. Folds every top-level heading at once so each document collapses to just its title — handy on multi-file PRs where you want a bird''s-eye view of which files changed without reading the bodies.
-- **Empty-state CTA in the Threads pane.** When the page has no threads to display (common on `/changes` before any rich-diff opens), the pane shows a clear blue "Render all Markdown files as rich-diff" button instead of an empty list — so the next step is obvious.
+- **The threads sidebar is now always available on PR rich-diff pages.** It used to disappear whenever no file was opened in rich-diff (so landing on a fresh "Files changed" view in source-diff mode showed nothing), and on small READMEs with very little structure. The sidebar now shows on every PR Files-changed page so it's always findable — even before you open the first file as rich-diff.
+- **"Render all Markdown files as rich-diff" in one click.** A new book icon in the sidebar header (and a big blue button in the empty Threads pane) opens every `.md` file in the PR as rich-diff at once. A brief "Loading Markdown files…" splash appears while it works; your scroll position is restored when it's done. Comments on the newly-opened files load automatically. Files that are already in rich-diff are left alone.
+- **Keyboard shortcuts to show, hide, and reset the sidebar.** Press `t` anywhere on a Files-changed page to toggle the sidebar between collapsed and expanded — handy when you've collapsed it once and can't find the slim bar. Press `Shift+T` to reset the sidebar to its default right-edge spot at full size — recovers from cases where you dragged it on a wider window and reopened the page on a smaller one.
+- **"Fold H1" button in the Outline toolbar.** Joins the existing `Fold H2` / `Fold H3` / `Expand all`. Collapses every top-level heading at once so each document shrinks to just its title — gives you a one-screen overview of which files changed on a multi-file PR.
+- **Helpful empty state in the Threads pane.** When no comments are loaded yet (common when you've just opened the PR and haven't switched any files to rich-diff), the pane now shows a clear "Render all Markdown files as rich-diff" button instead of an empty list, so the next step is obvious.
 
 ### Changed
 
-- **Sidebar header now uses GitHub''s link blue.** The header (and the collapsed bar) match GitHub''s `--fgColor-accent` token (`#0969da` light, `#2f81f7` dark) instead of the previous pale tint. The collapsed bar is now unmistakable against any page background, and the saturated blue header reads as part of GitHub''s own UI rather than custom chrome.
-- **"Unresolved only" filter button has clearer on / off contrast on the new header.** When unpressed, the funnel is white at 70 % opacity; when pressed, it inverts to a white pill with an accent-blue funnel — the inversion keeps the "on" state unmistakable against the saturated blue header in both light and dark mode.
+- **Sidebar header now matches GitHub's link blue** so it reads as part of GitHub's own UI rather than a custom accent. The collapsed bar is much easier to spot against any page background in both light and dark mode.
+- **The "Unresolved only" funnel button is much easier to read on the new header** — pressed and unpressed states use a clear color inversion (white-on-blue when off, blue-on-white when on) so you can tell at a glance whether the filter is active.
 
 ### Fixed
 
-- **Sidebar no longer gets stranded offscreen after a window resize.** The sidebar''s dragged position is persisted across reloads, but the saved coordinates weren''t re-clamped against the current viewport. If you dragged the sidebar on a larger monitor and then opened the page on a smaller one (or changed browser zoom), the panel could land entirely outside the visible area — present in the DOM but invisible. The stored position is now clamped on load and re-clamped on window resize so at least 80 px of the header always stays in view. The stored position is preserved (not overwritten by the clamp), so re-enlarging the window slides the sidebar back to your original spot.
+- **The sidebar can no longer get stranded offscreen after a window resize.** If you dragged the sidebar on a larger window and then reopened the PR on a smaller one (or changed browser zoom), the sidebar sometimes ended up entirely outside the visible area — invisible. It now always stays at least partly in view, and your original drop position is remembered, so growing the window again slides it back to where you put it.
+
 ## [1.0.2] — 2026-05-28
 
 ### Fixed
 
-- **Inline comments on top-level list items now anchor under the correct item.** When GitHub's rich-diff wrapped an entire `<ul>` / `<ol>` in an inserted (`<ins>` / `.added`) or deleted (`.removed`) container, threads on a top-level `<li>` were rendered after the whole list instead of under the specific item. The earlier 1.0.1 fix only covered list items that contained a nested sub-list; top-level items without children were still escaping past the parent list. They now stay anchored inside the `<li>` they belong to.
+- **Inline comments on top-level list items now appear right under the item you commented on.** Before, leaving a comment on a top-level bullet in an added or deleted list could push the comment thread down below the entire list — so the comment looked like it belonged to the last item instead of the one you clicked. Comments now stay anchored to the correct bullet in every case.
 
 ## [1.0.1] — 2026-05-20
 

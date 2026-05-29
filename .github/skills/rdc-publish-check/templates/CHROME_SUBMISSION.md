@@ -186,15 +186,17 @@ https://github.com/chienyuanchang/rich-diff-comments/blob/main/PRIVACY.md
 
 ### Added
 
-- **Threads sidebar is always available on PR rich-diff pages** — used to be hidden whenever no rich-diff was visible (e.g. on `/changes` before any file was toggled, or on small READMEs with fewer than three headings). Now visible on every PR `/files` / `/changes` page so it's always findable.
-- **"Render all Markdown files as rich-diff" one-click action** — a book icon in the sidebar header (and a primary CTA in the empty Threads pane) flips every `.md` file in the PR from source-diff to rich-diff in a single sweep, behind a brief "Loading Markdown files…" overlay. Comments on those files load automatically.
-- **Keyboard shortcuts to show / hide / reset the sidebar** — press `t` to toggle the sidebar between collapsed and expanded; press `Shift+T` to reset its position, size, and collapsed state to the default right-edge dock (recovers from cases where dragging it on a larger window left it offscreen on a smaller one).
-- **Fold H1 button in the Outline toolbar** — joins the existing `Fold H2` / `Fold H3` / `Expand all`. Collapses each document to just its title for a bird's-eye view of multi-file PRs.
+- **The threads sidebar is now always available on PR Files-changed pages** so it's always findable — even before you open the first file as rich-diff.
+- **"Render all Markdown files as rich-diff" in one click.** A new book icon in the sidebar header (and a big blue button in the empty Threads pane) opens every `.md` file in the PR as rich-diff at once, with a brief "Loading Markdown files…" splash and your scroll position restored when done. Comments on the newly-opened files load automatically.
+- **Keyboard shortcuts to show, hide, and reset the sidebar.** Press `t` to toggle the sidebar between collapsed and expanded; press `Shift+T` to reset it to the default right-edge spot at full size — handy if you dragged it on a wider window and reopened the PR on a smaller one.
+- **"Fold H1" button in the Outline toolbar.** Joins `Fold H2` / `Fold H3` / `Expand all`. Collapses every top-level heading at once so each document shrinks to just its title — a one-screen overview of which files changed.
+- **Helpful empty state in the Threads pane** with a clear "Render all Markdown files as rich-diff" button when no comments are loaded yet.
 
 ### Changed
 
-- **Sidebar header now uses GitHub's link blue** so it reads as native GitHub UI and the collapsed bar is unmistakable against any page background, in both light and dark mode.
+- **Sidebar header now matches GitHub's link blue** so it reads as part of GitHub's own UI rather than a custom accent. The collapsed bar is much easier to spot against any page background in both light and dark mode.
+- **The "Unresolved only" funnel button is much easier to read on the new header** — pressed and unpressed states use a clear color inversion so you can tell at a glance whether the filter is active.
 
 ### Fixed
 
-- **Sidebar no longer gets stranded offscreen after a window resize.** The persisted drag position is now clamped on load and on window resize so at least 80 px of the header always stays in view, and the stored position is preserved so re-enlarging the window slides the sidebar back to its original spot.
+- **The sidebar can no longer get stranded offscreen after a window resize.** If you dragged it on a larger window and then reopened the PR on a smaller one (or changed browser zoom), the sidebar sometimes ended up entirely outside the visible area. It now always stays at least partly in view, and your original drop position is remembered, so growing the window again slides it back to where you put it.

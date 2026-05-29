@@ -102,6 +102,16 @@ Before submitting, edit these two files **in place** with the changes for this r
 
 - [ ] **`{{CHANGELOG}}` placeholder** — replace with the `## [<version>] — <date>` block from `CHANGELOG.md` (Added / Changed / Fixed bullets). If `CHANGELOG.md` is out of date relative to `manifest.json`, fix `CHANGELOG.md` first.
 
+  > **⚠️ CHANGELOG is user-facing, not engineering notes.** Every bullet must read like a feature announcement to someone who has never opened the source code. Specifically:
+  >
+  > - **Forbidden:** internal class names (`.prose-diff`, `.added`, `<ins>`), CSS variable names (`--fgColor-accent`), file or function names (`siblingAnchor`, `routeData.diffSummaries`), URL paths (`/changes`, `/files`), pixel measurements, JS API hints (`localStorage` keys, event listeners), and "we did X via Y" implementation talk.
+  > - **Required:** describe what the user sees, when they'd notice it, and why it's better. Use product names ("the threads sidebar", "the Outline tab", "the Files-changed page") not selectors.
+  > - **Examples of the right level:**
+  >   - ❌ *"Bound `bindSidebarResizeClamp` IIFE on `window.resize` to call `clampDragPos` with `{dx:0,dy:0}`."*
+  >   - ✅ *"The sidebar can no longer get stranded offscreen after a window resize."*
+  >
+  > Implementation detail belongs in `docs/DEV_NOTES.md` (engineer-facing) — keep CHANGELOG, README, and submission "What's new" blocks clean.
+
 - [ ] **`## Submission notes (edit before submitting)`** at the top of each file. The block is an HTML comment by default. Fill it in if the reviewer needs context that isn't true of every version. Common cases:
   - **Resubmitting after a rejection** — reference the violation code (e.g. "Purple Potassium") and state exactly what changed.
   - **New host permission or `permissions` entry** — call out what was added and why the existing host-permission justification needs to grow.

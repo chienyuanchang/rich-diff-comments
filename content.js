@@ -3300,6 +3300,7 @@
         </div>
         <div class="grdc-sidebar-pane grdc-sidebar-pane-outline" data-grdc-pane="outline" hidden>
           <div class="grdc-sidebar-outline-toolbar">
+            <button class="grdc-sidebar-fold-level" data-level="1" title="Fold all H1 sections (collapse each document to its title)">Fold H1</button>
             <button class="grdc-sidebar-fold-level" data-level="2" title="Fold all H2 sections">Fold H2</button>
             <button class="grdc-sidebar-fold-level" data-level="3" title="Fold all H3 sections">Fold H3</button>
             <button class="grdc-sidebar-expand-all" title="Expand every section">Expand all</button>

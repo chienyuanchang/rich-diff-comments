@@ -1,11 +1,14 @@
 # Test Design Doc: Sample Feature Integration
 
 > **Area**: testing
-> **Status**: Draft
+> **Status**: In Review
 > **Author**: Test User
-> **Last Updated**: 2026-05-12
+> **Reviewers**: @alice, @bob
+> **Last Updated**: 2026-05-19
 
-This document exists to exercise the **Rich Diff Comments for GitHub** extension. It deliberately includes every markdown construct the extension's line-mapping has to handle — tables, mermaid diagrams, code blocks, nested lists, blockquotes, task lists, and so on.
+This document exists to exercise the **Rich Diff Comments for GitHub** extension. It deliberately includes every markdown construct the extension's line-mapping has to handle — tables, mermaid diagrams, code blocks, nested lists, blockquotes, task lists, raw HTML, and so on.
+
+The revision history at the bottom tracks each round of review feedback.
 
 ## Table of Contents
 
@@ -18,30 +21,36 @@ This document exists to exercise the **Rich Diff Comments for GitHub** extension
   - [Phase 1: Foundation](#phase-1-foundation)
   - [Phase 2: Smart Routing](#phase-2-smart-routing)
   - [Phase 3: CLI and Docs](#phase-3-cli-and-docs)
+  - [Phase 4: Telemetry](#phase-4-telemetry)
 - [Task List](#task-list)
 - [Risks](#risks)
 - [Code Samples](#code-samples)
+- [Nested Lists](#nested-lists)
+- [HTML / Edge Cases](#html--edge-cases)
 - [References](#references)
+- [Change Log](#change-log)
 
 ---
 
 ## Overview
 
-This is the **overview paragraph**. It contains _emphasis_, `inline code`, and a [link to docs](https://example.com/docs). The goal is to have several paragraphs in a row so the text-matcher has to handle ordering.
+This is the **overview paragraph**. It contains _emphasis_, `inline code`, and a [link to the docs](https://example.com/docs). The goal is to have several paragraphs in a row so the text-matcher has to handle ordering across small edits.
 
 A second paragraph follows directly. Reviewers should be able to:
 
 1. Comment on this entire paragraph from rich diff
-2. Comment on individual list items
-3. Reply to existing threads inline
-4. Resolve / unresolve threads
-5. Drag-select a range across multiple paragraphs
+2. Comment on individual list items (including deeply nested ones)
+3. Reply to existing threads inline without leaving the rich-diff view
+4. Resolve and unresolve threads
+5. Drag-select a range across multiple paragraphs to open a multi-line review comment
+6. Edit and delete their own comments via the `⋯` menu
 
-> A blockquote here, with **bold** and `code`. Multiple lines:
-> Line two of the quote.
-> Line three with a [link](https://example.com).
+> A blockquote here, with **bold** and `inline code`. Multiple lines:
+> Line two of the quote, now slightly longer to test text re-matching.
+> Line three with a [link](https://example.com) and a trailing footnote.
+> Line four, newly added in this revision.
 
-A short paragraph after the blockquote, used as a target for "comment on line right after a blockquote" tests.
+A short paragraph after the blockquote, used as a target for "comment on line right after a blockquote" tests. A second sentence is appended to grow the block.
 
 ---
 
@@ -54,10 +63,12 @@ graph TD
     User[User / CLI]
     App[Application]
     Svc[Service]
+    Cache[(Cache)]
     DB[(Database)]
 
     User -->|request| App
-    App -->|query| DB
+    App -->|query| Cache
+    Cache -->|miss| DB
     App -->|invoke| Svc
     Svc -->|"reads/writes (via SDK)"| DB
     Svc -->|response| App
@@ -65,9 +76,10 @@ graph TD
 
     style App fill:#FFD700,stroke:#333
     style Svc fill:#90EE90,stroke:#333
+    style Cache fill:#ADD8E6,stroke:#333
 ```
 
-**Legend**: 🟢 New | 🟡 Modified
+**Legend**: 🟢 New | 🟡 Modified | 🔵 Cached
 
 ### Sequence Diagram
 
@@ -75,11 +87,18 @@ graph TD
 sequenceDiagram
     participant U as User
     participant A as App
+    participant C as Cache
     participant S as Service
     U->>A: submit request
-    A->>S: forward
-    S->>S: process
-    S-->>A: result
+    A->>C: lookup
+    alt cache hit
+        C-->>A: cached result
+    else cache miss
+        A->>S: forward
+        S->>S: process
+        S-->>A: result
+        A->>C: store
+    end
     A-->>U: response
 ```
 
@@ -87,13 +106,15 @@ sequenceDiagram
 
 | Component | Change Type | Description |
 |-----------|-------------|-------------|
-| `Application.start` | Modified | Initializes new service connection |
+| `Application.start` | Modified | Initializes new service connection and cache client |
 | `Service.handle` | New | Routes requests to backends based on type |
 | `Service.validate` | New | Pre-flight checks before dispatch |
-| `Database.schema` | Modified | Adds `requested_at`, `processed_at` columns |
-| CLI (`app/__main__.py`) | Modified | Adds `--service-url`, `--strict` flags |
-| `pyproject.toml` | Possibly modified | Bump min version of `sdk-lib` if needed |
-| Tests | New | Unit + integration tests for new routing |
+| `Cache.lookup` | New | LRU cache in front of the service |
+| `Database.schema` | Modified | Adds `requested_at`, `processed_at`, and `cache_hit` columns |
+| CLI (`app/__main__.py`) | Modified | Adds `--service-url`, `--cache-size`, `--strict` flags |
+| `pyproject.toml` | Modified | Bump min version of `sdk-lib`; add `cachetools` dep |
+| Telemetry | New | Emit counters for backend selection and cache hit rate |
+| Tests | New | Unit + integration tests for routing and cache |
 
 ---
 
@@ -111,11 +132,12 @@ sequenceDiagram
 
 1. **Create the `Service` class**
    - File: `src/app/service.py`
-   - Methods: `__init__`, `accepts(request) -> bool`, `handle(request) -> Response`
+   - Methods: `__init__`, `accepts(request) -> bool`, `validate(request) -> None`, `handle(request) -> Response`
    - Acceptance criteria:
-     - [ ] `Service` instance is constructible with default args
-     - [ ] `accepts()` returns `True` for supported request types
+     - [x] `Service` instance is constructible with default args
+     - [x] `accepts()` returns `True` for supported request types
      - [ ] `accepts()` returns `False` for unsupported types
+     - [ ] `validate()` raises on malformed payloads
      - [ ] `handle()` returns a valid `Response` for an accepted request
 
 2. **Wire into the constructor**
@@ -136,9 +158,9 @@ sequenceDiagram
 
 ### Phase 2: Smart Routing
 
-**Goal**: Route requests to the right backend based on type.
+**Goal**: Route requests to the right backend based on type, with cache fast-path.
 
-**Approach**: Add a routing table and a `_resolve_backend()` helper.
+**Approach**: Add a routing table, a `_resolve_backend()` helper, and an LRU cache wrapper around `handle()`. Cache is keyed by request hash and capped at `cache_size` entries (default 1024).
 
 **Dependencies**: Phase 1 complete.
 
@@ -162,6 +184,8 @@ sequenceDiagram
 
 - [ ] Unit: each supported type routes to the expected backend
 - [ ] Unit: unknown type → fallback + warning logged
+- [ ] Unit: repeated request hits the cache on the second call
+- [ ] Unit: cache eviction at `cache_size + 1` entries
 
 ---
 
@@ -177,16 +201,48 @@ sequenceDiagram
 
 1. **CLI flags**
    - File: `src/app/__main__.py`
-   - Add `--service-url` (str) and `--strict` (store_true)
+   - Add `--service-url` (str), `--cache-size` (int, default 1024), and `--strict` (store_true)
    - Acceptance criteria:
      - [ ] `app run --service-url "..."` activates the service
+     - [ ] `app run --cache-size 0` disables the cache
      - [ ] `app run --strict` rejects unknown types
 
 2. **README**
    - Add a "Service Integration" section after the existing "Quick Start"
    - Acceptance criteria:
-     - [ ] Example shows `--service-url` usage
+     - [ ] Example shows `--service-url` and `--cache-size` usage
      - [ ] Output sample matches what the service returns
+     - [ ] Cache hit-rate snippet included
+
+---
+
+### Phase 4: Telemetry
+
+**Goal**: Emit metrics for backend selection and cache effectiveness so operators can tune `--cache-size` and spot routing regressions.
+
+**Approach**: Wrap `Service.handle()` and `Cache.lookup()` in lightweight counters using the existing `metrics` module. No new dependencies.
+
+**Dependencies**: Phases 1–3.
+
+#### Tasks
+
+1. **Counters**
+   - File: `src/app/service.py`, `src/app/cache.py`
+   - Add `metrics.increment("service.backend.<name>")` per dispatch
+   - Add `metrics.increment("cache.hit")` / `metrics.increment("cache.miss")`
+   - Acceptance criteria:
+     - [ ] Counters fire on every relevant code path
+     - [ ] Counter names match the existing `metrics` naming convention
+
+2. **Dashboard**
+   - Add a Grafana panel JSON snippet to `docs/dashboards/service.json`
+   - Acceptance criteria:
+     - [ ] Panel shows backend distribution and cache hit-rate
+
+#### Tests
+
+- [ ] Unit: counter increments observed via the `metrics` test double
+- [ ] Smoke: dashboard JSON parses
 
 ---
 
@@ -236,7 +292,21 @@ tasks:
     dependencies: ["2.1"]
     acceptance_criteria:
       - "--service-url accepted"
+      - "--cache-size accepted (default 1024)"
       - "--strict rejects unknown types"
+
+  - id: "4.1"
+    phase: 4
+    title: "Add telemetry counters"
+    files:
+      - path: "src/app/service.py"
+        action: "modify"
+      - path: "src/app/cache.py"
+        action: "modify"
+    dependencies: ["3.1"]
+    acceptance_criteria:
+      - "Per-backend counter fires on dispatch"
+      - "Cache hit/miss counters fire on lookup"
 ```
 
 ---
@@ -248,7 +318,9 @@ tasks:
 | Service URL changes upstream | Medium | Medium | Pin version; capture URL in config |
 | Routing table drift | Low | High | Cover with unit tests per supported type |
 | Backward compatibility regressions | Low | High | Default kwargs unchanged; add regression tests |
-| CLI flag naming conflict | Low | Low | Prefix with `--service-` |
+| Cache poisoning via shared key | Low | High | Include caller identity in cache key |
+| Memory pressure from oversized cache | Medium | Medium | LRU eviction; expose `--cache-size`; document tuning |
+| CLI flag naming conflict | Low | Low | Prefix with `--service-` / `--cache-` |
 | Network flakiness in integration tests | Medium | Low | Mark slow tests `@pytest.mark.slow`; skip by default |
 
 ---
@@ -260,10 +332,15 @@ tasks:
 ```python
 from app import Application
 
-app = Application(service_url="https://example.com/svc")
+app = Application(
+    service_url="https://example.com/svc",
+    cache_size=1024,
+)
 result = app.handle({"type": "ping", "payload": "hello"})
 print(result.body)
 # → "pong"
+print(result.metadata["backend"], result.metadata["cache_hit"])
+# → "primary" False
 ```
 
 ### Python: with strict mode
@@ -285,6 +362,9 @@ except UnknownRequestType as e:
 # Activate the service
 app run --service-url "https://example.com/svc" sample.json
 
+# Tune the cache size (0 disables the cache entirely)
+app run --service-url "https://example.com/svc" --cache-size 4096 sample.json
+
 # Strict mode rejects unknown types
 app run --service-url "https://example.com/svc" --strict sample.json
 ```
@@ -301,11 +381,14 @@ A taste of nested-list line mapping:
 
 - Top-level item one
   - Nested item A
-  - Nested item B
+  - Nested item B (revised)
     - Deeply nested item
+    - Deeply nested item two — newly added
 - Top-level item two
   - Nested item C
+  - Nested item D — newly added
 - Top-level item three
+- Top-level item four — newly added
 
 Numbered:
 
@@ -319,7 +402,9 @@ Task list:
 
 - [x] Initial design reviewed
 - [x] Phase 1 implemented
-- [ ] Phase 2 tests added
+- [x] Phase 2 tests added
+- [ ] Phase 3 CLI flags wired
+- [ ] Phase 4 telemetry counters in place
 - [ ] CLI documented
 - [ ] Release notes drafted
 
@@ -335,7 +420,10 @@ Some markdown documents embed raw HTML for collapsible sections:
 ```
 status: ok
 backend: primary
+cache_hit: false
 latency_ms: 42
+requested_at: 2026-05-19T08:14:02Z
+processed_at: 2026-05-19T08:14:02.042Z
 ```
 
 </details>
@@ -354,10 +442,13 @@ A paragraph after the horizontal rule.
 
 - [GitHub PR Review API](https://docs.github.com/en/rest/pulls/comments)
 - [Mermaid syntax](https://mermaid.js.org/intro/)
+- [LRU cache patterns](https://docs.python.org/3/library/functools.html#functools.lru_cache)
 - Internal design wiki: [link](https://example.com/wiki/design)
+- Internal telemetry guide: [link](https://example.com/wiki/telemetry)
 
 ## Change Log
 
 | Date | Author | Change Summary |
 |------|--------|----------------|
 | 2026-05-12 | Test User | Initial test document for the rich-diff comments extension |
+| 2026-05-19 | Test User | Added Phase 4 (telemetry), cache layer, sequence diagram alt path, expanded risks and tasks |

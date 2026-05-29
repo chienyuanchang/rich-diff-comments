@@ -3068,21 +3068,18 @@
       return;
     }
 
-    // Decide whether to keep the sidebar at all. The sidebar hosts BOTH
-    // tabs (Threads + Outline), so the right "should this exist" check
-    // is "do we have something to show in EITHER tab":
-    //   - Threads tab is useful when there's at least one thread.
-    //   - Outline tab is useful when there are >= 3 headings on the page
-    //     (matches the auto-hide threshold inside `buildOutlinePane`).
-    // If both are empty, drop the sidebar — no value adding chrome.
+    // Decide whether to keep the sidebar at all. Previously we required
+    // either ≥1 thread OR ≥3 headings to bother showing the chrome — but
+    // that produced confusing "why isn't the sidebar here on this file?"
+    // moments on small PRs / single-heading READMEs. Now that `t`
+    // toggles and `Shift+T` resets the sidebar, the user has full control;
+    // we always show it on rich-diff pages and let them hide it if it's
+    // unwanted. The Outline tab's own emptiness handling still kicks in
+    // when there are no headings at all.
     const headingCount = document.querySelectorAll(
       '.prose-diff .markdown-body h1, .prose-diff .markdown-body h2, .prose-diff .markdown-body h3, .prose-diff .markdown-body h4, .prose-diff .markdown-body h5, .prose-diff .markdown-body h6'
     ).length;
-    const outlineUseful = headingCount >= 3;
-    if (threadEls.length === 0 && !outlineUseful) {
-      sidebar?.remove();
-      return;
-    }
+    const outlineUseful = headingCount >= 1;
     // Threads list is empty but Outline still has content (e.g. user
     // deleted all their comments on a long design doc) — keep the sidebar
     // and auto-switch to the Outline tab so the user immediately sees
@@ -3324,10 +3321,13 @@
     const headings = collectHeadings();
     const tab = sidebar.querySelector('.grdc-sidebar-tab[data-grdc-tab="outline"]');
 
-    // Hide the Outline tab when the page has fewer than 3 headings — not
-    // enough structure to be useful, and a 1-heading file would just
-    // duplicate the file title.
-    if (headings.length < 3) {
+    // Hide the Outline tab only when the page has zero headings. We used
+    // to require ≥ 3 ("a 1-heading file would just duplicate the file
+    // title") but that produced confusing "where's the outline?" moments
+    // on small READMEs with a single H1 plus prose. With the sidebar now
+    // always visible on rich-diff and `t` to toggle, listing every
+    // heading is the less surprising default.
+    if (headings.length < 1) {
       tab.hidden = true;
       // If outline was the active tab, fall back to threads.
       if (localStorage.getItem(SIDEBAR_TAB_KEY) === 'outline') {

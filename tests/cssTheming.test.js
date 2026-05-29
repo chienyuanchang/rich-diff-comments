@@ -107,6 +107,7 @@ const LEGACY_TO_NEW = {
   '--color-canvas-overlay':     ['--overlay-bgColor'],
   '--color-fg-default':         ['--fgColor-default'],
   '--color-fg-muted':           ['--fgColor-muted'],
+  '--color-fg-on-emphasis':     ['--fgColor-onEmphasis'],
   '--color-border-default':     ['--borderColor-default'],
   '--color-border-muted':       ['--borderColor-muted'],
   '--color-accent-fg':          ['--fgColor-accent'],

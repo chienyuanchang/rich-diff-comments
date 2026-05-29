@@ -893,12 +893,14 @@ li.grdc-hoverable .grdc-comment-btn {
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  border-bottom: 1px solid var(--borderColor-muted, var(--color-border-muted, #d8dee4));
-  /* Match the sidebar shell's opaque pale blue. When collapsed, only the
-     header is visible — keeping it pale blue makes the collapsed bar
-     easy to spot against any page background. Opaque so page content
-     doesn't bleed through. */
-  background: var(--bgColor-accent-subtle, #eaf2fb);
+  border-bottom: 1px solid var(--borderColor-default, var(--color-border-default, #c3d4ea));
+  /* Match GitHub's link blue (`--fgColor-accent` — `#0969da` light,
+     `#2f81f7` dark) so the header reads as "part of GitHub's UI". Using
+     the link token instead of `bgColor-accent-emphasis` keeps the shade
+     identical to in-page links in both themes. Text/icons stay white via
+     the rule below. */
+  background: var(--fgColor-accent, var(--color-accent-fg, #0969da));
+  color: var(--fgColor-onEmphasis, var(--color-fg-on-emphasis, #ffffff));
   border-top-left-radius: 6px;
   border-top-right-radius: 6px;
   cursor: move;
@@ -917,11 +919,11 @@ li.grdc-hoverable .grdc-comment-btn {
   cursor: pointer;
   font-size: 13px;
   line-height: 1;
-  color: var(--fgColor-default, var(--color-fg-default, #1f2328));
+  color: inherit;
 }
 .grdc-sidebar-header button:hover {
-  background: var(--bgColor-neutral-muted, var(--color-neutral-muted, rgba(175, 184, 193, 0.2)));
-  border-color: var(--borderColor-default, var(--color-border-default, #d0d7de));
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.35);
 }
 .grdc-sidebar-collapse { margin-right: 2px; }
 /* Group prev/next together so they read as a pair, not as two solo arrows
@@ -958,26 +960,36 @@ li.grdc-hoverable .grdc-comment-btn {
   border: 1px solid transparent;
   border-radius: 4px;
   cursor: pointer;
-  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
+  /* On the saturated blue header, muted grey is invisible — keep the
+     funnel white at reduced opacity instead. */
+  color: rgba(255, 255, 255, 1);
   display: none;
-  transition: opacity 0.12s, background 0.12s;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
 }
 .grdc-sidebar-collapsed .grdc-sidebar-header-filter {
   display: inline-flex;
-  opacity: 0.55;
+  opacity: 0.7;
 }
 .grdc-sidebar-collapsed:hover .grdc-sidebar-header-filter,
 .grdc-sidebar-collapsed .grdc-sidebar-header-filter:focus-visible {
   opacity: 1;
 }
 .grdc-sidebar-header-filter[aria-pressed="true"] {
-  /* Active state stays fully visible so the user knows the filter is on. */
+  /* "Lit pill" on the blue header: white fill, accent-blue funnel.
+     Inverting the colors makes the checked state unmistakable against
+     the saturated background in both light and dark mode. */
   opacity: 1;
   color: var(--fgColor-accent, var(--color-accent-fg, #0969da));
-  background: var(--bgColor-accent-muted, var(--color-accent-subtle, #ddf4ff));
+  background: rgba(255, 255, 255, 1);
 }
 .grdc-sidebar-header-filter:hover {
-  background: var(--bgColor-neutral-muted, var(--color-neutral-muted, rgba(175, 184, 193, 0.2)));
+  background: rgba(255, 255, 255, 0.18);
+}
+.grdc-sidebar-header-filter[aria-pressed="true"]:hover {
+  /* Keep the "lit" look on hover; just brighten slightly so the user
+     gets feedback that hover is registered without losing the inverted
+     contrast. */
+  background: rgba(255, 255, 255, 0.92);
 }
 /* Count: pushed to the far right, dimmed, smaller. It's a passive hint
    ("3 / 12"), not a primary control — should read as the quietest thing
@@ -1255,11 +1267,19 @@ li.grdc-hoverable .grdc-comment-btn {
    hex" lint rule). Only kicks in under prefers-color-scheme: dark, so it
    never overrides Primer's own light-mode styling. */
 @media (prefers-color-scheme: dark) {
-  /* Sidebar shell + header: dark navy with faint blue tint */
-  .grdc-sidebar,
-  .grdc-sidebar-header {
+  /* Sidebar shell: dark navy with faint blue tint */
+  .grdc-sidebar {
     background: rgba(28, 36, 56, 1);
     border-color: rgba(48, 54, 61, 1);
+  }
+  /* Sidebar header: match GitHub's dark-mode link blue (`#2f81f7`) so
+     the collapsed bar reads the same as in-page links against the dark
+     canvas. Explicit rgba because some PR variants / Enterprise themes
+     don't expose the Primer accent tokens. */
+  .grdc-sidebar-header {
+    background: rgba(47, 129, 247, 1);
+    border-color: rgba(48, 54, 61, 1);
+    color: rgba(255, 255, 255, 1);
   }
   /* List backdrop: GitHub dark canvas */
   .grdc-sidebar-list {

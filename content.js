@@ -2915,8 +2915,20 @@
       if (raw) {
         const { left, top } = JSON.parse(raw);
         if (Number.isFinite(left) && Number.isFinite(top)) {
-          sidebar.style.left = `${left}px`;
-          sidebar.style.top = `${top}px`;
+          // Clamp the stored position against the CURRENT viewport. If the
+          // window shrank, the user changed monitors, or browser zoom
+          // changed since the position was saved, the raw value can land
+          // the sidebar entirely offscreen. Reusing `clampDragPos` with a
+          // zero delta keeps at least 80px of the header visible.
+          const width = parseFloat(sidebar.style.width) || sidebar.offsetWidth || SIDEBAR_MIN_WIDTH;
+          const { left: cLeft, top: cTop } = clampDragPos(
+            { left, top, width },
+            { dx: 0, dy: 0 },
+            { width: window.innerWidth, height: window.innerHeight },
+            80
+          );
+          sidebar.style.left = `${cLeft}px`;
+          sidebar.style.top = `${cTop}px`;
           sidebar.style.right = 'auto';
         }
       }
@@ -2930,6 +2942,85 @@
         if (clamped.height != null) sidebar.style.height = `${clamped.height}px`;
       }
     } catch (_) {}
+  }
+
+  // Re-clamp the sidebar's position on window resize so a window shrink
+  // (or monitor switch / zoom change) can't strand it offscreen. Bound
+  // once globally; no-ops when the sidebar isn't on the page or hasn't
+  // been moved away from its default right-dock.
+  //
+  // IMPORTANT: we never write the clamped value back to localStorage. The
+  // stored position is the user's *intent* (where they dropped it on a
+  // larger window); the displayed position is just `clamp(intent, current
+  // viewport)`. Shrinking the window slides the sidebar inward to B; then
+  // enlarging the window slides it back out toward the original A.
+  // Persisting the clamp would lose the original intent on the first shrink.
+  (function bindSidebarResizeClamp() {
+    let t = null;
+    window.addEventListener('resize', () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        const sidebar = document.querySelector('.grdc-sidebar');
+        if (!sidebar) return;
+        let intentLeft, intentTop;
+        try {
+          const raw = localStorage.getItem(SIDEBAR_POS_KEY);
+          if (raw) {
+            const p = JSON.parse(raw);
+            if (Number.isFinite(p.left) && Number.isFinite(p.top)) {
+              intentLeft = p.left;
+              intentTop = p.top;
+            }
+          }
+        } catch (_) {}
+        // No stored intent → sidebar is still at the CSS default right-dock;
+        // it auto-adjusts with the viewport, nothing to do.
+        if (intentLeft === undefined) return;
+        const width = parseFloat(sidebar.style.width) || sidebar.offsetWidth || SIDEBAR_MIN_WIDTH;
+        const { left, top } = clampDragPos(
+          { left: intentLeft, top: intentTop, width },
+          { dx: 0, dy: 0 },
+          { width: window.innerWidth, height: window.innerHeight },
+          80
+        );
+        sidebar.style.left = `${left}px`;
+        sidebar.style.top = `${top}px`;
+        sidebar.style.right = 'auto';
+      }, 200);
+    });
+  })();
+
+  // Reset the sidebar to its default right-dock layout: clear persisted
+  // position / size / collapsed state, drop inline styles, and rebuild so
+  // the user can recover from an offscreen drag or unwanted collapse
+  // without DevTools. Bound to `Shift+T`.
+  function resetSidebarLayout() {
+    try {
+      localStorage.removeItem(SIDEBAR_POS_KEY);
+      localStorage.removeItem(SIDEBAR_SIZE_KEY);
+      localStorage.removeItem(SIDEBAR_COLLAPSE_KEY);
+    } catch (_) {}
+    const sidebar = document.querySelector('.grdc-sidebar');
+    if (sidebar) {
+      sidebar.style.left = '';
+      sidebar.style.top = '';
+      sidebar.style.right = '';
+      sidebar.style.width = '';
+      sidebar.style.height = '';
+      sidebar.classList.remove('grdc-sidebar-collapsed');
+    }
+    try { buildThreadsSidebar(); } catch (_) {}
+  }
+
+  // Toggle the sidebar's collapsed state. If the sidebar doesn't exist on
+  // the page (no threads / no useful outline), this is a no-op. Bound to
+  // the `t` shortcut so users can hide / reveal it without hunting for
+  // the small collapse button.
+  function toggleSidebarCollapsed() {
+    const sidebar = document.querySelector('.grdc-sidebar');
+    if (!sidebar) return;
+    const isCollapsed = sidebar.classList.toggle('grdc-sidebar-collapsed');
+    try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, isCollapsed ? '1' : '0'); } catch (_) {}
   }
 
   // Persist resize: watch for size changes via ResizeObserver and write to
@@ -3009,7 +3100,7 @@
       sidebar.setAttribute('aria-label', 'Review threads');
       sidebar.innerHTML = `
         <div class="grdc-sidebar-header">
-          <button class="grdc-sidebar-collapse" title="Collapse / expand sidebar" aria-label="Toggle sidebar">
+          <button class="grdc-sidebar-collapse" title="Collapse / expand sidebar (t) — Shift+T to reset position" aria-label="Toggle sidebar">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75Zm0 5A.75.75 0 0 1 1.75 7h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.75Zm0 5a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1-.75-.75Z"/></svg>
           </button>
           <span class="grdc-sidebar-nav">
@@ -3474,6 +3565,21 @@
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Sidebar visibility shortcuts run BEFORE the "sidebar must exist with
+    // cards" check below so they still work when the sidebar is collapsed
+    // or has no threads (Outline-only mode).
+    //   t       → toggle collapsed / expanded
+    //   Shift+T → reset position / size / collapsed (recover offscreen)
+    if (e.key === 'T' && e.shiftKey) {
+      e.preventDefault();
+      resetSidebarLayout();
+      return;
+    }
+    if (e.key === 't' && !e.shiftKey) {
+      e.preventDefault();
+      toggleSidebarCollapsed();
+      return;
+    }
     // Only fire when the sidebar exists and has at least one thread —
     // otherwise we'd swallow plain `j`/`k` on pages where we have nothing
     // to navigate to.

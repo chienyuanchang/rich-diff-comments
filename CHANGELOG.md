@@ -4,6 +4,14 @@ All notable changes to Rich Diff Comments for GitHub. Follows [Keep a Changelog]
 
 ## [Unreleased]
 
+### Added
+
+- **Keyboard shortcut to show / hide the threads sidebar.** Press `t` anywhere on a rich-diff page to toggle the sidebar between collapsed and expanded — useful when you've collapsed it once and forgotten where the slim bar is. Press `Shift+T` to reset the sidebar's position, size, and collapsed state to the default right-edge dock; recovers from cases where dragging it on a larger window left it offscreen on a smaller one.
+
+### Fixed
+
+- **Sidebar no longer gets stranded offscreen after a window resize.** The sidebar's dragged position is persisted across reloads, but the saved coordinates weren't re-clamped against the current viewport. If you dragged the sidebar on a larger monitor and then opened the page on a smaller one (or changed browser zoom), the panel could land entirely outside the visible area — present in the DOM but invisible. The stored position is now clamped on load and re-clamped on window resize so at least 80 px of the header always stays in view.
+
 ## [1.0.2] — 2026-05-28
 
 ### Fixed

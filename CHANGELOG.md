@@ -4,7 +4,7 @@ All notable changes to Rich Diff Comments for GitHub. Follows [Keep a Changelog]
 
 ## [Unreleased]
 
-## [1.0.3] — 2026-05-29
+## [1.1.0] — 2026-05-29
 
 ### Added
 

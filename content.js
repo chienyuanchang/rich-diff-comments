@@ -943,6 +943,173 @@
     return match;
   }
 
+  // ── Per-file rich-diff toggling ─────────────────────────────────────
+  // Find all PR file containers — same selector family used elsewhere
+  // (`buildLineMap`, `attachCommentButtons`). Each container hosts the
+  // file's source / rendered toggle inside its header.
+  function findFileContainers() {
+    return Array.from(document.querySelectorAll(
+      'div[id^="diff-"], [data-tagsearch-path], .file[data-path]'
+    ));
+  }
+  function getContainerPath(container) {
+    // Use the full path-resolution strategy (data attr → clipboard-copy →
+    // pathDigestMap lookup) shared with `buildLineMap`. On `/changes`
+    // GitHub often omits `data-tagsearch-path` / `data-path` on the file
+    // wrappers — the clipboard-copy fallback inside `getFilePath` is what
+    // actually returns the path in that case.
+    try { return getFilePath(container) || ''; } catch (_) { return ''; }
+  }
+  function isMarkdownPath(p) { return /\.(md|markdown)$/i.test(p || ''); }
+
+  // Inside a file container, find the per-file toggle button that would
+  // switch it to rich-diff. Returns null when the rich-diff segment is
+  // already active or no toggle can be found. Reuses the same heuristics
+  // as `looksLikeDiffToggle` and additionally excludes the "source"
+  // segment of a SegmentedControl pair.
+  // Resolve a button's full label text: own attributes + textContent +
+  // `aria-labelledby` referenced element(s). GitHub's segmented-control
+  // toggle buttons have no own label — the human text ("Display the rich
+  // diff") lives in a sibling referenced via `aria-labelledby`. Without
+  // this, our match logic sees an empty haystack and skips the button.
+  function resolveButtonHaystack(btn) {
+    let labelledByText = '';
+    const lbId = btn.getAttribute('aria-labelledby');
+    if (lbId) {
+      labelledByText = lbId.split(/\s+/)
+        .map(id => document.getElementById(id)?.textContent || '')
+        .join(' ');
+    }
+    return (
+      (btn.getAttribute('aria-label') || '') + ' ' +
+      labelledByText + ' ' +
+      (btn.getAttribute('title') || '') + ' ' +
+      (btn.getAttribute('data-tab-item') || '') + ' ' +
+      (btn.getAttribute('data-disable-with') || '') + ' ' +
+      (btn.textContent || '')
+    ).toLowerCase();
+  }
+
+  function findRichDiffToggleIn(container) {
+    const buttons = container.querySelectorAll('button, a[role="button"], [data-tab-item]');
+    for (const btn of buttons) {
+      if (!looksLikeDiffToggle(btn)) continue;
+      const haystack = resolveButtonHaystack(btn);
+      // We want the button that switches TO rich-diff. Skip anything
+      // that's clearly the source segment.
+      const wantsRich = /rich|render/.test(haystack);
+      const isSourceSegment = /\bsource\b/.test(haystack) && !wantsRich;
+      if (!wantsRich || isSourceSegment) continue;
+      // Skip if the rich-diff segment is already active.
+      const pressed = btn.getAttribute('aria-pressed') === 'true' ||
+                      btn.getAttribute('aria-current') === 'true' ||
+                      btn.getAttribute('aria-current') === 'page' ||
+                      btn.classList.contains('selected') ||
+                      btn.classList.contains('SegmentedControl-item--selected');
+      if (pressed) return null;
+      return btn;
+    }
+    return null;
+  }
+
+  // Click every .md file's "render rich-diff" toggle that isn't already
+  // active. Returns the count of files that were flipped. The existing
+  // global click handler picks up each click and re-runs
+  // `buildThreadsSidebar` so the sidebar populates as files render.
+  // Single pass: scan every rich-diff toggle currently in the DOM, click
+  // each one that belongs to an unseen .md file. Returns the number of
+  // clicks performed in this pass; populates `seen` so future passes
+  // skip files we already handled (including ones that were already
+  // pressed). Used by `flipAllMdToRichDiff` across multiple scroll steps.
+  function clickRichTogglesOnce(seen) {
+    const buttons = document.querySelectorAll('button, a[role="button"], [data-tab-item]');
+    let count = 0;
+    for (const btn of buttons) {
+      if (!looksLikeDiffToggle(btn)) continue;
+      const haystack = resolveButtonHaystack(btn);
+      const wantsRich = /rich|render/.test(haystack);
+      const isSourceSegment = /\bsource\b/.test(haystack) && !wantsRich;
+      if (!wantsRich || isSourceSegment) continue;
+      const container = btn.closest('div[id^="diff-"], [data-tagsearch-path], .file[data-path]');
+      const path = container ? getContainerPath(container) : '';
+      if (!isMarkdownPath(path)) continue;
+      if (seen.has(path)) continue;
+      const pressed = btn.getAttribute('aria-pressed') === 'true' ||
+                      btn.getAttribute('aria-current') === 'true' ||
+                      btn.getAttribute('aria-current') === 'page' ||
+                      btn.classList.contains('selected') ||
+                      btn.classList.contains('SegmentedControl-item--selected');
+      seen.add(path);
+      if (pressed) continue;
+      console.log(`[GRDC]   CLICK ${path}`);
+      btn.click();
+      count++;
+    }
+    return count;
+  }
+
+  // Click every per-file "render rich-diff" toggle on the page whose
+  // owning file container belongs to a Markdown file. GitHub lazy-renders
+  // file headers as the user scrolls, so a single top-of-page scan only
+  // sees the first ~2 toggles. We scroll the page in steps, scanning
+  // after each step so newly-rendered file headers are caught, then
+  // restore the user's original scroll position when done.
+  async function flipAllMdToRichDiff() {
+    const seen = new Set();
+    let clicked = 0;
+    const origScroll = window.scrollY;
+    const docHeight = () => Math.max(
+      document.documentElement.scrollHeight,
+      document.body.scrollHeight
+    );
+    // 0.8× viewport keeps us fast (fewer iterations) while still small
+    // enough to land each not-yet-mounted header inside one step.
+    const step = Math.max(500, window.innerHeight * 0.8);
+
+    // Diagnostic: how many .md files does the page CLAIM to have?
+    const expectedMd = (routeData?.diffSummaries || [])
+      .filter(s => isMarkdownPath(s.path)).length;
+    console.log(`[GRDC] flipAllMdToRichDiff: expecting ${expectedMd || '?'} md file(s)`);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'grdc-render-overlay';
+    overlay.innerHTML = '<div class="grdc-render-overlay-card">Loading Markdown files…</div>';
+    document.body.appendChild(overlay);
+
+    try {
+      // Single top-to-bottom pass. Scan at each step; bail out as soon as
+      // we've covered every expected .md file so we don't keep scrolling
+      // past the bottom for nothing.
+      let y = 0;
+      let guard = 0;
+      const dwell = 100;
+      // First scan from current viewport (in case user clicked while
+      // already at the top and the first batch is already mounted).
+      clicked += clickRichTogglesOnce(seen);
+      while (y < docHeight() && guard < 60) {
+        if (expectedMd && seen.size >= expectedMd) break;
+        window.scrollTo({ top: y, behavior: 'instant' });
+        await new Promise(r => setTimeout(r, dwell));
+        clicked += clickRichTogglesOnce(seen);
+        y += step;
+        guard++;
+      }
+      // Final scan at the very bottom for the last header (often needs a
+      // touch more time to mount than the in-loop dwell).
+      if (!expectedMd || seen.size < expectedMd) {
+        window.scrollTo({ top: docHeight(), behavior: 'instant' });
+        await new Promise(r => setTimeout(r, 180));
+        clicked += clickRichTogglesOnce(seen);
+      }
+    } finally {
+      window.scrollTo({ top: origScroll, behavior: 'instant' });
+      overlay.remove();
+    }
+    console.log(`[GRDC] flipAllMdToRichDiff: scanned ${seen.size}/${expectedMd || '?'} md file(s); clicked ${clicked}`);
+    setTimeout(() => { try { buildThreadsSidebar(); } catch (_) {} }, 400);
+    return clicked;
+  }
+
   document.addEventListener('click', (e) => {
     if (!looksLikeDiffToggle(e.target)) return;
     // Refresh the threads sidebar after the toggle completes — when the
@@ -3053,17 +3220,18 @@
     const threadEls = Array.from(document.querySelectorAll('.grdc-existing-thread'));
     let sidebar = document.querySelector('.grdc-sidebar');
 
-    // Hide the sidebar when the user switches away from rich-diff (e.g.
-    // back to source-diff view). Our thread elements stay in the DOM —
-    // they're injected into `.prose-diff` which GitHub just hides via
-    // `display: none` — so a threadEls.length check alone isn't enough.
-    // `offsetParent === null` is the standard "is this hidden" probe and
-    // catches both `display: none` and detached ancestors. If NO prose-diff
-    // is currently visible, this isn't rich-diff and the sidebar shouldn't
-    // be either.
-    const richDiffVisible = Array.from(document.querySelectorAll('.prose-diff'))
-      .some(el => el.offsetParent !== null);
-    if (!richDiffVisible) {
+    // Hide the sidebar when we're not on a PR files/changes page at all
+    // (e.g. the user navigated back to /issues, /pull/<n> overview, etc.).
+    // On a PR page we always render the sidebar shell — even when every
+    // file is currently in source-diff view — so the user can find it,
+    // toggle with `t`, and reach upcoming actions like "flip all .md
+    // files to rich-diff". The threads / outline panes will be empty
+    // until at least one file is in rich-diff, which is fine.
+    //
+    // (Previously we early-returned whenever no `.prose-diff` was
+    // visible, which made the sidebar disappear on the `/changes` page
+    // before any file was toggled — confusing for first-time users.)
+    if (!prInfo) {
       sidebar?.remove();
       return;
     }
@@ -3113,6 +3281,9 @@
               <path class="grdc-icon-outline" fill="currentColor" fill-rule="evenodd" d="M.75 3A.75.75 0 0 1 1.5 2.25h13a.75.75 0 0 1 .6 1.2L10 10.25v3.25a.75.75 0 0 1-1.2.6l-2.5-1.88a.75.75 0 0 1-.3-.6V10.25L.9 3.45A.75.75 0 0 1 .75 3Zm2.25.75 4.6 6.13a.75.75 0 0 1 .15.45v1.69l1 .75v-2.44a.75.75 0 0 1 .15-.45L13.5 3.75h-10.5Z"/>
               <path class="grdc-icon-solid" fill="currentColor" d="M.75 3A.75.75 0 0 1 1.5 2.25h13a.75.75 0 0 1 .6 1.2L10 10.25v3.25a.75.75 0 0 1-1.2.6l-2.5-1.88a.75.75 0 0 1-.3-.6V10.25L.9 3.45A.75.75 0 0 1 .75 3Z"/>
             </svg>
+          </button>
+          <button class="grdc-sidebar-render-md" title="Render all Markdown files as rich-diff" aria-label="Render all Markdown files as rich-diff">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"/></svg>
           </button>
           <span class="grdc-sidebar-count" aria-live="polite"></span>
         </div>
@@ -3164,6 +3335,37 @@
         cb.dispatchEvent(new Event('change', { bubbles: true }));
       });
 
+      // "Render all .md as rich-diff" — walk every file container, find
+      // the per-file source/rendered toggle, and click it on Markdown
+      // files that are currently in source-diff mode. Useful on PRs with
+      // many .md changes where toggling each file by hand is tedious.
+      sidebar.querySelector('.grdc-sidebar-render-md').addEventListener('click', async (e) => {
+        e.preventDefault();
+        const btn = e.currentTarget;
+        const orig = btn.getAttribute('title');
+        btn.setAttribute('title', 'Rendering Markdown files…');
+        btn.setAttribute('disabled', 'true');
+        // If the sidebar is collapsed, expand it so the user can actually
+        // see threads / outline populate as files render. Without this,
+        // clicking the book icon while collapsed produced the impression
+        // that "only some files opened" — the files were flipped fine,
+        // but the threads pane stayed hidden behind the slim bar.
+        const wasCollapsed = sidebar.classList.contains('grdc-sidebar-collapsed');
+        if (wasCollapsed) {
+          sidebar.classList.remove('grdc-sidebar-collapsed');
+          try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, '0'); } catch (_) {}
+        }
+        try {
+          const n = await flipAllMdToRichDiff();
+          btn.setAttribute('title', n === 0
+            ? 'All Markdown files are already in rich-diff'
+            : `Rendered ${n} Markdown file${n === 1 ? '' : 's'} as rich-diff`);
+        } finally {
+          btn.removeAttribute('disabled');
+          setTimeout(() => { if (orig) btn.setAttribute('title', orig); }, 2500);
+        }
+      });
+
       // Tab switching. Active state persists in `localStorage` per origin.
       sidebar.querySelectorAll('.grdc-sidebar-tab').forEach(tab => {
         tab.addEventListener('click', () => {
@@ -3207,6 +3409,40 @@
     list.innerHTML = '';
     const visible = threadEls.filter(t =>
       !unresolvedOnly || !t.classList.contains('grdc-thread-resolved'));
+
+    // Empty-state CTA: when there are no threads to show, surface the
+    // "Render all Markdown files as rich-diff" action prominently in the
+    // pane itself. Without this, users landing on a `/changes` page (where
+    // every file is in source-diff by default) see an empty sidebar with
+    // no obvious next step — comments are only fetched / shown once at
+    // least one file is in rich-diff. The header book icon is still
+    // available, but in-pane is much more discoverable.
+    if (visible.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'grdc-sidebar-empty';
+      const msg = threadEls.length === 0
+        ? (unresolvedOnly
+            ? 'No threads on this page yet.'
+            : 'No review threads visible yet. Render the Markdown files as rich-diff to load any comments on them.')
+        : 'All threads on this page are resolved.';
+      empty.innerHTML = `
+        <p class="grdc-sidebar-empty-msg">${escapeHtml(msg)}</p>
+        <button type="button" class="grdc-sidebar-empty-cta">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"/></svg>
+          <span>Render all Markdown files as rich-diff</span>
+        </button>
+      `;
+      const cta = empty.querySelector('.grdc-sidebar-empty-cta');
+      cta.addEventListener('click', () => {
+        // Reuse the header-icon click handler by forwarding to it. Falls
+        // back to a direct call if for any reason the header button isn't
+        // present (e.g. future refactor).
+        const headerBtn = sidebar.querySelector('.grdc-sidebar-render-md');
+        if (headerBtn) headerBtn.click();
+        else flipAllMdToRichDiff();
+      });
+      list.appendChild(empty);
+    }
     visible.forEach((threadEl, idx) => {
       const card = document.createElement('button');
       card.type = 'button';

@@ -1019,6 +1019,36 @@ li.grdc-hoverable .grdc-comment-btn {
   /* White backdrop so each tinted card visually pops against the list. */
   background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
 }
+/* Empty-state card shown inside the threads pane when there are no
+   threads to display. Doubles as the primary CTA for "Render all
+   Markdown files as rich-diff" so users landing on a /changes page in
+   source-diff mode have an obvious next step. */
+.grdc-sidebar-empty {
+  padding: 16px 12px;
+  text-align: center;
+  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
+}
+.grdc-sidebar-empty-msg {
+  margin: 0 0 12px 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.grdc-sidebar-empty-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--fgColor-accent, var(--color-accent-fg, #0969da));
+  color: var(--fgColor-onEmphasis, var(--color-fg-on-emphasis, #ffffff));
+  border: 1px solid var(--fgColor-accent, var(--color-accent-fg, #0969da));
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter 0.12s;
+}
+.grdc-sidebar-empty-cta:hover { filter: brightness(1.08); }
+.grdc-sidebar-empty-cta:active { filter: brightness(0.95); }
 .grdc-sidebar-card {
   display: block;
   width: 100%;
@@ -1256,6 +1286,39 @@ li.grdc-hoverable .grdc-comment-btn {
   0%   { box-shadow: 0 0 0 0 var(--bgColor-accent-emphasis, rgba(9, 105, 218, 0.7)); }
   50%  { box-shadow: 0 0 0 8px var(--bgColor-accent-muted, rgba(9, 105, 218, 0.25)); }
   100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }
+}
+
+/* ── Render-all-md loading overlay ─────────────────────────────────────
+   While "Render all Markdown files as rich-diff" is scrolling the page
+   to force GitHub's lazy-rendered file headers, hide the visible scroll
+   behind a translucent splash so the user just sees a brief "Loading…"
+   instead of the page jumping top → bottom → back. */
+.grdc-render-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 17, 23, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: all;
+  animation: grdc-overlay-fade-in 120ms ease-out;
+}
+.grdc-render-overlay-card {
+  background: var(--fgColor-accent, var(--color-accent-fg, #0969da));
+  color: var(--fgColor-onEmphasis, var(--color-fg-on-emphasis, #ffffff));
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+@keyframes grdc-overlay-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* ── Dark mode overrides ───────────────────────────────────────────────

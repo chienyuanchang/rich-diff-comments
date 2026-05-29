@@ -32,6 +32,7 @@
     buildSnippet,
     clampDragPos,
     nextWrappingIndex,
+    isMarkdownPath,
     slugifyHeading,
     buildOutlineTree,
     attributeThreadsToHeadings,
@@ -960,7 +961,6 @@
     // actually returns the path in that case.
     try { return getFilePath(container) || ''; } catch (_) { return ''; }
   }
-  function isMarkdownPath(p) { return /\.(md|markdown)$/i.test(p || ''); }
 
   // Inside a file container, find the per-file toggle button that would
   // switch it to rich-diff. Returns null when the rich-diff segment is

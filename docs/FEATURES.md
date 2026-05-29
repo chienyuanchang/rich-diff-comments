@@ -60,9 +60,19 @@ What works today, what's planned, and what we deliberately won't do.
 - [x] **Unmatched-block fallback** inherits previous line (no longer collapses to line 1)
 - [x] **Standalone paragraphs and blockquotes** get `+` buttons (the original P-skip filter was inverted and skipped them all)
 
+### Sidebar discoverability & multi-file workflow (1.0.3)
+
+- [x] **Threads sidebar always available on PR rich-diff pages** — used to early-return whenever no `.prose-diff` was visible (e.g. `/changes` before any file was toggled, single-heading READMEs). Now renders on every PR `/files` / `/changes` page so the floating bar is always findable. Source-diff / rich-diff toggle no longer hides it. See [DEV_NOTES.md → Keeping the threads sidebar in sync](./DEV_NOTES.md#keeping-the-threads-sidebar-in-sync).
+- [x] **Sidebar header matches GitHub's link blue** — header (and the collapsed bar) use `--fgColor-accent` (`#0969da` light, `#2f81f7` dark). Reads as native GitHub UI; the collapsed bar is unmistakable against any page background.
+- [x] **Keyboard shortcuts to call back / reset the sidebar** — `t` toggles collapsed/expanded; `Shift+T` clears persisted position/size/collapsed state and re-docks. Both run before the "must have cards" guard so they work in collapsed and Outline-only modes.
+- [x] **Sidebar can't get stranded offscreen after window resize** — stored position is clamped against the current viewport on load and on debounced `window.resize`. The clamped value is **never written back** to localStorage, so re-enlarging the window slides the sidebar back toward the original drop point instead of leaving it stuck at the shrunken-window position.
+- [x] **"Render all Markdown files as rich-diff" one-click action** — sidebar header book icon and primary CTA in the empty-state Threads pane. Scans the page top-to-bottom (0.8 × viewport steps, 100 ms dwell) behind a `Loading Markdown files…` overlay to force GitHub's lazy-rendered file headers, clicks each per-file Source→Rendered toggle, then restores the user's scroll position. Auto-expands the sidebar if collapsed when clicked. Early-exits when every expected `.md` file (count from `routeData.diffSummaries`) has been seen. See [DEV_NOTES.md → Render-all-md-as-rich-diff](./DEV_NOTES.md#render-all-md-as-rich-diff-103).
+- [x] **Fold H1 button in the Outline toolbar** — joins `Fold H2` / `Fold H3` / `Expand all`. Collapses each document to just its title — useful for a bird's-eye view of which files changed without reading bodies.
+- [x] **Outline tab shows even on single-heading files** — threshold lowered from ≥ 3 to ≥ 1 heading (matches the outer sidebar visibility change).
+
 ### Testing
 
-- [x] **155 unit tests** for pure helpers (line matching, response parsing, markersMap parsing, table arithmetic, markdown preview, HTML escaping, time formatting, sidebar helpers, heading slugify, outline tree + thread attribution + fold-at-level) using Node's built-in `node:test` — zero dependencies
+- [x] **196 unit tests** for pure helpers (line matching, response parsing, markersMap parsing, table arithmetic, markdown preview, HTML escaping, time formatting, sidebar helpers incl. `isMarkdownPath`, heading slugify, outline tree + thread attribution + fold-at-level) using Node's built-in `node:test` — zero dependencies
 - [x] **Regression tests** for every bug in the changelog
 - [x] **Manual test checklist** in DEV_NOTES for DOM/network paths not covered by unit tests
 

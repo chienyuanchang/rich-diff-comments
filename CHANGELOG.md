@@ -4,14 +4,24 @@ All notable changes to Rich Diff Comments for GitHub. Follows [Keep a Changelog]
 
 ## [Unreleased]
 
+## [1.0.3] — 2026-05-29
+
 ### Added
 
-- **Keyboard shortcut to show / hide the threads sidebar.** Press `t` anywhere on a rich-diff page to toggle the sidebar between collapsed and expanded — useful when you've collapsed it once and forgotten where the slim bar is. Press `Shift+T` to reset the sidebar's position, size, and collapsed state to the default right-edge dock; recovers from cases where dragging it on a larger window left it offscreen on a smaller one.
+- **Threads sidebar is always available on PR rich-diff pages.** The sidebar used to be hidden whenever no `.prose-diff` was visible (e.g. when every file was in source-diff mode on `/changes`, or on small READMEs with fewer than three headings). It now renders on every PR `/files` or `/changes` page so the floating bar is always findable, and you can act on it before any file is opened in rich-diff.
+- **"Render all Markdown files as rich-diff" action.** A new book icon in the sidebar header (and a primary CTA in the empty-state Threads pane) flips every `.md` / `.markdown` file in the PR into rich-diff mode in one click. The script scans the page top-to-bottom behind a translucent "Loading Markdown files…" overlay to force GitHub''s lazy-rendered file headers, clicks each per-file Source→Rendered toggle, then restores your scroll position. Comments on those files load automatically as each rich-diff mounts. Skips files already in rich-diff and bails early once every expected Markdown file has been handled.
+- **Keyboard shortcut to show / hide the threads sidebar.** Press `t` anywhere on a rich-diff page to toggle the sidebar between collapsed and expanded — useful when you''ve collapsed it once and forgotten where the slim bar is. Press `Shift+T` to reset the sidebar''s position, size, and collapsed state to the default right-edge dock; recovers from cases where dragging it on a larger window left it offscreen on a smaller one.
+- **Fold H1 button in the Outline toolbar.** Joins the existing `Fold H2` / `Fold H3` / `Expand all`. Folds every top-level heading at once so each document collapses to just its title — handy on multi-file PRs where you want a bird''s-eye view of which files changed without reading the bodies.
+- **Empty-state CTA in the Threads pane.** When the page has no threads to display (common on `/changes` before any rich-diff opens), the pane shows a clear blue "Render all Markdown files as rich-diff" button instead of an empty list — so the next step is obvious.
+
+### Changed
+
+- **Sidebar header now uses GitHub''s link blue.** The header (and the collapsed bar) match GitHub''s `--fgColor-accent` token (`#0969da` light, `#2f81f7` dark) instead of the previous pale tint. The collapsed bar is now unmistakable against any page background, and the saturated blue header reads as part of GitHub''s own UI rather than custom chrome.
+- **"Unresolved only" filter button has clearer on / off contrast on the new header.** When unpressed, the funnel is white at 70 % opacity; when pressed, it inverts to a white pill with an accent-blue funnel — the inversion keeps the "on" state unmistakable against the saturated blue header in both light and dark mode.
 
 ### Fixed
 
-- **Sidebar no longer gets stranded offscreen after a window resize.** The sidebar's dragged position is persisted across reloads, but the saved coordinates weren't re-clamped against the current viewport. If you dragged the sidebar on a larger monitor and then opened the page on a smaller one (or changed browser zoom), the panel could land entirely outside the visible area — present in the DOM but invisible. The stored position is now clamped on load and re-clamped on window resize so at least 80 px of the header always stays in view.
-
+- **Sidebar no longer gets stranded offscreen after a window resize.** The sidebar''s dragged position is persisted across reloads, but the saved coordinates weren''t re-clamped against the current viewport. If you dragged the sidebar on a larger monitor and then opened the page on a smaller one (or changed browser zoom), the panel could land entirely outside the visible area — present in the DOM but invisible. The stored position is now clamped on load and re-clamped on window resize so at least 80 px of the header always stays in view. The stored position is preserved (not overwritten by the clamp), so re-enlarging the window slides the sidebar back to your original spot.
 ## [1.0.2] — 2026-05-28
 
 ### Fixed

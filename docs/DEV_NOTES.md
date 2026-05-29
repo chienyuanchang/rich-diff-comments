@@ -444,16 +444,41 @@ The sidebar reads its data straight off the rendered thread DOM (`.grdc-existing
 
 **Rule of thumb:** if the mutation could change the *thread head's snippet text* or the *head comment's identity*, use `scheduleReinit()`. Otherwise `buildThreadsSidebar()` is enough and avoids the full route-data refetch.
 
-The sidebar also auto-hides when the user toggles away from rich-diff:
+The sidebar's visibility rule changed in 1.0.3. It used to early-return whenever no `.prose-diff` was visible (so the sidebar disappeared on `/changes` before the user toggled any file into rich-diff). That made the floating bar hard to find for first-time users. Now the rule is:
 
 ```js
-// In buildThreadsSidebar, before doing any work:
-const richDiffVisible = Array.from(document.querySelectorAll('.prose-diff'))
-  .some(el => el.offsetParent !== null);
-if (!richDiffVisible) { sidebar?.remove(); return; }
+// In buildThreadsSidebar:
+if (!prInfo) { sidebar?.remove(); return; }   // not a PR /files|/changes page → hide
+// (no rich-diff visibility check)
 ```
 
-`offsetParent === null` is the standard "is this hidden via display:none or a detached ancestor" probe — catches GitHub's source-diff toggle (which `display: none`s `.prose-diff` rather than removing it). A click listener on rich/source-diff toggles also re-runs `buildThreadsSidebar` after a 100ms delay so the sidebar appears immediately when toggling back to rich-diff.
+The sidebar renders on every PR `/files` / `/changes` page, regardless of source-diff vs rich-diff. The Threads / Outline panes are empty until at least one file is in rich-diff — that's the empty-state CTA's job (see the next sub-section).
+
+We *also* lowered both the "do we bother showing this at all" threshold and the Outline's "is there enough structure" threshold to 1 heading in 1.0.3. Previously both required ≥ 3 — which produced confusing "why isn't the sidebar / outline here on this file?" moments on small READMEs with a single H1. `t` and `Shift+T` give the user direct control if the bar is unwanted.
+
+### Findability shortcuts and offscreen recovery (1.0.3)
+
+Three discoverability problems with the docked sidebar surfaced after 1.0.1 shipped:
+
+1. **Can't find the collapsed bar.** Once collapsed, the slim header was the only visible thing — and the previous pale-blue tint blended into GitHub's own surface colors. Header now uses `--fgColor-accent` (GitHub's link blue — `#0969da` light, `#2f81f7` dark) so the collapsed bar reads as native GitHub UI rather than custom chrome.
+2. **Sidebar got stranded offscreen after a window resize.** `SIDEBAR_POS_KEY` is persisted in viewport coordinates; if the user dragged it on a wide monitor and re-opened on a narrow one, the saved `{left, top}` could land entirely outside the viewport. Fix in `applySidebarPersistedPos`: clamp the stored value through `clampDragPos` against `window.innerWidth × innerHeight` (≥ 80 px of header in view). A second IIFE binds a debounced `window.resize` listener that does the same clamp. **Critical detail:** the resize handler *never writes back to localStorage* — the stored value is the user's intent (where they dropped it on a large window), and the displayed value is always `clamp(intent, current viewport)`. Persisting the clamped value would lose the original intent on the first shrink; with this design, re-enlarging the window slides the sidebar back toward its original spot.
+3. **No way to call it back.** Bound two global keydowns (skipped when typing in inputs / `Ctrl|Meta|Alt` held):
+   - `t` → `toggleSidebarCollapsed()` — flips collapsed class, persists.
+   - `Shift+T` → `resetSidebarLayout()` — clears `SIDEBAR_POS_KEY` / `_SIZE_KEY` / `_COLLAPSE_KEY`, drops inline styles, rebuilds. Recovers from any offscreen / unwanted-collapsed state without DevTools.
+
+Both shortcuts run **before** the "must have cards" guard in the keydown handler so they work even when the sidebar is collapsed or in Outline-only mode (where `cards.length === 0`).
+
+### Render-all-md-as-rich-diff (1.0.3)
+
+The action is a sidebar header button (book icon) **and** a CTA in the empty-state Threads pane. Both call the same async `flipAllMdToRichDiff()`. Three non-obvious points:
+
+- **Inverted scan strategy.** Originally I scanned *inside* each `.md` file's container for its Source/Rendered toggle. That failed for files where GitHub's modern PR layout places the per-file `SegmentedControl` **outside** the diff container (we saw "only 2 candidates, no segmented control" in production logs). The current code goes the other way: walk every `button | a[role="button"] | [data-tab-item]` on the page, filter to those that match the diff-toggle heuristic *and* whose haystack contains "rich" / "render" (not "source"), then `closest(fileSelector)` back to a container to resolve the path. Dedupe by path so the same file isn't clicked twice.
+- **`aria-labelledby` matters.** GitHub's SegmentedControl buttons have no own `aria-label` / text — the "Display the rich diff" label lives in a sibling referenced via `aria-labelledby`. `looksLikeDiffToggle` already resolved it; `findRichDiffToggleIn`'s first version didn't, so `wantsRich = false` for every button. Shared helper `resolveButtonHaystack(btn)` now includes the labelledby text.
+- **Lazy-render workaround.** GitHub mounts file headers only as they enter the viewport (IntersectionObserver). A single top-of-page scan finds at most ~2 toggles. `flipAllMdToRichDiff` scrolls the page top-to-bottom in `0.8 × innerHeight` steps with a 100 ms dwell, scanning after each step. Behind a translucent `.grdc-render-overlay` ("Loading Markdown files…") so the user doesn't see the page jumping. Early-exits when `seen.size >= expectedMd` (count from `routeData.diffSummaries`), restores the user's original scroll, then calls `buildThreadsSidebar()` after a 400 ms delay so newly-rendered threads populate. Auto-expands the sidebar if it was collapsed when clicked — without that, users mistakenly thought "only some files opened" because the threads pane was hidden behind the slim bar.
+
+### Auto-hide / source-diff sync
+
+The sidebar used to auto-hide when the user toggled to source-diff view; 1.0.3 removed that so the sidebar stays available on either view. A click listener on rich/source-diff toggles still re-runs `buildThreadsSidebar` after a 100 ms delay so any newly-rendered threads appear immediately when toggling back to rich-diff. The Threads pane natively goes empty when no rich-diff is visible (no `.grdc-existing-thread` elements exist) and the empty-state CTA takes over.
 
 ## Debugging recipes
 

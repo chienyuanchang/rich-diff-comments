@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildSnippet, clampDragPos, nextWrappingIndex, clampSize } = require('../src/lib/sidebar.js');
+const { buildSnippet, clampDragPos, nextWrappingIndex, clampSize, isMarkdownPath } = require('../src/lib/sidebar.js');
 
 // ───────────────────────────────────────────────────────────────────────────
 // buildSnippet
@@ -148,6 +148,41 @@ test('clampSize — value exactly at the floor is allowed', () => {
   assert.equal(r.height, 120);
 });
 
+// ──────────────────────────────────────────────────────────────────────
+// isMarkdownPath — used by the "render all .md as rich-diff" sidebar action
+// to decide which per-file toggles to click.
+// ──────────────────────────────────────────────────────────────────────
+
+test('isMarkdownPath — matches .md / .markdown (case-insensitive)', () => {
+  assert.equal(isMarkdownPath('README.md'), true);
+  assert.equal(isMarkdownPath('docs/notes.MD'), true);
+  assert.equal(isMarkdownPath('Foo.markdown'), true);
+  assert.equal(isMarkdownPath('Foo.MARKDOWN'), true);
+  assert.equal(isMarkdownPath('a/b/c/x.md'), true);
+});
+
+test('isMarkdownPath — rejects non-Markdown extensions', () => {
+  assert.equal(isMarkdownPath('script.py'), false);
+  assert.equal(isMarkdownPath('readme.mdx'), false); // close but not .md
+  assert.equal(isMarkdownPath('mdfile'), false);     // no extension
+  assert.equal(isMarkdownPath('foo.md.bak'), false);
+  assert.equal(isMarkdownPath('CHANGELOG'), false);
+});
+
+test('isMarkdownPath — tolerates missing / non-string input', () => {
+  assert.equal(isMarkdownPath(null), false);
+  assert.equal(isMarkdownPath(undefined), false);
+  assert.equal(isMarkdownPath(''), false);
+  assert.equal(isMarkdownPath(42), false);
+  assert.equal(isMarkdownPath({}), false);
+});
+
+test('isMarkdownPath — strips ?query / #hash before matching', () => {
+  assert.equal(isMarkdownPath('README.md?ts=1'), true);
+  assert.equal(isMarkdownPath('README.md#section'), true);
+  assert.equal(isMarkdownPath('script.py?foo=.md'), false);
+});
+
 test('clampSize — width below floor returns null for width, keeps height', () => {
   const r = clampSize(100, 600, 220, 120);
   assert.equal(r.width, null);
@@ -184,3 +219,5 @@ test('clampSize — non-finite minimums return null (defensive)', () => {
   assert.equal(r.width, null);
   assert.equal(r.height, null);
 });
+
+

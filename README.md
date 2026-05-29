@@ -12,6 +12,10 @@ GitHub's "Files changed" rich diff renders markdown beautifully but provides no 
 - Click `+` → write a comment → posts as a real PR review comment on the correct source line.
 - Renders existing review threads inline at the rendered block that corresponds to each commented line.
 - **Reply** to threads, **resolve / unresolve** them, and see **resolved / outdated** state — all from the rendered view.
+- **Threads sidebar** docked to the right edge lists every review thread (author, snippet, file:line, resolved / outdated tags) — click to jump, with prev/next chevrons and a comment counter.
+- **Outline tab** in the sidebar shows the heading tree of every changed `.md` file with comment-count pills, per-section folding, and bulk `Fold H1 / H2 / H3` / `Expand all` controls.
+- **One-click "Render all Markdown files as rich-diff"** flips every `.md` file in the PR from source-diff to rich-diff in a single sweep, so comments on those files load automatically.
+- **Keyboard shortcuts:** `j` / `k` next / previous thread, `h` / `l` first / last, `t` toggle the sidebar, `Shift+T` reset its position.
 - No PAT required — uses your existing GitHub session cookies (works for public and private repos).
 
 (For submitting a full review / approve / request changes, use GitHub's native **"Review changes"** button at the top of the Files-changed tab.)

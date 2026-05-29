@@ -83,10 +83,22 @@
     };
   }
 
+  // True for paths whose extension marks them as Markdown. Used by the
+  // "render all .md as rich-diff" sidebar action to filter the per-file
+  // toggles it should click. Accepts `.md` / `.markdown` (case-insensitive)
+  // and tolerates missing / non-string input (returns false). Strips any
+  // query / hash suffix the caller might pass in by mistake.
+  function isMarkdownPath(p) {
+    if (typeof p !== 'string' || p.length === 0) return false;
+    const cleaned = p.split(/[?#]/)[0];
+    return /\.(md|markdown)$/i.test(cleaned);
+  }
+
   return {
     buildSnippet,
     clampDragPos,
     nextWrappingIndex,
     clampSize,
+    isMarkdownPath,
   };
 });

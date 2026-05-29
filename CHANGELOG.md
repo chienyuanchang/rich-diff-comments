@@ -4,6 +4,12 @@ All notable changes to Rich Diff Comments for GitHub. Follows [Keep a Changelog]
 
 ## [Unreleased]
 
+## [1.0.2] — 2026-05-28
+
+### Fixed
+
+- **Inline comments on top-level list items now anchor under the correct item.** When GitHub's rich-diff wrapped an entire `<ul>` / `<ol>` in an inserted (`<ins>` / `.added`) or deleted (`.removed`) container, threads on a top-level `<li>` were rendered after the whole list instead of under the specific item. The earlier 1.0.1 fix only covered list items that contained a nested sub-list; top-level items without children were still escaping past the parent list. They now stay anchored inside the `<li>` they belong to.
+
 ## [1.0.1] — 2026-05-20
 
 ### Added

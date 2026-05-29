@@ -1457,6 +1457,18 @@
           get nextElementSibling() { return nested.previousElementSibling; },
         };
       }
+      // No nested list: anchor INSIDE the <li> at its end. We deliberately
+      // skip the underline-ancestor escape here because escaping would jump
+      // out past the parent <ul>/<ol> when GitHub wraps the whole list in
+      // <ins> or `.added`/`.removed` — placing the thread after the entire
+      // list instead of under this specific item. Keeping the insertion
+      // inside the <li> preserves per-item anchoring; in practice GitHub
+      // wraps each <li>'s text (not the whole list) in <ins>, so the
+      // injected box doesn't visibly inherit the underline.
+      return {
+        after(node) { element.appendChild(node); },
+        get nextElementSibling() { return element.lastElementChild; },
+      };
     }
     // Default path: if `element` sits inside an `<ins>` / `<u>` / other
     // underlined ancestor (GitHub's prose-diff wraps inserted blocks this

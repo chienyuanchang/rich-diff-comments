@@ -1,4 +1,4 @@
-# Pre-publish audit for Rich Diff Comments for GitHub.
+# Pre-publish audit for Markdown PR Comments for GitHub.
 #
 # Run from the repository root.
 #

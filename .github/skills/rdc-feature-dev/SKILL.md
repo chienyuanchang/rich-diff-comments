@@ -1,10 +1,10 @@
 ---
-description: Iterative feature-development loop for the Rich Diff Comments for GitHub browser extension. Use when starting a new feature or bug fix — walks through identifying the work, designing in FEATURES.md, building, manual testing, refactoring with unit tests, and updating docs.
+description: Iterative feature-development loop for the Markdown PR Comments for GitHub browser extension. Use when starting a new feature or bug fix — walks through identifying the work, designing in FEATURES.md, building, manual testing, refactoring with unit tests, and updating docs.
 ---
 
 # Feature development loop
 
-This skill captures how a feature or bug fix moves from "noticed it" to "shipped and documented" in the **Rich Diff Comments for GitHub** repo. The loop is shaped by the fact that this is a browser extension with heavy DOM dependencies — most behavior can't be unit-tested in Node, so manual testing in a real PR carries the load.
+This skill captures how a feature or bug fix moves from "noticed it" to "shipped and documented" in the **Markdown PR Comments for GitHub** repo. The loop is shaped by the fact that this is a browser extension with heavy DOM dependencies — most behavior can't be unit-tested in Node, so manual testing in a real PR carries the load.
 
 ## When to use
 

@@ -1,4 +1,4 @@
-# Rich Diff Comments for GitHub
+# Markdown PR Comments for GitHub
 
 Chrome/Edge extension that lets you leave **and view** inline PR review comments directly from GitHub's **rendered markdown** (rich diff) view.
 

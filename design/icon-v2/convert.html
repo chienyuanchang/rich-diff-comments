@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Convert icon.svg → PNG</title>
+  <style>
+    body { font-family: -apple-system, 'Segoe UI', sans-serif; margin: 2rem; max-width: 700px; }
+    h1 { font-size: 1.2rem; }
+    p { color: #57606a; }
+    button {
+      font: inherit; padding: 0.6rem 1.2rem; cursor: pointer; margin: 0.25rem;
+      background: #0969da; color: white; border: none; border-radius: 6px;
+    }
+    button:hover { background: #0860c7; }
+    .ok { color: #1a7f37; }
+    .err { color: #cf222e; }
+    #log { font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem;
+           background: #f6f8fa; padding: 1rem; border-radius: 6px; margin-top: 1rem;
+           white-space: pre-wrap; min-height: 4em; }
+  </style>
+</head>
+<body>
+  <h1>Convert <code>icon.svg</code> → PNG</h1>
+  <p>This page has the SVG inlined as a data URI so it works on <code>file://</code> URLs (no <code>fetch</code> needed). Click the button — your browser will download <strong>5 PNG files</strong>.</p>
+  <p><strong>If only the first file downloads:</strong> your browser is blocking multiple downloads. Look for a permission prompt in the address bar (Chrome: a small icon on the right; Edge: same). Click it and choose "Allow", then click the button again.</p>
+
+  <button id="go">Generate and download all PNGs (16, 32, 48, 128, 1024)</button>
+  <button id="go1024">Just the 1024 master</button>
+
+  <div id="log">Click a button to start.</div>
+
+  <!-- The SVG is inlined below as a real DOM element. The script
+       serializes it to a data URI and rasterises via <canvas>. -->
+  <svg id="src" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" style="display:none">
+    <rect x="0" y="0" width="1024" height="1024" rx="180" ry="180" fill="#0969da"/>
+    <path fill="#ffffff" d="M 137 276 H 887 Q 959 276 959 348 V 676 Q 959 748 887 748 H 396 L 232 884 Q 204 902 214 870 L 254 748 H 137 Q 65 748 65 676 V 348 Q 65 276 137 276 Z"/>
+    <text x="337" y="482" text-anchor="middle" dominant-baseline="central"
+      font-family="'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+      font-weight="800" font-size="506" fill="#0969da">M</text>
+    <path fill="#0969da" d="M 678 339 H 806 V 559 H 901 L 742 698 L 582 559 H 678 Z"/>
+  </svg>
+
+  <script>
+    const log = document.getElementById('log');
+    function say(msg, cls) {
+      log.innerHTML += (cls ? `<span class="${cls}">${msg}</span>` : msg) + '\n';
+    }
+
+    function svgDataUri() {
+      const svgEl = document.getElementById('src');
+      const xml = new XMLSerializer().serializeToString(svgEl);
+      return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+    }
+
+    function render(size) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, size, size);
+          canvas.toBlob((blob) => {
+            if (!blob) { reject(new Error('toBlob returned null (canvas may be tainted)')); return; }
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `icon-${size}.png`;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+            say(`✓ icon-${size}.png`, 'ok');
+            resolve();
+          }, 'image/png');
+        };
+        img.onerror = () => reject(new Error(`Image load failed for size ${size}`));
+        img.src = svgDataUri();
+      });
+    }
+
+    async function renderAll(sizes) {
+      log.textContent = '';
+      try {
+        for (const s of sizes) {
+          await render(s);
+          // small delay so the browser doesn't merge / block downloads
+          await new Promise(r => setTimeout(r, 250));
+        }
+        say('Done. Move the PNGs into icons/.', 'ok');
+      } catch (e) {
+        say('ERROR: ' + e.message, 'err');
+      }
+    }
+
+    document.getElementById('go').addEventListener('click',
+      () => renderAll([16, 32, 48, 128, 1024]));
+    document.getElementById('go1024').addEventListener('click',
+      () => renderAll([1024]));
+  </script>
+</body>
+</html>

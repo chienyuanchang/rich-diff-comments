@@ -1,6 +1,6 @@
 # Publishing & Distribution
 
-How to ship Rich Diff Comments for GitHub to users. This doc covers the distribution options, the prep work for each store, and the gotchas to watch for during submission.
+How to ship Markdown PR Comments for GitHub to users. This doc covers the distribution options, the prep work for each store, and the gotchas to watch for during submission.
 
 ## Table of Contents
 

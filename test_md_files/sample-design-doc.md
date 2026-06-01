@@ -5,7 +5,7 @@
 > **Author**: Test User
 > **Last Updated**: 2026-05-12
 
-This document exists to exercise the **Rich Diff Comments for GitHub** extension. It deliberately includes every markdown construct the extension's line-mapping has to handle — tables, mermaid diagrams, code blocks, nested lists, blockquotes, task lists, and so on.
+This document exists to exercise the **Markdown PR Comments for GitHub** extension. It deliberately includes every markdown construct the extension's line-mapping has to handle — tables, mermaid diagrams, code blocks, nested lists, blockquotes, task lists, and so on.
 
 ## Table of Contents
 

@@ -1,4 +1,4 @@
-# Install Rich Diff Comments for GitHub
+# Install Markdown PR Comments for GitHub
 
 ## What it does
 

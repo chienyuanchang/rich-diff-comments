@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Markdown PR Comments for GitHub — icon v2
+  Master: 1024×1024. Designed to remain legible down to 16×16.
+
+  Visual concept (v2):
+    • Solid GitHub-blue rounded-square tile (the "app icon" frame).
+    • White speech bubble centred on the tile (= comment / reply).
+    • Bold blue ".md" inside the bubble (= markdown file).
+    • Two ideas, one glance — no third element to lose at 16px.
+
+  Padding: ~9% safe margin all sides (Chrome/Edge crop a tiny ring on
+  install-list rendering, so keep critical glyphs well inside).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Background tile: rounded square in GitHub link blue. -->
+  <rect x="0" y="0" width="1024" height="1024" rx="180" ry="180" fill="#0969da"/>
+
+  <!-- White speech bubble: wide but short, vertically centred on the
+       tile so .md sits at the exact tile centre AND the exact bubble
+       centre. Body 904 wide × 472 tall (top y=276, bottom y=748).
+       Tail dangles below the body's bottom-left edge. -->
+  <path fill="#ffffff" d="
+      M 137 276
+      H 887
+      Q 959 276 959 348
+      V 676
+      Q 959 748 887 748
+      H 396
+      L 232 884
+      Q 204 902 214 870
+      L 254 748
+      H 137
+      Q 65 748 65 676
+      V 348
+      Q 65 276 137 276
+      Z
+  "/>
+
+  <!-- "M" wordmark + custom-drawn chunky down-arrow.
+       Two separate elements (text + path) so the arrow's stroke weight
+       matches the bold M instead of inheriting a thin Unicode glyph.
+       To shift the pair: change the M's x and the arrow's all-x values
+       by the same delta. To resize the arrow: scale all arrow numbers. -->
+  <text
+    x="337"
+    y="482"
+    text-anchor="middle"
+    dominant-baseline="central"
+    font-family="'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+    font-weight="800"
+    font-size="506"
+    fill="#0969da"
+  >M</text>
+
+  <!-- Down-arrow: top aligned with M cap top, tip aligned with M baseline.
+       Stem 128 wide, head 319 wide. -->
+  <path fill="#0969da" d="
+      M 678 339
+      H 806
+      V 559
+      H 901
+      L 742 698
+      L 582 559
+      H 678
+      Z
+  "/>
+</svg>

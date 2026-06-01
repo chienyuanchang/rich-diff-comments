@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Markdown PR Comments for GitHub — icon v2
+  Master: 1024×1024. Designed to remain legible down to 16×16.
+
+  Visual concept (v2):
+    • Solid GitHub-blue rounded-square tile (the "app icon" frame).
+    • White speech bubble centred on the tile (= comment / reply).
+    • Bold blue ".md" inside the bubble (= markdown file).
+    • Two ideas, one glance — no third element to lose at 16px.
+
+  Padding: ~9% safe margin all sides (Chrome/Edge crop a tiny ring on
+  install-list rendering, so keep critical glyphs well inside).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Background tile: rounded square in GitHub link blue. -->
+  <rect x="0" y="0" width="1024" height="1024" rx="180" ry="180" fill="#0969da"/>
+
+  <!-- White speech bubble: wide but short, vertically centred on the
+       tile so .md sits at the exact tile centre AND the exact bubble
+       centre. Body 904 wide × 472 tall (top y=276, bottom y=748).
+       Tail dangles below the body's bottom-left edge. -->
+  <path fill="#ffffff" d="
+      M 157 276
+      H 867
+      Q 939 276 939 348
+      V 676
+      Q 939 748 867 748
+      H 396
+      L 232 884
+      Q 204 902 214 870
+      L 254 748
+      H 157
+      Q 85 748 85 676
+      V 348
+      Q 85 276 157 276
+      Z
+  "/>
+
+  <!-- ".md" wordmark — visually centred on the tile (and the bubble body).
+       Offsets compensate for two SVG-text quirks with this glyph string:
+         • text-anchor="middle" centres the ADVANCE box, but the "."
+           glyph contributes a wide advance with tiny ink on the left,
+           pulling the visible ink centre right of x=512. Shift x left.
+         • dominant-baseline="central" centres the EM box, but with no
+           descenders (g/p/y/q) the visible ink sits below the em centre.
+           Shift y up. -->
+  <text
+    x="486"
+    y="484"
+    text-anchor="middle"
+    dominant-baseline="central"
+    font-family="'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+    font-weight="800"
+    font-size="440"
+    letter-spacing="-16"
+    fill="#0969da"
+  >.md</text>
+</svg>

@@ -1,8 +1,15 @@
 # Changelog
 
-All notable changes to Rich Diff Comments for GitHub. Follows [Keep a Changelog](https://keepachangelog.com/) loosely; versions follow [SemVer](https://semver.org/).
+All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comments for GitHub*). Follows [Keep a Changelog](https://keepachangelog.com/) loosely; versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [1.2.0] — 2026-06-01
+
+### Changed
+
+- **Renamed to "Markdown PR Comments for GitHub"** (was *Rich Diff Comments for GitHub*). Same extension, same install — the new name makes it obvious at a glance what the extension is for. The display name updates in your browser's extensions list and toolbar tooltip after the auto-update lands; no action needed from you.
+- **New icon to match the new name** — a bold "M↓" mark inside a speech bubble, in GitHub blue. Replaces the previous design so the toolbar icon, extensions list, and store listing all read as one consistent product.
 
 ## [1.1.0] — 2026-05-29
 

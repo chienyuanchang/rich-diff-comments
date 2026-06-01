@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Icon v2 preview — Markdown PR Comments for GitHub</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    body { margin: 2rem; max-width: 900px; }
+    h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
+    p.lead { color: #57606a; margin-top: 0; }
+    .sizes {
+      display: flex; align-items: flex-end; gap: 2rem;
+      padding: 1.5rem; margin: 1.5rem 0;
+      border: 1px solid #d0d7de; border-radius: 8px;
+      background: #f6f8fa;
+    }
+    .sample { text-align: center; }
+    .sample img { display: block; image-rendering: auto; }
+    .sample .label { font-size: 0.75rem; color: #57606a; margin-top: 0.5rem; }
+    .sample-16  img { width: 16px;  height: 16px; }
+    .sample-32  img { width: 32px;  height: 32px; }
+    .sample-48  img { width: 48px;  height: 48px; }
+    .sample-128 img { width: 128px; height: 128px; }
+    .browser-row {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.5rem 0.75rem; margin: 1rem 0;
+      border: 1px solid #d0d7de; border-radius: 6px;
+      background: white;
+    }
+    .browser-row img { width: 16px; height: 16px; }
+    .browser-row span { font-size: 0.85rem; color: #1f2328; }
+    button {
+      font: inherit; padding: 0.5rem 1rem; cursor: pointer;
+      background: #0969da; color: white; border: none; border-radius: 6px;
+    }
+    button:hover { background: #0860c7; }
+    .downloads { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0d1117; color: #c9d1d9; }
+      .sizes { background: #161b22; border-color: #30363d; }
+      .browser-row { background: #161b22; border-color: #30363d; }
+      .browser-row span { color: #c9d1d9; }
+      p.lead, .sample .label { color: #8b949e; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Icon v2 — “MD” in a speech bubble</h1>
+  <p class="lead">Master SVG rendered at the four shipped sizes (and 1024 master). The 16px sample is the one that matters — it's what users see in the toolbar.</p>
+
+  <div class="sizes">
+    <div class="sample sample-16"><img src="icon.svg" alt="16" /><div class="label">16 px (toolbar)</div></div>
+    <div class="sample sample-32"><img src="icon.svg" alt="32" /><div class="label">32 px</div></div>
+    <div class="sample sample-48"><img src="icon.svg" alt="48" /><div class="label">48 px (extensions list)</div></div>
+    <div class="sample sample-128"><img src="icon.svg" alt="128" /><div class="label">128 px (store)</div></div>
+  </div>
+
+  <p class="lead">Simulated toolbar context (16px against a real browser-toolbar-coloured strip):</p>
+  <div class="browser-row" style="background: #f6f8fa;">
+    <img src="icon.svg" alt="" />
+    <span>Markdown PR Comments for GitHub</span>
+  </div>
+  <div class="browser-row" style="background: #1f2328; color: #c9d1d9;">
+    <img src="icon.svg" alt="" />
+    <span style="color: #c9d1d9;">Markdown PR Comments for GitHub (dark toolbar)</span>
+  </div>
+
+  <h2 style="font-size: 1rem; margin-top: 2rem;">Download PNGs</h2>
+  <p class="lead">Click each button to render the SVG to a PNG at that size and download. Saves with the exact filenames the extension expects.</p>
+  <div class="downloads">
+    <button data-size="16">icon-16.png</button>
+    <button data-size="32">icon-32.png</button>
+    <button data-size="48">icon-48.png</button>
+    <button data-size="128">icon-128.png</button>
+    <button data-size="1024">icon-1024.png (master)</button>
+    <button data-size="all">Download all</button>
+  </div>
+
+  <script>
+    async function render(size) {
+      const res = await fetch('icon.svg');
+      const svgText = await res.text();
+      const blob = new Blob([svgText], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.decoding = 'sync';
+      await new Promise((ok, fail) => { img.onload = ok; img.onerror = fail; img.src = url; });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, size, size);
+      URL.revokeObjectURL(url);
+
+      const pngBlob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(pngBlob);
+      a.download = `icon-${size}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+
+    document.querySelectorAll('button[data-size]').forEach(b => {
+      b.addEventListener('click', async () => {
+        const s = b.dataset.size;
+        if (s === 'all') {
+          for (const n of [16, 32, 48, 128, 1024]) { await render(n); }
+        } else {
+          await render(parseInt(s, 10));
+        }
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 /**
- * Rich Diff Comments for GitHub
+ * Markdown PR Comments for GitHub
  * 
  * Adds inline comment buttons to rendered markdown in GitHub PR rich diff view.
  * Maps rendered elements back to source line numbers and posts review comments
@@ -848,7 +848,7 @@
   function promptForToken() {
     const existing = getGitHubToken();
     const token = prompt(
-      "Rich Diff Comments for GitHub needs a Personal Access Token (PAT) with 'repo' scope.\n\n" +
+      "Markdown PR Comments for GitHub needs a Personal Access Token (PAT) with 'repo' scope.\n\n" +
         "Create one at: https://github.com/settings/tokens\n\n" +
         "Enter your token:",
       existing || ""

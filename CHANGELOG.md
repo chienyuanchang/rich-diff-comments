@@ -4,6 +4,16 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-06-02
+
+### Changed
+
+- **The Outline tab now shows a folder hint next to each file label** so multiple files with the same name (e.g. several `README.md` or `SKILL.md`) are easy to tell apart at a glance. Deeply-nested files show their depth with one `../` per ancestor folder — e.g. `../../foo/README.md` for `features/sdk/foo/README.md`. Hover the label to see the full path.
+
+### Fixed
+
+- **Outline toolbar's `Fold H1` / `Fold H2` / `Fold H3` / `Expand all` (and the per-row outline chevrons) no longer silently do nothing until you refresh the page.** After GitHub re-rendered a file's rich-diff DOM in place (e.g. flipping between source and rendered, or React replacing nodes), the chevron buttons attached to each heading became stale, so clicking the Outline toolbar quietly no-op'd. Outline-pane clicks now lazily re-attach the in-heading chevron if it's missing, so the buttons stay self-healing without a page refresh.
+
 ## [1.2.0] — 2026-06-01
 
 ### Changed

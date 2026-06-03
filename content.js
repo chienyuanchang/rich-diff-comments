@@ -1901,6 +1901,44 @@
   // Track which headings are collapsed by element so re-renders preserve state.
   const collapsedHeadings = new WeakSet();
 
+  // Attach a collapse toggle (chevron button) to a single heading, idempotently.
+  // Returns the toggle element (existing or newly-attached). Safe to call any
+  // time — used both by the bulk `attachCollapseToggles` pass during init and
+  // as a lazy fallback at click time from Outline-pane handlers, which can
+  // run against headings whose `fileLineMap` entry has gone stale (GitHub
+  // re-rendered the prose-diff DOM, MutationObserver missed it, etc.).
+  // Without this fallback, those clicks silently no-op via `?.click()` on a
+  // missing chevron — "Fold H1 / H2 / H3 do nothing until I refresh".
+  function ensureCollapseToggle(element) {
+    if (!element || !/^H[1-6]$/.test(element.tagName)) return null;
+    const existing = element.querySelector(':scope > .grdc-collapse-toggle');
+    if (existing) return existing;
+
+    const toggle = document.createElement('button');
+    toggle.className = 'grdc-collapse-toggle';
+    toggle.type = 'button';
+    toggle.setAttribute('aria-label', 'Collapse section');
+    toggle.setAttribute('aria-expanded', 'true');
+    toggle.title = 'Collapse section (click to hide everything until the next heading of the same or higher level)';
+    // Down chevron when expanded, right chevron when collapsed.
+    toggle.textContent = '▾';
+    toggle.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleSection(element, toggle);
+    });
+
+    element.classList.add('grdc-collapsible');
+    // Prepend so it sits flush before the heading text.
+    element.prepend(toggle);
+
+    // Restore prior state on re-init (e.g. after SPA navigation).
+    if (collapsedHeadings.has(element)) {
+      applyCollapseVisuals(element, toggle, true);
+    }
+    return toggle;
+  }
+
   function attachCollapseToggles() {
     document.querySelectorAll('.grdc-collapse-toggle').forEach((el) => el.remove());
 
@@ -1908,33 +1946,7 @@
     // headings that are mapped (i.e. in `fileLineMap`) so collapse buttons
     // don't appear on non-rich-diff views.
     fileLineMap.forEach((info, element) => {
-      if (!/^H[1-6]$/.test(element.tagName)) return;
-
-      // Avoid duplicate toggles on re-init.
-      if (element.querySelector(':scope > .grdc-collapse-toggle')) return;
-
-      const toggle = document.createElement('button');
-      toggle.className = 'grdc-collapse-toggle';
-      toggle.type = 'button';
-      toggle.setAttribute('aria-label', 'Collapse section');
-      toggle.setAttribute('aria-expanded', 'true');
-      toggle.title = 'Collapse section (click to hide everything until the next heading of the same or higher level)';
-      // Down chevron when expanded, right chevron when collapsed.
-      toggle.textContent = '▾';
-      toggle.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleSection(element, toggle);
-      });
-
-      element.classList.add('grdc-collapsible');
-      // Prepend so it sits flush before the heading text.
-      element.prepend(toggle);
-
-      // Restore prior state on re-init (e.g. after SPA navigation).
-      if (collapsedHeadings.has(element)) {
-        applyCollapseVisuals(element, toggle, true);
-      }
+      ensureCollapseToggle(element);
     });
   }
 
@@ -3605,7 +3617,24 @@
         currentFile = node.file;
         const label = document.createElement('div');
         label.className = 'grdc-sidebar-outline-file';
-        label.textContent = node.file.split('/').pop() || node.file;
+        // Show just the immediate parent folder + filename, with one
+        // `../` per truncated ancestor so the depth of the file is still
+        // visible at a glance (matches the `../../parent/file.md`
+        // convention familiar from relative paths in many tools).
+        // Full path is in the `title` for hover. Examples:
+        //   a/b/c/d/foo/README.md → ../../../../foo/README.md
+        //   docs/README.md        → docs/README.md
+        //   README.md             → README.md
+        const parts = node.file.split('/').filter(Boolean);
+        let short;
+        if (parts.length <= 2) {
+          short = parts.join('/');
+        } else {
+          const dropped = parts.length - 2;
+          short = `${'../'.repeat(dropped)}${parts.slice(-2).join('/')}`;
+        }
+        label.textContent = short;
+        label.title = node.file;
         treeEl.appendChild(label);
       }
       const row = document.createElement('div');
@@ -3622,7 +3651,10 @@
       chevron.title = isCollapsed ? 'Expand section' : 'Collapse section';
       chevron.addEventListener('click', (e) => {
         e.stopPropagation();
-        node.el.querySelector('.grdc-collapse-toggle')?.click();
+        // Lazily (re-)attach the in-heading chevron in case the prose-diff
+        // DOM has been re-rendered since init and `fileLineMap` is stale —
+        // a bare `?.click()` would silently no-op.
+        ensureCollapseToggle(node.el)?.click();
         // The toggleSection handler dispatches `grdc-section-toggled` which
         // triggers a sidebar rebuild — no need to update DOM here.
       });
@@ -3721,7 +3753,9 @@
       // anyExpanded → fold all (collapse those that aren't already).
       // !anyExpanded (all already collapsed) → unfold them.
       const shouldClick = anyExpanded ? !isCollapsed : isCollapsed;
-      if (shouldClick) h.el.querySelector('.grdc-collapse-toggle')?.click();
+      // Lazily attach the toggle if missing — otherwise a stale fileLineMap
+      // (after a GitHub re-render) would silently swallow this click.
+      if (shouldClick) ensureCollapseToggle(h.el)?.click();
     }
     // The toggles dispatch `grdc-section-toggled` which triggers a sidebar
     // rebuild, so we don't need to call buildOutlinePane here.
@@ -3731,7 +3765,7 @@
     const headings = collectHeadings();
     for (const h of headings) {
       if (!h.el.classList.contains('grdc-section-collapsed')) continue;
-      h.el.querySelector('.grdc-collapse-toggle')?.click();
+      ensureCollapseToggle(h.el)?.click();
     }
   }
 

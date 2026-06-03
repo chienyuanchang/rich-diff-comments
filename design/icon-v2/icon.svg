@@ -43,7 +43,7 @@
        To shift the pair: change the M's x and the arrow's all-x values
        by the same delta. To resize the arrow: scale all arrow numbers. -->
   <text
-    x="337"
+    x="357"
     y="482"
     text-anchor="middle"
     dominant-baseline="central"
@@ -56,13 +56,13 @@
   <!-- Down-arrow: top aligned with M cap top, tip aligned with M baseline.
        Stem 128 wide, head 319 wide. -->
   <path fill="#0969da" d="
-      M 678 339
-      H 806
+      M 698 339
+      H 826
       V 559
-      H 901
-      L 742 698
-      L 582 559
-      H 678
+      H 921
+      L 762 698
+      L 602 559
+      H 698
       Z
   "/>
 </svg>

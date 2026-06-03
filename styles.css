@@ -1210,6 +1210,11 @@ li.grdc-hoverable .grdc-comment-btn {
   letter-spacing: 0.04em;
   border-top: 1px solid var(--borderColor-muted, var(--color-border-muted, #d8dee4));
   margin-top: 4px;
+  /* Long labels still get a normal right-side ellipsis as a safety net;
+     the JS already shortens to `…/parent/file.md` so this rarely fires. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .grdc-sidebar-outline-file:first-child { border-top: none; margin-top: 0; }
 .grdc-sidebar-outline-row {

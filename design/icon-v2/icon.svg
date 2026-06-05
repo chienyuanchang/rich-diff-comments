@@ -1,68 +1,65 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Markdown PR Comments for GitHub — icon v2
+  Markdown PR Comments for GitHub — icon v3
   Master: 1024×1024. Designed to remain legible down to 16×16.
 
-  Visual concept (v2):
-    • Solid GitHub-blue rounded-square tile (the "app icon" frame).
-    • White speech bubble centred on the tile (= comment / reply).
-    • Bold blue ".md" inside the bubble (= markdown file).
+  Visual concept (v3):
+    • Bubble IS the entire icon — no surrounding tile.
+      Solid GitHub-blue speech-bubble silhouette fills nearly the
+      whole canvas, with the bottom-left tail extending into the
+      remaining corner.
+    • Bold white "M" + chunky down-arrow inside (the Markdown mark).
+    • Transparent background: looks clean on any toolbar colour.
     • Two ideas, one glance — no third element to lose at 16px.
 
-  Padding: ~9% safe margin all sides (Chrome/Edge crop a tiny ring on
-  install-list rendering, so keep critical glyphs well inside).
+  Padding: ~30px outer margin so the corners don't get clipped by
+  Chrome/Edge's install-list cropping.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- Background tile: rounded square in GitHub link blue. -->
-  <rect x="0" y="0" width="1024" height="1024" rx="180" ry="180" fill="#0969da"/>
-
-  <!-- White speech bubble: wide but short, vertically centred on the
-       tile so .md sits at the exact tile centre AND the exact bubble
-       centre. Body 904 wide × 472 tall (top y=276, bottom y=748).
-       Tail dangles below the body's bottom-left edge. -->
-  <path fill="#ffffff" d="
-      M 137 276
-      H 887
-      Q 959 276 959 348
-      V 676
-      Q 959 748 887 748
-      H 396
-      L 232 884
-      Q 204 902 214 870
-      L 254 748
-      H 137
-      Q 65 748 65 676
-      V 348
-      Q 65 276 137 276
+  <!-- Solid blue speech bubble: body fills 30→994 wide and 30→860 tall,
+       corner radius 130. Tail drops from the bottom edge to (140, 994). -->
+  <path fill="#0969da" d="
+      M 160 30
+      H 864
+      Q 994 30 994 160
+      V 730
+      Q 994 860 864 860
+      H 370
+      L 140 994
+      Q 100 1012 110 980
+      L 160 860
+      Q 30 860 30 730
+      V 160
+      Q 30 30 160 30
       Z
   "/>
 
-  <!-- "M" wordmark + custom-drawn chunky down-arrow.
-       Two separate elements (text + path) so the arrow's stroke weight
-       matches the bold M instead of inheriting a thin Unicode glyph.
-       To shift the pair: change the M's x and the arrow's all-x values
-       by the same delta. To resize the arrow: scale all arrow numbers. -->
+  <!-- "M" wordmark + custom-drawn chunky down-arrow, in white.
+       Pair centred horizontally on tile centre (x=512) and vertically
+       on bubble body centre (y=445).
+       To shift the pair: change the M's x and every arrow x by the
+       same delta. To resize: scale font-size and all arrow numbers. -->
   <text
-    x="357"
-    y="482"
+    x="340"
+    y="425"
     text-anchor="middle"
     dominant-baseline="central"
     font-family="'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
-    font-weight="800"
-    font-size="506"
-    fill="#0969da"
+    font-weight="700"
+    font-size="572"
+    fill="#ffffff"
   >M</text>
 
-  <!-- Down-arrow: top aligned with M cap top, tip aligned with M baseline.
-       Stem 128 wide, head 319 wide. -->
-  <path fill="#0969da" d="
-      M 698 339
-      H 826
-      V 559
-      H 921
-      L 762 698
-      L 602 559
-      H 698
+  <!-- Down-arrow: top aligned with M cap top (y≈239), tip aligned with
+       M baseline (y≈651). Stem 120 wide, head 320 wide. -->
+  <path fill="#ffffff" d="
+      M 710 269
+      H 830
+      V 520
+      H 930
+      L 770 681
+      L 610 520
+      H 710
       Z
   "/>
 </svg>

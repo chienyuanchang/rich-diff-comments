@@ -2605,6 +2605,13 @@
       const menuMarkup = isOwn
         ? `<button class="grdc-comment-menu" title="More actions" aria-haspopup="true">⋯</button>`
         : '';
+      // Direct "Edit" affordance for own comments — sits in the header next to
+      // "GitHub ↗" so editing is one click (no `⋯` menu detour). Delete stays
+      // inside `⋯` because it's destructive. Rendered as a `<button>` (not `<a>`)
+      // because it has no destination — it just opens the inline editor in place.
+      const editLinkMarkup = isOwn
+        ? `<button class="grdc-comment-edit-link" title="Edit this comment">Edit</button>`
+        : '';
       // "View on GitHub" lives in the header (next to the time) so it doesn't
       // take a full row below the body. Rendered as a small muted link via
       // `.grdc-comment-link` styles. Title attribute exposes the full URL on
@@ -2648,29 +2655,124 @@
           ${roleMarkup}
           ${authorMarkup}
           <span class="grdc-comment-time">${escapeHtml(timeAgo)}</span>
+          ${editLinkMarkup}
           ${linkMarkup}
           ${menuMarkup}
         </div>
         ${bodyMarkup}
       `;
-      // Wire up `…` menu → Edit / Delete (only on the user's own comments).
+      // Wire up edit / delete affordances for the user's own comments. Edit
+      // is a direct one-click link in the header (`.grdc-comment-edit-link`);
+      // Delete stays behind the `⋯` menu because it's destructive.
       if (isOwn) {
         const menuBtn = comment.querySelector('.grdc-comment-menu');
+        const editLinkBtn = comment.querySelector('.grdc-comment-edit-link');
         const bodyEl = comment.querySelector('.grdc-comment-body');
         // Stash the original body text so edits hash it for `body_version`
         // and so Cancel can restore the rendered markup.
         const originalBody = c.body || '';
         const originalBodyHTML = bodyEl.innerHTML;
         let originalBodyText = originalBody;
+
+        // Open the inline editor in place of the rendered body. Idempotent:
+        // if an editor is already open in this comment, just refocus it so
+        // a stray second click on Edit doesn't stack two editors.
+        const openEditor = () => {
+          const existing = comment.querySelector('.grdc-comment-edit');
+          if (existing) {
+            existing.querySelector('.grdc-editor-textarea')?.focus();
+            return;
+          }
+          // Replace the rendered body with an inline editor.
+          const editorWrap = document.createElement('div');
+          editorWrap.className = 'grdc-comment-edit';
+          let editor, saveBtn;
+          const save = async () => {
+            const text = editor.textarea.value.trim();
+            if (!text) return;
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+            const result = await updateReviewComment(c.dbId, originalBodyText, text, c.bodyVersion);
+            if (result.ok) {
+              invalidateRouteData();
+              // Update local snapshot so a second edit uses fresh values:
+              // the response includes a NEW `bodyVersion` for the updated
+              // body, plus the new body itself.
+              originalBodyText = text;
+              if (result.data?.bodyVersion) {
+                c.bodyVersion = result.data.bodyVersion;
+              }
+              // Server returns the rendered HTML; prefer that. Otherwise
+              // escape the text and replace the body.
+              const newHTML =
+                result.data?.bodyHTML ||
+                result.data?.body_html ||
+                result.data?.body ||
+                null;
+              bodyEl.innerHTML = newHTML
+                ? newHTML
+                : escapeHtml(text);
+              editorWrap.remove();
+              bodyEl.style.display = '';
+              // Refresh the sidebar so the card snippet stays in sync
+              // with the edited body (only matters when the edited
+              // comment is the thread head, but scheduleReinit is
+              // debounced + cheap so we run it unconditionally).
+              scheduleReinit();
+            } else {
+              const err = document.createElement('div');
+              err.className = 'grdc-error';
+              err.textContent = `✗ ${result.error}`;
+              editorWrap.appendChild(err);
+              saveBtn.disabled = false;
+              saveBtn.textContent = 'Save';
+            }
+          };
+          editor = buildEditor({ placeholder: 'Edit comment...', minRows: 3, onSubmit: save });
+          editor.textarea.value = originalBodyText;
+          editorWrap.appendChild(editor.root);
+          const actions = document.createElement('div');
+          actions.className = 'grdc-comment-actions';
+          actions.innerHTML = `
+            <button class="grdc-btn grdc-btn-cancel grdc-edit-cancel">Cancel</button>
+            <button class="grdc-btn grdc-btn-primary grdc-edit-save" title="Ctrl/⌘ + Enter">Save</button>
+          `;
+          editorWrap.appendChild(actions);
+          bodyEl.style.display = 'none';
+          bodyEl.after(editorWrap);
+          saveBtn = editorWrap.querySelector('.grdc-edit-save');
+          editorWrap.querySelector('.grdc-edit-cancel').addEventListener('click', () => {
+            editorWrap.remove();
+            bodyEl.style.display = '';
+          });
+          saveBtn.addEventListener('click', save);
+          editor.focus();
+        };
+
+        // Direct Edit link in the header — peer affordance to `GitHub ↗`.
+        if (editLinkBtn) {
+          editLinkBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            // Close the `⋯` popover if it happens to be open — Edit is a
+            // peer action, not a popover item, but we don't want a stale
+            // popover hanging around once the editor takes focus. The popover's
+            // own outside-click listener would normally handle this, but we
+            // `stopPropagation()` above so it never fires.
+            comment.querySelector('.grdc-comment-menu-popover')?.remove();
+            openEditor();
+          });
+        }
+
+        // `⋯` menu → Delete (with confirm). Edit was promoted out of this
+        // popover to its own header link; only the destructive action stays
+        // behind the extra click.
         menuBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          // Toggle a tiny popover with Edit / Delete buttons.
           let popover = comment.querySelector('.grdc-comment-menu-popover');
           if (popover) { popover.remove(); return; }
           popover = document.createElement('div');
           popover.className = 'grdc-comment-menu-popover';
           popover.innerHTML = `
-            <button class="grdc-menu-item grdc-menu-edit">Edit</button>
             <button class="grdc-menu-item grdc-menu-delete">Delete</button>
           `;
           comment.querySelector('.grdc-comment-header').appendChild(popover);
@@ -2684,74 +2786,6 @@
               }
             });
           }, 0);
-
-          popover.querySelector('.grdc-menu-edit').addEventListener('click', () => {
-            closeMenu();
-            // Replace the rendered body with an inline editor.
-            const editorWrap = document.createElement('div');
-            editorWrap.className = 'grdc-comment-edit';
-            let editor, saveBtn;
-            const save = async () => {
-              const text = editor.textarea.value.trim();
-              if (!text) return;
-              saveBtn.disabled = true;
-              saveBtn.textContent = 'Saving...';
-              const result = await updateReviewComment(c.dbId, originalBodyText, text, c.bodyVersion);
-              if (result.ok) {
-                invalidateRouteData();
-                // Update local snapshot so a second edit uses fresh values:
-                // the response includes a NEW `bodyVersion` for the updated
-                // body, plus the new body itself.
-                originalBodyText = text;
-                if (result.data?.bodyVersion) {
-                  c.bodyVersion = result.data.bodyVersion;
-                }
-                // Server returns the rendered HTML; prefer that. Otherwise
-                // escape the text and replace the body.
-                const newHTML =
-                  result.data?.bodyHTML ||
-                  result.data?.body_html ||
-                  result.data?.body ||
-                  null;
-                bodyEl.innerHTML = newHTML
-                  ? newHTML
-                  : escapeHtml(text);
-                editorWrap.remove();
-                bodyEl.style.display = '';
-                // Refresh the sidebar so the card snippet stays in sync
-                // with the edited body (only matters when the edited
-                // comment is the thread head, but scheduleReinit is
-                // debounced + cheap so we run it unconditionally).
-                scheduleReinit();
-              } else {
-                const err = document.createElement('div');
-                err.className = 'grdc-error';
-                err.textContent = `✗ ${result.error}`;
-                editorWrap.appendChild(err);
-                saveBtn.disabled = false;
-                saveBtn.textContent = 'Save';
-              }
-            };
-            editor = buildEditor({ placeholder: 'Edit comment...', minRows: 3, onSubmit: save });
-            editor.textarea.value = originalBodyText;
-            editorWrap.appendChild(editor.root);
-            const actions = document.createElement('div');
-            actions.className = 'grdc-comment-actions';
-            actions.innerHTML = `
-              <button class="grdc-btn grdc-btn-cancel grdc-edit-cancel">Cancel</button>
-              <button class="grdc-btn grdc-btn-primary grdc-edit-save" title="Ctrl/⌘ + Enter">Save</button>
-            `;
-            editorWrap.appendChild(actions);
-            bodyEl.style.display = 'none';
-            bodyEl.after(editorWrap);
-            saveBtn = editorWrap.querySelector('.grdc-edit-save');
-            editorWrap.querySelector('.grdc-edit-cancel').addEventListener('click', () => {
-              editorWrap.remove();
-              bodyEl.style.display = '';
-            });
-            saveBtn.addEventListener('click', save);
-            editor.focus();
-          });
 
           popover.querySelector('.grdc-menu-delete').addEventListener('click', async () => {
             closeMenu();

@@ -803,6 +803,46 @@ li.grdc-hoverable .grdc-comment-btn {
   margin-left: 4px;
 }
 
+/* Direct "Edit" affordance on the user's own comments. Sits in the header
+   alongside `GitHub ↗` and `⋯` so editing is a single click instead of
+   `⋯` → popover → Edit. Styled to *read as a clickable action* — full
+   opacity, link-blue, slightly bolder — so it pops against the muted
+   timestamp / `GitHub ↗` link sitting next to it. `<button>` (not `<a>`)
+   needs an explicit reset of UA button styles (background, border,
+   padding, font-family). */
+.grdc-comment-edit-link {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fgColor-accent, var(--color-accent-fg, #0969da));
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.grdc-comment-edit-link:hover {
+  text-decoration: underline;
+}
+
+/* When Edit is present, it claims `margin-left: auto`, so the GitHub link
+   needs to give up its own auto-margin and just sit a small gap to Edit's
+   right. `~` (general sibling) handles whatever sibling order Flexbox
+   gives us. */
+.grdc-comment-edit-link ~ .grdc-comment-link {
+  margin-left: 8px;
+}
+
+/* When Edit directly precedes the menu (no GitHub link in between — e.g.
+   captured comments where we don't have an `htmlUrl`), the menu sits next
+   to Edit instead of grabbing its own `margin-left: auto`. */
+.grdc-comment-edit-link + .grdc-comment-menu {
+  margin-left: 4px;
+}
+
 /* ── Thread state: resolved / outdated ────────────────────────────────── */
 
 .grdc-thread-resolved .grdc-thread-badge {

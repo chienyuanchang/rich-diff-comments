@@ -47,10 +47,10 @@ Comment, reply, resolve, and collapse sections directly in GitHub PR rich-diff (
 ### Description
 
 > *Focus on explaining what the item does and why users should install it.*
-> *Lead with a short "What's new in vX.Y.Z" block so existing users (who see this listing after auto-update) immediately notice this release's changes. Keep it to 3–6 bullets — the full list still lives in the "What's new in this version" section below and in `CHANGELOG.md`.*
+> *Lead with a short "What's new in vX.Y.Z (YYYY-MM-DD)" block so existing users (who see this listing after auto-update) immediately notice this release's changes — the date matches the `## [X.Y.Z] — YYYY-MM-DD` heading in `CHANGELOG.md`. Keep it to 3–6 bullets — the full list still lives in the "What's new in this version" section below and in `CHANGELOG.md`.*
 
 ```
-🆕 What's new in v1.3.0
+🆕 What's new in v1.3.0 (2026-06-02)
 
 • Outline tab now shows a folder hint next to each file label so multiple files with the same name (several README.md, several SKILL.md, …) are easy to tell apart at a glance. Deeply-nested files show their depth with one `../` per ancestor folder. Hover any label for the full path.
 • Fixed: the Outline toolbar's Fold H1 / Fold H2 / Fold H3 / Expand all buttons (and the per-row chevrons) no longer silently do nothing until you refresh the page — they now self-heal after GitHub re-renders the rich-diff view.

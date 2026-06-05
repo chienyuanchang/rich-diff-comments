@@ -4,6 +4,12 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-06-05
+
+### Changed
+
+- **Editing your own comment is now one click.** A direct `Edit` link sits in the comment header next to `GitHub ↗`, so you no longer have to open the `⋯` menu first. `Delete` still lives in `⋯` (one extra click + a confirm prompt) because it's destructive.
+
 ## [1.3.0] — 2026-06-02
 
 ### Changed

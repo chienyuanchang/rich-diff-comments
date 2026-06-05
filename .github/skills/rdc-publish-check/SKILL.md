@@ -122,11 +122,12 @@ Before submitting, edit these two files **in place** with the changes for this r
 
 - [ ] **Description** (the long marketing copy) — update if a feature added in this version belongs in the listing description. Per [Disclosure Requirements](https://developer.chrome.com/docs/webstore/program-policies/disclosure-requirements), all functionality must be disclosed to users. If a new feature is significant enough to appear in screenshots, it should appear in the description.
 
-- [ ] **"What's new in vX.Y.Z" lead block at the TOP of the Description** — every release must replace the existing `🆕 What's new in v…` block at the very top of the Description code-fence with this release's highlights. This is the single most important update to the listing copy because:
+- [ ] **"What's new in vX.Y.Z (YYYY-MM-DD)" lead block at the TOP of the Description** — every release must replace the existing `🆕 What's new in v…` block at the very top of the Description code-fence with this release's highlights. This is the single most important update to the listing copy because:
   - Existing users who auto-update only see the **store listing description**, not the changelog or release notes — so the "What's new" block at the top of the description is the only place they'll learn what changed.
   - Putting it **first** (before the evergreen "GitHub's Files changed rich-diff…" pitch) means returning visitors immediately see the new value without having to re-read the full description.
   - Keep it short — **3–6 bullets**, one line each, written in the same user-facing voice as `CHANGELOG.md` (no internal selectors / class names — see the CHANGELOG rules above). The full per-version detail still lives in the "What's new in this version" section at the bottom of the submission doc (which gets pasted into the store's separate "What's new" field) and in `CHANGELOG.md`.
   - Pull the bullets directly from the `Added` / `Changed` / `Fixed` entries in `CHANGELOG.md` for this release — pick the 3–6 most user-visible items.
+  - **Include the release date in the header** in the form `🆕 What's new in vX.Y.Z (YYYY-MM-DD)` — the date must match the `## [X.Y.Z] — YYYY-MM-DD` heading in `CHANGELOG.md` for the same version. Stores don't show a separate "updated on" date prominently next to the description, so anchoring the recency in the heading lets returning visitors immediately tell whether they're reading old or fresh release notes.
 
 - [ ] **Permission justification** — if `manifest.json` `permissions` or `host_permissions` changed since the previous version, update the justification text. The current state assumes no `permissions`, only `host_permissions: https://github.com/*`. Versions that add permissions need extra justification paragraphs.
 

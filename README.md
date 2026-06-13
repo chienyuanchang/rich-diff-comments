@@ -31,6 +31,8 @@ See [docs/FEATURES.md](docs/FEATURES.md) for the full feature list and roadmap.
 
 No login, no setup, no Personal Access Token required. Works on public and private repos. See [INSTALL.md](INSTALL.md) for the user-facing walkthrough.
 
+> 📌 **Just installed?** Hard-refresh (Ctrl+Shift+R / Cmd+Shift+R) any GitHub PR tab that was already open when you installed — see [INSTALL.md → Just installed?](INSTALL.md#just-installed).
+
 ### For local development
 
 1. `git clone https://github.com/chienyuanchang/rich-diff-comments`

@@ -54,6 +54,8 @@ Comment, reply, resolve, and collapse sections directly in GitHub PR rich-diff (
 
 • Editing your own comment is now one click — a direct "Edit" link sits in the comment header next to "GitHub ↗", so you no longer have to open the ⋯ menu first. "Delete" still lives in ⋯ (with a confirm prompt) because it's destructive.
 
+📌 Just installed? Hard-refresh (Ctrl+Shift+R / Cmd+Shift+R) any GitHub PR tab that was already open when you clicked Add to Chrome — the extension only activates on tabs loaded AFTER install. New tabs work automatically.
+
 —
 
 GitHub's "Files changed" rich-diff renders Markdown beautifully — design docs, dev plans, READMEs — but provides no way to click on a paragraph and leave a review comment. You have to flip back to source-diff mode to comment, then back again to see how it renders. This extension closes that gap.

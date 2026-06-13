@@ -142,6 +142,7 @@ Before submitting, edit these two files **in place** with the changes for this r
 - Single purpose statement — only changes if the extension scope changes (which would warrant a separate submission anyway).
 - Reviewer testing notes ("how to test" block) — the test steps work for every version of the extension. Only update if the install / activation flow changes, or if a behavior bullet ("Hover any paragraph — a blue + appears") no longer matches the UI.
 - Privacy policy URL — only changes if PRIVACY.md is updated and the gist is re-published.
+- **Open-source GitHub repo line** (`Open source on GitHub: …`) right before the legal disclaimer — present because the Chrome Web Store listing **does NOT render the Website / Homepage URL form field as a visible link** (only Support URL and Privacy Policy URL show up as clickable buttons). Without this line, users browsing the listing can reach `/issues` but have no path back to the repo home, README, or roadmap. Keep it as one short line; if it grows, Chrome's "promotional content" policy may flag it.
 
 
 ### 5. Prepare screenshots for the store listings

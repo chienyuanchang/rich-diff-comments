@@ -80,6 +80,8 @@ No Personal Access Token required — uses your existing GitHub session cookies.
 
 Best for PRs that include Markdown content — design docs, dev plans, READMEs, and ADRs. The extension activates wherever GitHub's rich-diff view is available; on source-only files (.js, .py, etc.) GitHub's normal source-diff continues to work as it always has.
 
+Open source on GitHub: https://github.com/chienyuanchang/rich-diff-comments — source, issue tracker, and roadmap.
+
 —
 
 This is an independent, third-party browser extension. It is not affiliated with, endorsed by, sponsored by, or otherwise connected to GitHub, Inc. "GitHub" is a registered trademark of GitHub, Inc., and is used here only to identify the service this extension works with.

@@ -6,23 +6,23 @@ Adds inline review-comment buttons to GitHub's **rich-diff** (rendered markdown)
 
 ## Install
 
-> *Chrome Web Store and Edge Add-ons listings are pending review. Until they're live, see the developer-mode install in [README.md](README.md#for-local-development).*
-
-<!-- Once the listings are approved, replace this block with:
-
 **Chrome / Brave / Vivaldi / Arc / any Chromium browser:**
 
-1. Go to: **<https://chromewebstore.google.com/detail/rich-diff-comments-for-github/...>**
+1. Go to: **<https://chromewebstore.google.com/detail/markdown-pr-comments-for/bdkcmcdfnhonfcpdgcmemkpcmnhnhemj>**
 2. Click **Add to Chrome** → **Add extension**.
 
 **Microsoft Edge:**
 
-1. Go to: **<https://microsoftedge.microsoft.com/addons/detail/...>**
+1. Go to: **<https://microsoftedge.microsoft.com/addons/detail/agomibenjlnikaldoddminkjbokfocgb>**
 2. Click **Get** → **Add extension**.
 
 That's it. The extension is now installed. No login, no setup, no token required.
 
--->
+## Just installed?
+
+If you installed the extension while a GitHub PR was **already open in another tab**, the inline `+` buttons and threads sidebar won't appear on that tab until you reload it. **Hard-refresh** the tab with **Ctrl+Shift+R** (Windows / Linux) or **Cmd+Shift+R** (macOS) to activate the extension.
+
+Tabs you open *after* installing work automatically — the tip above only matters for tabs that were already loaded.
 
 ## How to use it
 

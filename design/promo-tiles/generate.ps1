@@ -11,6 +11,58 @@
 #   small-tile-880x560.png    (2x retina)
 #   marquee-1400x560.png    (Chrome marquee)
 #   large-tile-2800x1120.png    (2x retina marquee)
+#
+# ──────────────────────────────────────────────────────────────────────
+# Redesign brief (open — feedback from 2026-06 review):
+#
+#   Problems with the current tiles:
+#     1. The near-black radial-gradient background (RGB 18,28,48 → 6,10,22)
+#        does not match the icon's visual language. The icon is a solid
+#        GitHub-blue (#0969da) speech bubble on transparent — sitting it
+#        against navy-black reads as two unrelated visual systems glued
+#        together, not one brand.
+#     2. The on-tile tagline (the small grey line rendered below the
+#        "Markdown PR Comments / for GitHub" headline) is too long and
+#        too small to do its job. Current text:
+#          "Inline review comments on GitHub PR rich-diff (rendered markdown)."
+#        At 13–30 px on a busy gradient it's read-by-nobody at thumbnail
+#        size, yet it eats space the headline could use and dilutes the
+#        message instead of sharpening it.
+#     3. The tile under-uses text *and* over-uses it at the same time —
+#        sparse where it should be confident (no clear single message)
+#        and verbose where it should be silent (long tagline).
+#
+#   Recommended direction (not yet implemented; tracked in
+#   docs/FEATURES.md → Distribution):
+#     • Background: pick a palette that harmonises with the icon. Either
+#       (a) a GitHub-blue tint that the icon emerges from with a subtle
+#       highlight/shadow, or (b) an off-white / Primer canvas (#f6f8fa)
+#       so the blue icon pops as the hero. Avoid the current near-black.
+#     • Tagline: shorten dramatically, in the same verb-led voice as the
+#       store short description ("Comment, reply, resolve, and collapse
+#       sections directly in GitHub PR rich-diff (rendered markdown)").
+#       Goal is a one-glance read at thumbnail size — if a reviewer can't
+#       parse it in ~1 second, it's not doing its job and the headline
+#       should be doing more work instead. Candidate taglines, all ≤ 7
+#       words and verb-led, ordered roughly by recommendation:
+#          "Comment, reply, resolve in rendered markdown."   (6 words)
+#          "Inline comments on GitHub PR rich-diff."          (6 words)
+#          "Comment on rendered markdown in GitHub PRs."      (7 words)
+#          "Comment. Reply. Resolve. In rich-diff."           (5 words)
+#       Headline ("Markdown PR Comments / for GitHub") already carries
+#       the product name — the tagline only needs to add *what it does*,
+#       not re-state where it does it. If a tagline can't beat the
+#       headline on read-time, cut it entirely and let the icon + name
+#       carry the tile.
+#     • Use text sparingly overall. Don't over-communicate (whole feature
+#       list) and don't under-communicate (just the icon with no name).
+#       The small promo tile especially has to work at 220×140 in the
+#       store carousel — everything below ~24 px effective size is
+#       decoration.
+#
+#   Don't change without re-checking: Chrome / Edge sizing rules
+#   (440×280, 1400×560 and the 2× retina pair) are fixed by the stores.
+# ──────────────────────────────────────────────────────────────────────
 
 [CmdletBinding()]
 param(

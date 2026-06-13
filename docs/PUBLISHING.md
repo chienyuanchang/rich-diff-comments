@@ -22,8 +22,10 @@ How to ship Markdown PR Comments for GitHub to users. This doc covers the distri
 
 | Store | Listing | Status | Version |
 |---|---|---|---|
-| Chrome Web Store | (pending review) | Not yet submitted | — |
-| Microsoft Edge Add-ons | (pending review) | Not yet submitted | — |
+| Chrome Web Store | <https://chromewebstore.google.com/detail/markdown-pr-comments-for/bdkcmcdfnhonfcpdgcmemkpcmnhnhemj> | Live (Unlisted) | 1.4.0 |
+| Microsoft Edge Add-ons | <https://microsoftedge.microsoft.com/addons/detail/agomibenjlnikaldoddminkjbokfocgb> | Live (Unlisted) | 1.4.0 |
+
+> **Unlisted** means the listings are not surfaced in store search results — anyone with the direct link can still install. Visibility was set to Unlisted at first publish (Edge at 1.0.0, Chrome at 1.0.1) and can be flipped to Public from each store's dashboard once we're ready to court organic discovery. The two URLs above are also linked from [README.md → Install](../README.md#install), [INSTALL.md → Install](../INSTALL.md#install), and the GitHub repo **About** sidebar (Website field).
 
 **End-user install guide:** [INSTALL.md](../INSTALL.md).
 

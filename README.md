@@ -26,14 +26,10 @@ See [docs/FEATURES.md](docs/FEATURES.md) for the full feature list and roadmap.
 
 ### For end users
 
-> *Chrome Web Store and Edge Add-ons listings are pending review. Until they're live, use the developer-mode install below.*
+- **Chrome / Brave / Vivaldi / Arc / any Chromium browser:** <https://chromewebstore.google.com/detail/markdown-pr-comments-for/bdkcmcdfnhonfcpdgcmemkpcmnhnhemj>
+- **Microsoft Edge:** <https://microsoftedge.microsoft.com/addons/detail/agomibenjlnikaldoddminkjbokfocgb>
 
-<!-- Once the listings are approved, replace this block with:
-- **Chrome / Brave / Vivaldi / Arc:** <https://chromewebstore.google.com/detail/rich-diff-comments-for-github/...>
-- **Microsoft Edge:** <https://microsoftedge.microsoft.com/addons/detail/...>
--->
-
-See [INSTALL.md](INSTALL.md) for the user-facing walkthrough.
+No login, no setup, no Personal Access Token required. Works on public and private repos. See [INSTALL.md](INSTALL.md) for the user-facing walkthrough.
 
 ### For local development
 

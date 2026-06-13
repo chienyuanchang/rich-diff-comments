@@ -967,10 +967,49 @@ li.grdc-hoverable .grdc-comment-btn {
 }
 .grdc-sidebar-collapse { margin-right: 2px; }
 /* Group prev/next together so they read as a pair, not as two solo arrows
-   sitting on either side of the count. */
+   sitting on either side of the count. The inline count (.grdc-sidebar-count)
+   sits BETWEEN the chevrons; align-items: center keeps it vertically
+   centered with the SVG glyphs. */
 .grdc-sidebar-nav {
   display: inline-flex;
+  align-items: center;
   gap: 2px;
+}
+/* Push the filter + render-md icons to the right edge — they used to be
+   pushed there by `.grdc-sidebar-count { margin-left: auto }`, which moved
+   into the nav cluster as the inline counter. Without this, the icons hug
+   the changes cluster and the header reads cramped. */
+.grdc-sidebar-header-filter { margin-left: auto; }
+/* Change-nav cluster — sits next to thread-nav in the header. Uses solid
+   triangle glyphs (vs the thread-nav chevrons) so the two clusters read
+   as separate concerns at a glance. A small gap and a subtle vertical
+   divider separate them visually. */
+.grdc-sidebar-changes-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+}
+.grdc-sidebar-changes-nav[hidden] { display: none; }
+.grdc-sidebar-header .grdc-sidebar-prev-change,
+.grdc-sidebar-header .grdc-sidebar-next-change {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+}
+.grdc-sidebar-header .grdc-sidebar-prev-change svg,
+.grdc-sidebar-header .grdc-sidebar-next-change svg { display: block; }
+.grdc-sidebar-changes-count {
+  /* Min-width so the counter doesn't jitter when going from 9/47 to 10/47. */
+  min-width: 36px;
+  text-align: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.88);
+  font-weight: 500;
 }
 .grdc-sidebar-header .grdc-sidebar-collapse,
 .grdc-sidebar-header .grdc-sidebar-prev,
@@ -1031,17 +1070,18 @@ li.grdc-hoverable .grdc-comment-btn {
      contrast. */
   background: rgba(255, 255, 255, 0.92);
 }
-/* Count: pushed to the far right, dimmed, smaller. It's a passive hint
-   ("3 / 12"), not a primary control — should read as the quietest thing
-   in the header. */
+/* Inline thread counter — sits BETWEEN the prev / next chevrons inside
+   `.grdc-sidebar-nav`, matching the Changes cluster's `[◀ N/M ▶]`
+   layout. Reads as `[↑ N/M ↓]`. Tabular nums + min-width prevent the
+   chevrons from jittering as the counter goes from 9/47 to 10/47. */
 .grdc-sidebar-count {
-  margin-left: auto;
+  display: inline-block;
+  min-width: 36px;
+  text-align: center;
   font-variant-numeric: tabular-nums;
-  font-weight: 400;
+  font-weight: 500;
   font-size: 11px;
-  color: var(--fgColor-muted, var(--color-fg-muted, #8b949e));
-  opacity: 0.75;
-  padding-right: 2px;
+  color: rgba(255, 255, 255, 0.88);
 }
 .grdc-sidebar-filter {
   display: flex;
@@ -1323,8 +1363,56 @@ li.grdc-hoverable .grdc-comment-btn {
 .grdc-sidebar-collapsed .grdc-sidebar-tabs,
 .grdc-sidebar-collapsed .grdc-sidebar-pane { display: none; }
 
+/* ── Changes pane ─────────────────────────────────────────────────────
+   The list pane that backs the Changes tab. Cards mirror the Threads
+   cards (same overall shape, padding, hover) but each card has:
+   • a leading kind glyph (+ / − / ±) tinted to match the kind
+   • a coloured 3px left rail so a quick scroll through the list reads
+     as "green added, red removed, orange mixed" without reading text. */
+.grdc-sidebar-changes-list {
+  overflow-y: auto;
+  padding: 4px 0;
+  flex: 1;
+}
+.grdc-sidebar-card-change {
+  /* Override the Threads card's blue accent stripe so each change kind
+     can paint its own colour without competing. */
+  border-left: 3px solid var(--borderColor-muted, var(--color-border-muted, #d8dee4));
+}
+.grdc-sidebar-card-change-added {
+  border-left-color: var(--bgColor-success-emphasis, var(--color-success-emphasis, #1f883d));
+}
+.grdc-sidebar-card-change-removed {
+  border-left-color: var(--bgColor-danger-emphasis, var(--color-danger-emphasis, #cf222e));
+}
+.grdc-sidebar-card-change-mixed {
+  border-left-color: var(--bgColor-attention-emphasis, var(--color-attention-emphasis, #9a6700));
+}
+.grdc-sidebar-card-change-kind {
+  display: inline-block;
+  min-width: 14px;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-weight: 700;
+  font-size: 12px;
+  margin-right: 6px;
+}
+.grdc-sidebar-card-change-added .grdc-sidebar-card-change-kind {
+  color: var(--fgColor-success, var(--color-success-fg, #1a7f37));
+}
+.grdc-sidebar-card-change-removed .grdc-sidebar-card-change-kind {
+  color: var(--fgColor-danger, var(--color-danger-fg, #cf222e));
+}
+.grdc-sidebar-card-change-mixed .grdc-sidebar-card-change-kind {
+  color: var(--fgColor-attention, var(--color-attention-fg, #9a6700));
+}
+
 /* Brief highlight pulse on the badge after click-to-jump. */
 .grdc-thread-flash {
+  animation: grdc-flash 1.2s ease-out;
+}
+/* Same pulse for changes — lands on the block itself (no badge to flash). */
+.grdc-change-flash {
   animation: grdc-flash 1.2s ease-out;
 }
 @keyframes grdc-flash {

@@ -1,4 +1,4 @@
-# Markdown PR Comments for GitHub
+# Markdown PR — Markdown PR Comments for GitHub
 
 Chrome/Edge extension that lets you leave **and view** inline PR review comments directly from GitHub's **rendered markdown** (rich diff) view.
 
@@ -14,8 +14,9 @@ GitHub's "Files changed" rich diff renders markdown beautifully but provides no 
 - **Reply** to threads, **resolve / unresolve** them, and see **resolved / outdated** state — all from the rendered view.
 - **Threads sidebar** docked to the right edge lists every review thread (author, snippet, file:line, resolved / outdated tags) — click to jump, with prev/next chevrons and a comment counter.
 - **Outline tab** in the sidebar shows the heading tree of every changed `.md` file with comment-count pills, per-section folding, and bulk `Fold H1 / H2 / H3` / `Expand all` controls.
+- **Changes tab** in the sidebar lists every changed block (paragraph / list item / table row / code block / heading / blockquote) with a `+` / `−` / `±` kind glyph, file:line, and a snippet. The header also gets a `◀ N/M ▶` counter so you can step through changes without opening the tab. Best way to scan a Markdown PR for the first time without re-reading the unchanged prose.
 - **One-click "Render all Markdown files as rich-diff"** flips every `.md` file in the PR from source-diff to rich-diff in a single sweep, so comments on those files load automatically.
-- **Keyboard shortcuts:** `j` / `k` next / previous thread, `h` / `l` first / last, `t` toggle the sidebar, `Shift+T` reset its position.
+- **Keyboard shortcuts:** `j` / `k` next / previous thread, `h` / `l` first / last thread, `[` / `]` previous / next change, `{` / `}` (Shift+[, Shift+]) first / last change, `1` / `2` / `3` switch sidebar tab (Threads / Outline / Changes), `t` toggle the sidebar, `Shift+T` reset its position.
 - No PAT required — uses your existing GitHub session cookies (works for public and private repos).
 
 (For submitting a full review / approve / request changes, use GitHub's native **"Review changes"** button at the top of the Files-changed tab.)

@@ -37,6 +37,10 @@
     buildOutlineTree,
     attributeThreadsToHeadings,
     collapseHeadingsAtLevel,
+    findChangeBlocks,
+    classifyChangeKind,
+    buildChangeSnippet,
+    nextChangeIndex,
   } = (typeof window !== 'undefined' && window.GRDC) || {};
 
   // Wrap findTextInSource so we can keep the per-file diagnostic counter behavior
@@ -848,7 +852,7 @@
   function promptForToken() {
     const existing = getGitHubToken();
     const token = prompt(
-      "Markdown PR Comments for GitHub needs a Personal Access Token (PAT) with 'repo' scope.\n\n" +
+      "Markdown PR — Markdown PR Comments for GitHub needs a Personal Access Token (PAT) with 'repo' scope.\n\n" +
         "Create one at: https://github.com/settings/tokens\n\n" +
         "Enter your token:",
       existing || ""
@@ -3079,6 +3083,11 @@
   const SIDEBAR_MIN_HEIGHT = 120;
   const SIDEBAR_TAB_KEY = 'grdc_sidebar_tab';
   let sidebarCurrentIdx = 0;
+  // Per-block index for the "prev/next change" feature — separate from
+  // `sidebarCurrentIdx` because change-nav (walks `.added`/`.removed`/`<ins>`
+  // /`<del>` blocks) is a distinct navigation concept from thread-nav
+  // (walks the 💬 badges). User-facing keys: `[` / `]`.
+  let changesCurrentIdx = 0;
   let outlineActiveObserver = null; // IntersectionObserver for active-section highlight
 
   // Drag-to-move on the header. Position persists in `localStorage` as
@@ -3318,8 +3327,18 @@
             <button class="grdc-sidebar-prev" title="Previous thread (k)" aria-label="Previous thread">
               <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M3.22 9.78a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 1 1-1.06 1.06L8 5.81 4.28 9.78a.75.75 0 0 1-1.06 0Z"/></svg>
             </button>
+            <span class="grdc-sidebar-count" aria-live="polite">0/0</span>
             <button class="grdc-sidebar-next" title="Next thread (j)" aria-label="Next thread">
               <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12.78 6.22a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 7.28a.75.75 0 1 1 1.06-1.06L8 10.19l3.72-3.97a.75.75 0 0 1 1.06 0Z"/></svg>
+            </button>
+          </span>
+          <span class="grdc-sidebar-changes-nav" hidden>
+            <button class="grdc-sidebar-prev-change" title="Previous change ([) — first change ({)" aria-label="Previous change">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M11 2.5 4 8l7 5.5z"/></svg>
+            </button>
+            <span class="grdc-sidebar-changes-count" aria-live="polite">0/0</span>
+            <button class="grdc-sidebar-next-change" title="Next change (]) — last change (})" aria-label="Next change">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M5 2.5 12 8l-7 5.5z"/></svg>
             </button>
           </span>
           <button class="grdc-sidebar-header-filter" title="Unresolved only" aria-label="Toggle unresolved only" aria-pressed="false">
@@ -3331,11 +3350,11 @@
           <button class="grdc-sidebar-render-md" title="Render all Markdown files as rich-diff" aria-label="Render all Markdown files as rich-diff">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"/></svg>
           </button>
-          <span class="grdc-sidebar-count" aria-live="polite"></span>
         </div>
         <div class="grdc-sidebar-tabs" role="tablist">
-          <button class="grdc-sidebar-tab grdc-sidebar-tab-active" data-grdc-tab="threads" role="tab" aria-selected="true">Threads</button>
-          <button class="grdc-sidebar-tab" data-grdc-tab="outline" role="tab" aria-selected="false">Outline</button>
+          <button class="grdc-sidebar-tab grdc-sidebar-tab-active" data-grdc-tab="threads" role="tab" aria-selected="true" title="Threads (1)">Threads</button>
+          <button class="grdc-sidebar-tab" data-grdc-tab="outline" role="tab" aria-selected="false" title="Outline (2)">Outline</button>
+          <button class="grdc-sidebar-tab" data-grdc-tab="changes" role="tab" aria-selected="false" title="Changes (3)">Changes</button>
         </div>
         <div class="grdc-sidebar-pane grdc-sidebar-pane-threads" data-grdc-pane="threads">
           <label class="grdc-sidebar-filter">
@@ -3353,6 +3372,9 @@
           </div>
           <div class="grdc-sidebar-outline-tree"></div>
         </div>
+        <div class="grdc-sidebar-pane grdc-sidebar-pane-changes" data-grdc-pane="changes" hidden>
+          <div class="grdc-sidebar-changes-list" role="list"></div>
+        </div>
       `;
       document.body.appendChild(sidebar);
 
@@ -3367,6 +3389,12 @@
       });
       sidebar.querySelector('.grdc-sidebar-prev').addEventListener('click', () => sidebarJump(-1));
       sidebar.querySelector('.grdc-sidebar-next').addEventListener('click', () => sidebarJump(+1));
+      // Changes-nav (◀ / ▶) — mirrors thread-nav but walks the
+      // `.added`/`.removed`/`<ins>`/`<del>` blocks. Different chevron shape
+      // + tooltip + (when hovered) the `[` / `]` key hint make it visually
+      // distinct from the thread prev/next chevrons next door.
+      sidebar.querySelector('.grdc-sidebar-prev-change').addEventListener('click', () => changesJump(-1));
+      sidebar.querySelector('.grdc-sidebar-next-change').addEventListener('click', () => changesJump(+1));
       sidebar.querySelector('.grdc-sidebar-filter-cb').addEventListener('change', (e) => {
         try { localStorage.setItem(SIDEBAR_FILTER_KEY, e.target.checked ? '1' : '0'); } catch (_) {}
         // Sync the header icon's pressed state.
@@ -3539,6 +3567,11 @@
 
     // Build / refresh the Outline pane in the same pass.
     buildOutlinePane(sidebar);
+
+    // Build / refresh the Changes pane in the same pass. Also wires up
+    // the header ◀ / ▶ counter — those buttons are present in the shell
+    // but stay `hidden` until we have at least one change to navigate to.
+    buildChangesPane(sidebar);
 
     // Pick the active tab. Normally we honor the user's last choice;
     // when threads is empty but Outline isn't, force-switch to Outline
@@ -3762,6 +3795,10 @@
     // switch to it, fall back to threads.
     const outlineTab = sidebar.querySelector('.grdc-sidebar-tab[data-grdc-tab="outline"]');
     if (target === 'outline' && outlineTab?.hidden) target = 'threads';
+    // Same fallback for changes — the tab auto-hides when the page has
+    // zero diff blocks (the rare "empty PR" case, or before init finishes).
+    const changesTab = sidebar.querySelector('.grdc-sidebar-tab[data-grdc-tab="changes"]');
+    if (target === 'changes' && changesTab?.hidden) target = 'threads';
     sidebar.querySelectorAll('.grdc-sidebar-tab').forEach(t => {
       const isActive = t.dataset.grdcTab === target;
       t.classList.toggle('grdc-sidebar-tab-active', isActive);
@@ -3825,24 +3862,33 @@
   function updateSidebarCount() {
     const sidebar = document.querySelector('.grdc-sidebar');
     if (!sidebar) return;
-    const cards = sidebar.querySelectorAll('.grdc-sidebar-card');
+    // Scope to the threads list — `.grdc-sidebar-card` is also used by
+    // the Changes pane (`.grdc-sidebar-card.grdc-sidebar-card-change`), and
+    // without the `.grdc-sidebar-list` ancestor we'd count both lists in
+    // the threads counter AND make the prev/next arrows walk change cards.
+    // The bug only manifests visibly when the threads list is empty (or
+    // small), because thread cards usually come first in DOM order and
+    // hide the leak. With 1 thread + 4 changes, you'd see "1/5" and ↓ would
+    // scroll to a change. See the 2026-06 fix in the changelog.
+    const cards = sidebar.querySelectorAll('.grdc-sidebar-list .grdc-sidebar-card');
     const countEl = sidebar.querySelector('.grdc-sidebar-count');
-    if (cards.length === 0) {
-      countEl.textContent = '0';
-    } else {
-      countEl.textContent = `${sidebarCurrentIdx + 1} / ${cards.length}`;
-    }
+    // `N/M` format (no spaces) matches the Changes counter so the two
+    // header clusters read symmetric.
+    countEl.textContent = cards.length === 0
+      ? '0/0'
+      : `${sidebarCurrentIdx + 1}/${cards.length}`;
     cards.forEach((c, i) => c.classList.toggle('grdc-sidebar-card-active', i === sidebarCurrentIdx));
   }
 
   function sidebarJump(delta) {
     const sidebar = document.querySelector('.grdc-sidebar');
     if (!sidebar) return;
-    const cards = sidebar.querySelectorAll('.grdc-sidebar-card');
+    // Scope to the threads list — see comment in updateSidebarCount.
+    const cards = sidebar.querySelectorAll('.grdc-sidebar-list .grdc-sidebar-card');
     if (cards.length === 0) return;
     sidebarCurrentIdx = nextWrappingIndex(sidebarCurrentIdx, delta, cards.length);
     cards[sidebarCurrentIdx].click();
-    // Keep the active card visible inside the sidebar list \u2014 the click
+    // Keep the active card visible inside the sidebar list — the click
     // handler scrolls the document to the thread, but doesn't touch the
     // sidebar's own scroll. Without this, pressing j past the bottom of
     // the visible list leaves the new active card off-screen.
@@ -3855,6 +3901,199 @@
     const badge = threadEl.querySelector('.grdc-thread-badge') || threadEl;
     badge.classList.add('grdc-thread-flash');
     setTimeout(() => badge.classList.remove('grdc-thread-flash'), 1200);
+  }
+
+  // ── Changes navigation ────────────────────────────────────────────────────
+  //
+  // Walk every `.prose-diff` container, ask `findChangeBlocks` for the
+  // reading-unit blocks that contain `<ins>`/`<del>`/`.added`/`.removed`
+  // markers, and surface them in (a) the header ◀ / ▶ counter and (b) the
+  // dedicated "Changes" sidebar tab. Idempotent — safe to call after every
+  // `buildThreadsSidebar` rebuild because we rebuild from the live DOM.
+  //
+  // Distinct from thread-nav (`j`/`k`): a brand-new PR with zero comments
+  // still has changes to navigate — typically the first thing a reviewer
+  // wants when opening a Markdown file for the first time.
+  function buildChangesPane(sidebar) {
+    if (!sidebar || typeof findChangeBlocks !== 'function') return;
+    const tab = sidebar.querySelector('.grdc-sidebar-tab[data-grdc-tab="changes"]');
+    const headerCluster = sidebar.querySelector('.grdc-sidebar-changes-nav');
+    const list = sidebar.querySelector('.grdc-sidebar-changes-list');
+    if (!tab || !list) return;
+
+    // Collect every visible `.prose-diff` root and union their change blocks.
+    // Multiple files = multiple containers; same dedupe rules apply within
+    // each container.
+    const roots = document.querySelectorAll('.prose-diff');
+    const blocks = [];
+    roots.forEach((root) => {
+      // `offsetParent` is null when the element (or any ancestor) is
+      // `display: none` — in our case that's typically the file's
+      // source-diff still being shown. We skip invisible roots so the
+      // counter never counts changes the user can't see.
+      if (!root.offsetParent && root !== document.body) return;
+      const found = findChangeBlocks(root);
+      for (const b of found) blocks.push(b);
+    });
+
+    // Tab visibility + empty state:
+    //
+    //   Case A — No `.prose-diff` rendered yet (user just landed on /changes
+    //     or all files are still in source-diff). Show the tab and surface
+    //     the same "Render all Markdown files as rich-diff" CTA as the
+    //     Threads pane uses, so the user has an obvious one-click next step.
+    //   Case B — `.prose-diff` IS visible but no changed blocks anywhere
+    //     (rare — a PR with literally zero rendered-markdown edits, e.g.
+    //     metadata-only). Hide the tab so we don't show a stale CTA on a
+    //     PR that's already rendered. Mirrors the original behaviour.
+    if (blocks.length === 0) {
+      const visibleRootCount = Array.from(roots).filter(
+        (r) => r.offsetParent || r === document.body
+      ).length;
+
+      if (visibleRootCount === 0) {
+        // Case A: actionable empty state.
+        tab.hidden = false;
+        if (headerCluster) headerCluster.hidden = true;
+        sidebar._grdcChangeBlocks = [];
+        list.innerHTML = '';
+        const empty = document.createElement('div');
+        empty.className = 'grdc-sidebar-empty';
+        empty.innerHTML = `
+          <p class="grdc-sidebar-empty-msg">No changes visible yet. Render the Markdown files as rich-diff to see them.</p>
+          <button type="button" class="grdc-sidebar-empty-cta">
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"/></svg>
+            <span>Render all Markdown files as rich-diff</span>
+          </button>
+        `;
+        const cta = empty.querySelector('.grdc-sidebar-empty-cta');
+        cta.addEventListener('click', () => {
+          // Forward to the header book icon's existing handler so the
+          // loading overlay + scroll-restore behaviour stays consistent.
+          const headerBtn = sidebar.querySelector('.grdc-sidebar-render-md');
+          if (headerBtn) headerBtn.click();
+          else flipAllMdToRichDiff();
+        });
+        list.appendChild(empty);
+        updateChangesCount(sidebar);
+        return;
+      }
+
+      // Case B: hide the tab outright (truly no changes).
+      tab.hidden = true;
+      if (headerCluster) headerCluster.hidden = true;
+      if (localStorage.getItem(SIDEBAR_TAB_KEY) === 'changes') {
+        try { localStorage.setItem(SIDEBAR_TAB_KEY, 'threads'); } catch (_) {}
+      }
+      list.innerHTML = '';
+      return;
+    }
+    tab.hidden = false;
+    if (headerCluster) headerCluster.hidden = false;
+
+    // Cache on the sidebar element so `changesJump` can find the blocks
+    // without re-walking the DOM. Live DOM references — if a MutationObserver
+    // rebuild swaps these nodes, the next `buildChangesPane` will refresh.
+    sidebar._grdcChangeBlocks = blocks;
+    // Snap the saved index inside the new range.
+    if (changesCurrentIdx >= blocks.length) changesCurrentIdx = blocks.length - 1;
+    if (changesCurrentIdx < 0) changesCurrentIdx = 0;
+
+    // Re-render the list pane. Each card shows: kind indicator, file path
+    // (if discoverable), line number (if our line map has it), snippet.
+    list.innerHTML = '';
+    blocks.forEach((block, idx) => {
+      const kind = classifyChangeKind(block) || 'mixed';
+      const snippet = buildChangeSnippet(block, 90);
+
+      // File path is discoverable from the nearest file-container ancestor
+      // (`div[id^="diff-"]` / `[data-tagsearch-path]` / `.file[data-path]`)
+      // — same selector we use elsewhere. Missing path is acceptable; the
+      // card just won't show one.
+      const fileContainer = block.closest && block.closest('div[id^="diff-"], [data-tagsearch-path], .file[data-path]');
+      const path = fileContainer ? getFilePath(fileContainer) : '';
+      const file = path ? (path.split('/').pop() || path) : '';
+
+      // Line number is best-effort — `fileLineMap` only knows about blocks
+      // we've registered for the `+` button. Deleted blocks (`<del>` /
+      // `.removed`) aren't in the map because they don't exist in the
+      // post-change source. For those we render "(removed)" instead.
+      const mapEntry = fileLineMap.get && fileLineMap.get(block);
+      const line = mapEntry && mapEntry.line ? String(mapEntry.line) : '';
+      const loc = file && line ? `${file}:${line}`
+        : file ? file
+        : line ? `line ${line}`
+        : '';
+
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = `grdc-sidebar-card grdc-sidebar-card-change grdc-sidebar-card-change-${kind}`;
+      card.setAttribute('role', 'listitem');
+      const isTruncated = snippet.endsWith('\u2026');
+      const bodyClass = 'grdc-sidebar-card-body' + (isTruncated ? ' grdc-sidebar-card-body-truncated' : '');
+      const bodyText = isTruncated ? snippet.slice(0, -1).trimEnd() : snippet;
+      const kindGlyph = kind === 'added' ? '+'
+        : kind === 'removed' ? '\u2212'
+        : '\u00b1';
+      const kindLabel = kind.charAt(0).toUpperCase() + kind.slice(1);
+      card.innerHTML = `
+        <div class="grdc-sidebar-card-head">
+          <span class="grdc-sidebar-card-change-kind" title="${escapeHtml(kindLabel)}">${escapeHtml(kindGlyph)}</span>
+          <span class="grdc-sidebar-card-loc">${escapeHtml(loc || '(no location)')}</span>
+        </div>
+        <div class="${bodyClass}">${escapeHtml(bodyText) || '<em>(no text)</em>'}</div>
+      `;
+      card.addEventListener('click', () => {
+        changesCurrentIdx = idx;
+        scrollToChange(block);
+        updateChangesCount(sidebar);
+      });
+      list.appendChild(card);
+    });
+
+    updateChangesCount(sidebar);
+  }
+
+  function updateChangesCount(sidebar) {
+    if (!sidebar) return;
+    const countEl = sidebar.querySelector('.grdc-sidebar-changes-count');
+    const blocks = sidebar._grdcChangeBlocks || [];
+    if (!countEl) return;
+    countEl.textContent = blocks.length === 0
+      ? '0/0'
+      : `${changesCurrentIdx + 1}/${blocks.length}`;
+    const cards = sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card');
+    cards.forEach((c, i) => c.classList.toggle('grdc-sidebar-card-active', i === changesCurrentIdx));
+  }
+
+  function changesJump(delta) {
+    const sidebar = document.querySelector('.grdc-sidebar');
+    if (!sidebar) return;
+    const blocks = sidebar._grdcChangeBlocks || [];
+    if (blocks.length === 0) return;
+    changesCurrentIdx = nextChangeIndex(changesCurrentIdx, delta, blocks.length);
+    scrollToChange(blocks[changesCurrentIdx]);
+    updateChangesCount(sidebar);
+    // Keep the active card visible in the Changes list (mirrors sidebarJump).
+    const cards = sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card');
+    if (cards[changesCurrentIdx]) {
+      cards[changesCurrentIdx].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function scrollToChange(blockEl) {
+    if (!blockEl) return;
+    // Use the same sticky-offset-aware scroll the Outline tab uses so the
+    // change doesn't land under GitHub's sticky file header.
+    if (typeof scrollToWithStickyOffset === 'function') {
+      scrollToWithStickyOffset(blockEl);
+    } else {
+      blockEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+    // Brief outline flash so the user sees where they landed — reuses the
+    // same animation pattern as the thread flash but on the block itself.
+    blockEl.classList.add('grdc-change-flash');
+    setTimeout(() => blockEl.classList.remove('grdc-change-flash'), 1200);
   }
 
   // Keyboard navigation:
@@ -3885,12 +4124,84 @@
       toggleSidebarCollapsed();
       return;
     }
+    // Tab-switch shortcuts — single digit 1/2/3 maps to Threads / Outline /
+    // Changes respectively. Auto-expands the sidebar if collapsed (same
+    // affordance the render-md button uses) so pressing `3` on a fresh
+    // PR doesn't silently swap the hidden tab behind a slim bar.
+    // `setSidebarTab` already gracefully falls back to threads if the
+    // requested tab is hidden (e.g. Changes when no rich-diff is rendered).
+    if (!e.shiftKey && (e.key === '1' || e.key === '2' || e.key === '3')) {
+      const sidebar = document.querySelector('.grdc-sidebar');
+      if (!sidebar) return;
+      e.preventDefault();
+      if (sidebar.classList.contains('grdc-sidebar-collapsed')) {
+        sidebar.classList.remove('grdc-sidebar-collapsed');
+        try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, '0'); } catch (_) {}
+      }
+      const target = e.key === '1' ? 'threads'
+        : e.key === '2' ? 'outline'
+        : 'changes';
+      setSidebarTab(sidebar, target);
+      return;
+    }
+    // Change-nav: vim's `[c` / `]c` convention. Single-key variants since
+    // GitHub doesn't bind `[` / `]` on PR pages. Always-on (doesn't need
+    // a focused sidebar) so the user can scan diffs without touching the
+    // mouse — the most common "open MD PR for the first time" flow.
+    if (e.key === ']' && !e.shiftKey) {
+      const sidebar = document.querySelector('.grdc-sidebar');
+      if (sidebar && (sidebar._grdcChangeBlocks || []).length > 0) {
+        e.preventDefault();
+        changesJump(+1);
+        return;
+      }
+    }
+    if (e.key === '[' && !e.shiftKey) {
+      const sidebar = document.querySelector('.grdc-sidebar');
+      if (sidebar && (sidebar._grdcChangeBlocks || []).length > 0) {
+        e.preventDefault();
+        changesJump(-1);
+        return;
+      }
+    }
+    // First / last change — Shift+[ / Shift+] (which produce `{` / `}` on
+    // US QWERTY). Mirrors `h` / `l` for threads. Vim convention: `{` / `}`
+    // are paragraph navigation in normal mode; here they're the bookends
+    // for the same Changes pane that `[` / `]` step through.
+    if (e.key === '{') {
+      const sidebar = document.querySelector('.grdc-sidebar');
+      const blocks = sidebar && (sidebar._grdcChangeBlocks || []);
+      if (blocks && blocks.length > 0) {
+        e.preventDefault();
+        changesCurrentIdx = 0;
+        scrollToChange(blocks[0]);
+        updateChangesCount(sidebar);
+        const cards = sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card');
+        if (cards[0]) cards[0].scrollIntoView({ block: 'nearest' });
+        return;
+      }
+    }
+    if (e.key === '}') {
+      const sidebar = document.querySelector('.grdc-sidebar');
+      const blocks = sidebar && (sidebar._grdcChangeBlocks || []);
+      if (blocks && blocks.length > 0) {
+        e.preventDefault();
+        const last = blocks.length - 1;
+        changesCurrentIdx = last;
+        scrollToChange(blocks[last]);
+        updateChangesCount(sidebar);
+        const cards = sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card');
+        if (cards[last]) cards[last].scrollIntoView({ block: 'nearest' });
+        return;
+      }
+    }
     // Only fire when the sidebar exists and has at least one thread —
     // otherwise we'd swallow plain `j`/`k` on pages where we have nothing
-    // to navigate to.
+    // to navigate to. Scope to the threads list so the count doesn't
+    // include change cards (which also carry `.grdc-sidebar-card`).
     const sidebar = document.querySelector('.grdc-sidebar');
     if (!sidebar) return;
-    const cards = sidebar.querySelectorAll('.grdc-sidebar-card');
+    const cards = sidebar.querySelectorAll('.grdc-sidebar-list .grdc-sidebar-card');
     if (cards.length === 0) return;
     switch (e.key) {
       case 'j':

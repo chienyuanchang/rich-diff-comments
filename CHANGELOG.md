@@ -4,6 +4,23 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-06-12
+
+### Added
+
+- **Changes navigation — jump between added / removed / modified blocks without reading the kept prose around them.** A new **Changes** tab in the sidebar lists every changed paragraph, list item, table row, code block, heading, and blockquote in document order, with a kind glyph (`+` added / `−` removed / `±` mixed), a coloured left rail, a file:line label, and a snippet of the changed text. Click a card to jump; the target block briefly pulses so you see where you landed. The sidebar header also gets a `◀ N/M ▶` counter next to the existing thread `↑ ↓` (separated by a subtle divider so the two are clearly different concerns), and the same prev/next is bound to `[` and `]` (vim's `[c` / `]c` convention). The Changes tab and the header counter auto-hide when there's nothing to navigate (e.g. before any file is opened in rich-diff). This is the first thing reviewers reach for when opening a Markdown PR for the first time — scan the edits without re-reading the unchanged prose.
+- **First / last change shortcuts: `Shift+[` (`{`) jumps to the first change, `Shift+]` (`}`) to the last.** Mirrors `h` / `l` for threads. Useful for jumping back to the top of a long PR after scrolling deep, or skipping straight to the final hunk to check the end-state.
+- **Tab-switch shortcuts: press `1`, `2`, or `3`** to switch the sidebar to Threads, Outline, or Changes respectively. Auto-expands the sidebar if it was collapsed so you don't end up swapping a tab hidden behind the slim bar. Tab labels now carry tooltips (`Threads (1)`, `Outline (2)`, `Changes (3)`) so the shortcut is discoverable on hover.
+- **"Render all Markdown files as rich-diff" CTA now also appears in the empty Changes pane** — previously the Changes tab was hidden whenever no file was rendered, so users on a fresh `/changes` page never saw it; now the tab stays visible with the same primary action button that the empty Threads pane has, so the next step is obvious from any tab.
+
+### Changed
+
+- **Renamed to "Markdown PR — Markdown PR Comments for GitHub"** (was *Markdown PR Comments for GitHub*). Same extension, same install — the new "Short — Long" pattern means narrow contexts like the browser toolbar tooltip and store carousel cards show a short `Markdown PR` prefix that fits, while wider contexts (toolbar hover, store detail page, screen readers) still show the full descriptive name. Auto-updates to the new display name with no action needed from you.
+
+### Fixed
+
+- **Thread navigation (`↑` / `↓` and the `N/M` counter) no longer accidentally walks the new Changes cards.** The thread-nav code was using an unscoped CSS selector (`.grdc-sidebar-card`) that matched both lists; on pages with few unresolved comments and several changes, pressing `↓` on the Threads tab would scroll to a *change* in the document instead of the next thread, and the counter showed inflated counts (e.g. `1/5` with only 1 thread visible). Pinned by a new regression test that scans `content.js` for any unscoped variant of the selector.
+
 ## [1.4.0] — 2026-06-05
 
 ### Changed

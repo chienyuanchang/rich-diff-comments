@@ -1,8 +1,8 @@
-# Privacy Policy — Markdown PR Comments for GitHub
+# Privacy Policy — Markdown PR — Markdown PR Comments for GitHub
 
 **Effective date:** May 18, 2026
 
-Markdown PR Comments for GitHub is a browser extension that adds inline commenting to GitHub Pull Request rich-diff (rendered markdown) views.
+Markdown PR — Markdown PR Comments for GitHub is a browser extension that adds inline commenting to GitHub Pull Request rich-diff (rendered markdown) views.
 
 ## What data the extension accesses
 

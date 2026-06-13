@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Markdown PR Comments for GitHub",
-  "version": "1.4.0",
+  "name": "Markdown PR — Markdown PR Comments for GitHub",
+  "version": "1.5.0",
   "description": "Comment, reply, resolve, and collapse sections directly in GitHub PR rich-diff (rendered markdown) view.",
   "author": "chienyuanchang",
 
@@ -18,7 +18,7 @@
       "matches": [
         "https://github.com/*/pull/*"
       ],
-      "js": ["src/lib/textMatch.js", "src/lib/responses.js", "src/lib/tableRows.js", "src/lib/markdownPreview.js", "src/lib/codeBlocks.js", "src/lib/sidebar.js", "src/lib/anchors.js", "src/lib/outline.js", "src/lib/roles.js", "src/lib/sectionCollapse.js", "content.js"],
+      "js": ["src/lib/textMatch.js", "src/lib/responses.js", "src/lib/tableRows.js", "src/lib/markdownPreview.js", "src/lib/codeBlocks.js", "src/lib/sidebar.js", "src/lib/anchors.js", "src/lib/outline.js", "src/lib/roles.js", "src/lib/sectionCollapse.js", "src/lib/changes.js", "content.js"],
       "css": ["styles.css"]
     }
   ]

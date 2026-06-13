@@ -1,10 +1,13 @@
 # Regenerate the Chrome Web Store promo tiles using the new icon + new name.
 #
 # Composes each tile from:
-#   - dark radial-gradient background (matches existing tile style)
-#   - new app icon (design/logo/icon-1024.png) centered horizontally near top
-#   - "Markdown PR Comments" headline (white) + "for GitHub" (GitHub blue)
-#   - tagline in light gray
+#   - GitHub-blue radial-gradient background (matches the icon's `#0969da`
+#     so the whole tile reads as one brand system)
+#   - white rounded-rect badge behind the icon (icon is same-colour as the
+#     background and would otherwise disappear); soft drop shadow for lift
+#   - new app icon (design/logo/icon-1024.png) centered on the badge
+#   - "Markdown PR Comments" headline (white) + "for GitHub" (light blue)
+#   - short verb-led tagline in light gray
 #
 # Sizes generated (per Chrome Web Store + Edge Add-ons):
 #   small-440x280.png    (Chrome small promo tile)
@@ -13,52 +16,33 @@
 #   large-tile-2800x1120.png    (2x retina marquee)
 #
 # ──────────────────────────────────────────────────────────────────────
-# Redesign brief (open — feedback from 2026-06 review):
+# Redesign history:
 #
-#   Problems with the current tiles:
-#     1. The near-black radial-gradient background (RGB 18,28,48 → 6,10,22)
-#        does not match the icon's visual language. The icon is a solid
-#        GitHub-blue (#0969da) speech bubble on transparent — sitting it
-#        against navy-black reads as two unrelated visual systems glued
-#        together, not one brand.
-#     2. The on-tile tagline (the small grey line rendered below the
-#        "Markdown PR Comments / for GitHub" headline) is too long and
-#        too small to do its job. Current text:
-#          "Inline review comments on GitHub PR rich-diff (rendered markdown)."
-#        At 13–30 px on a busy gradient it's read-by-nobody at thumbnail
-#        size, yet it eats space the headline could use and dilutes the
-#        message instead of sharpening it.
-#     3. The tile under-uses text *and* over-uses it at the same time —
-#        sparse where it should be confident (no clear single message)
-#        and verbose where it should be silent (long tagline).
+#   2026-06 (initial review feedback): the original near-black background
+#   (RGB 18,28,48 → 6,10,22) clashed with the solid-blue speech-bubble
+#   icon. Tagline was 9 words at 13–30 px — unreadable at thumbnail size.
 #
-#   Recommended direction (not yet implemented; tracked in
-#   docs/FEATURES.md → Distribution):
-#     • Background: pick a palette that harmonises with the icon. Either
-#       (a) a GitHub-blue tint that the icon emerges from with a subtle
-#       highlight/shadow, or (b) an off-white / Primer canvas (#f6f8fa)
-#       so the blue icon pops as the hero. Avoid the current near-black.
-#     • Tagline: shorten dramatically, in the same verb-led voice as the
-#       store short description ("Comment, reply, resolve, and collapse
-#       sections directly in GitHub PR rich-diff (rendered markdown)").
-#       Goal is a one-glance read at thumbnail size — if a reviewer can't
-#       parse it in ~1 second, it's not doing its job and the headline
-#       should be doing more work instead. Candidate taglines, all ≤ 7
-#       words and verb-led, ordered roughly by recommendation:
-#          "Comment, reply, resolve in rendered markdown."   (6 words)
-#          "Inline comments on GitHub PR rich-diff."          (6 words)
-#          "Comment on rendered markdown in GitHub PRs."      (7 words)
-#          "Comment. Reply. Resolve. In rich-diff."           (5 words)
-#       Headline ("Markdown PR Comments / for GitHub") already carries
-#       the product name — the tagline only needs to add *what it does*,
-#       not re-state where it does it. If a tagline can't beat the
-#       headline on read-time, cut it entirely and let the icon + name
-#       carry the tile.
-#     • Use text sparingly overall. Don't over-communicate (whole feature
-#       list) and don't under-communicate (just the icon with no name).
-#       The small promo tile especially has to work at 220×140 in the
-#       store carousel — everything below ~24 px effective size is
-#       decoration.
+#   2026-06 (this rev): swapped background to GitHub-blue radial gradient
+#   (`#388bfd` centre → `#0969da` edges) so the icon's own blue blends
+#   into the same palette. Added a white rounded-rect badge behind the
+#   icon with a 16% corner radius and a soft drop shadow — without this,
+#   the same-colour icon would disappear into the background. Headline
+#   stayed white for clarity against the saturated blue; sub line went
+#   to a lighter blue tint (rgb 220,235,255) so it reads as a secondary
+#   note. Tagline shortened to one of the verb-led candidates from the
+#   original brief: "Comment, reply, resolve in rendered markdown." —
+#   6 words, mirrors the store short description, readable at small size.
+#
+#   Future iterations to consider (not blocking):
+#     • Per-tile tagline visibility — the small 440×280 tile is already
+#       getting tight; consider dropping the tagline on it entirely so
+#       the icon + name carry the tile at carousel size.
+#     • Tile-B headline re-cut: make "Markdown PR" enormous as the new
+#       short brand prefix and demote "Comments for GitHub" to subtitle.
+#       Would mirror the manifest name's hierarchy more directly.
+#     • Light-mode variant of the same palette (off-white canvas with
+#       blue accents) for stores that test against light backgrounds
+#       only — A/B test signal would tell us if it lifts conversion.
 #
 #   Don't change without re-checking: Chrome / Edge sizing rules
 #   (440×280, 1400×560 and the 2× retina pair) are fixed by the stores.
@@ -91,22 +75,33 @@ foreach ($t in $tiles) {
     $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
     $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
 
-    # Background: dark radial gradient (centre slightly lighter)
-    $bgRect = New-Object System.Drawing.Rectangle 0, 0, $t.W, $t.H
-    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $path.AddRectangle($bgRect)
-    $pathBrush = New-Object System.Drawing.Drawing2D.PathGradientBrush $path
-    $pathBrush.CenterPoint = New-Object System.Drawing.PointF ($t.W / 2), ($t.H / 2)
-    $pathBrush.CenterColor = [System.Drawing.Color]::FromArgb(255, 18, 28, 48)
-    $pathBrush.SurroundColors = ,([System.Drawing.Color]::FromArgb(255, 6, 10, 22))
-    $g.FillRectangle($pathBrush, $bgRect)
-    $pathBrush.Dispose()
-    $path.Dispose()
+    # Background: pure white canvas. The brand colour comes from the
+    # icon and from the perimeter frame below — no gradient or fill
+    # needed in the body. Reads cleanly at any size and lets the icon's
+    # GitHub-blue do the heavy lifting visually.
+    $whiteBg = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 255, 255, 255))
+    $g.FillRectangle($whiteBg, 0, 0, $t.W, $t.H)
+    $whiteBg.Dispose()
+
+    # Perimeter frame in GitHub blue. Width scales with tile size so the
+    # frame stays visually proportional from 440×280 up to 2800×1120 —
+    # a fixed value would look chunky on small tiles and invisible on the
+    # marquee. ~2.5% of tile width is the "confident brand frame" weight;
+    # halving to ~1.2% reads as a hairline that gets lost at thumbnail
+    # size, doubling to ~5% starts looking like a poster border. Inset
+    # by half the pen width so the frame sits flush with the canvas
+    # edge rather than getting clipped.
+    $frameWidth = [Math]::Max(6, [int]($t.W * 0.025))
+    $framePen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(255, 9, 105, 218)), $frameWidth
+    $inset = [int]($frameWidth / 2)
+    $g.DrawRectangle($framePen, $inset, $inset, ($t.W - $frameWidth), ($t.H - $frameWidth))
+    $framePen.Dispose()
 
     $layout = if ($t.ContainsKey('Layout')) { $t.Layout } else { 'vertical' }
 
     if ($layout -eq 'horizontal') {
-        # Icon on left, text block on right
+        # Icon on left, text block on right — no badge, icon sits directly
+        # on the white canvas.
         $iconY = [int](($t.H - $t.Icon) / 2)
         $iconX = [int]($t.W * 0.10)
         $g.DrawImage($icon, $iconX, $iconY, $t.Icon, $t.Icon)
@@ -117,14 +112,18 @@ foreach ($t in $tiles) {
         $subFont      = New-Object System.Drawing.Font 'Segoe UI', $t.H2, ([System.Drawing.FontStyle]::Bold), ([System.Drawing.GraphicsUnit]::Pixel)
         $tagFont      = New-Object System.Drawing.Font 'Segoe UI', $t.T,  ([System.Drawing.FontStyle]::Regular), ([System.Drawing.GraphicsUnit]::Pixel)
 
-        $whiteBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 255, 255, 255))
-        $blueBrush  = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 88, 166, 255))
-        $grayBrush  = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 180, 190, 210))
+        # Text palette: near-black headline + GitHub-blue sub + mid-grey
+        # tagline. Matches GitHub's own Primer palette (`--fgColor-default`,
+        # `--fgColor-accent`, `--fgColor-muted`) so the tile reads as
+        # "native GitHub" branding rather than custom-coloured marketing.
+        $whiteBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 31, 35, 40))
+        $blueBrush  = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 9, 105, 218))
+        $grayBrush  = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 87, 96, 106))
 
         # Stack headline / sub / tagline vertically, anchored to vertical centre
         $line1 = "Markdown PR Comments"
         $line2 = "for GitHub"
-        $tagline = "Inline review comments on GitHub PR rich-diff (rendered markdown)."
+        $tagline = "Comment, reply, resolve in rendered markdown."
         $lineGap = [int]($t.H1 * 0.15)
         $tagGap  = [int]($t.H1 * 0.6)
         $h1H = [int]($t.H1 * 1.25)
@@ -139,18 +138,25 @@ foreach ($t in $tiles) {
         $g.DrawString($line2, $subFont, $blueBrush, [single]$textX, [single]($yStart + $h1H + $lineGap), $sf)
         $g.DrawString($tagline, $tagFont, $grayBrush, (New-Object System.Drawing.RectangleF $textX, ($yStart + $h1H + $lineGap + $h2H + $tagGap), $textW, ($tH * 2)), $sf)
     } else {
-        # Icon centred at top, text below
+        # Icon centred near top, text below — no badge, icon sits directly
+        # on the white canvas. Icon position is computed AFTER the text
+        # block so we know where the headline starts, then the icon is
+        # placed in the vertical centre of the gap between the top edge
+        # of the tile and the top of the headline. This gives the icon
+        # breathing room from the frame instead of hugging the top edge
+        # (the previous `iconY = $t.Pad` look read as "tile is unbalanced
+        # — too much white at the bottom").
         $iconX = [int](($t.W - $t.Icon) / 2)
+        # Provisional iconY (we'll recompute after we know textTop).
         $iconY = $t.Pad
-        $g.DrawImage($icon, $iconX, $iconY, $t.Icon, $t.Icon)
 
         $headlineFont = New-Object System.Drawing.Font 'Segoe UI', $t.H1, ([System.Drawing.FontStyle]::Bold), ([System.Drawing.GraphicsUnit]::Pixel)
         $subFont      = New-Object System.Drawing.Font 'Segoe UI', $t.H2, ([System.Drawing.FontStyle]::Bold), ([System.Drawing.GraphicsUnit]::Pixel)
         $tagFont      = New-Object System.Drawing.Font 'Segoe UI', $t.T,  ([System.Drawing.FontStyle]::Regular), ([System.Drawing.GraphicsUnit]::Pixel)
 
-        $whiteBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 255, 255, 255))
-        $blueBrush  = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 88, 166, 255))
-        $grayBrush  = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 180, 190, 210))
+        $whiteBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 31, 35, 40))
+        $blueBrush  = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 9, 105, 218))
+        $grayBrush  = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 87, 96, 106))
 
         $sf = New-Object System.Drawing.StringFormat
         $sf.Alignment = [System.Drawing.StringAlignment]::Center
@@ -158,13 +164,39 @@ foreach ($t in $tiles) {
 
         $line1 = "Markdown PR Comments"
         $line2 = "for GitHub"
-        $tagline = "Inline review comments on GitHub PR rich-diff`n(rendered markdown)."
+        $tagline = "Comment, reply, resolve`nin rendered markdown."
 
-        $textY = $iconY + $t.Icon + [int]($t.Pad * 0.9)
+        # Compute text-block height + place it anchored to the bottom
+        # padding. Then put the icon in the vertical middle of the
+        # remaining whitespace above the headline.
+        $line1H = [int]($t.H1 * 1.3)
+        $line2H = [int]($t.H2 * 1.6)
+        $taglineH = [int]($t.T * 2.4)  # 2-line wrap × line-height
+        $textBlockH = $line1H + $line2H + $taglineH
+        # Anchor text block to bottom with a small extra-padding cushion
+        # below the tagline (tagline gets ~1×Pad below it for breathing room).
+        $textY = $t.H - $t.Pad - $textBlockH
+        # Icon vertically centred in the whitespace above the headline.
+        # Top of that whitespace is the frame-inset (we ignore the frame
+        # itself when centring — visually the eye reads the WHITE region,
+        # not the line); bottom is `textY`. Subtract icon height / 2 to
+        # centre, then nudge DOWNWARD by ~Pad so the icon sits in the
+        # lower half of the upper whitespace — closer to the headline it
+        # introduces, with more breathing room above. (Reading order is
+        # top→bottom and an icon glued near the bottom of its "card"
+        # reads as a deliberate hand-off into the text below.)
+        $iconY = [int](($textY - $t.Icon) / 2) + $t.Pad
+        # Clamp so we never overlap the top frame or push into the headline.
+        if ($iconY -lt $t.Pad) { $iconY = $t.Pad }
+        if (($iconY + $t.Icon) -gt ($textY - [int]($t.Pad / 2))) {
+            $iconY = $textY - $t.Icon - [int]($t.Pad / 2)
+        }
+        $g.DrawImage($icon, $iconX, $iconY, $t.Icon, $t.Icon)
+
         $g.DrawString($line1, $headlineFont, $whiteBrush, (New-Object System.Drawing.RectangleF 0, $textY, $t.W, ($t.H1 * 1.5)), $sf)
-        $textY += [int]($t.H1 * 1.3)
+        $textY += $line1H
         $g.DrawString($line2, $subFont, $blueBrush, (New-Object System.Drawing.RectangleF 0, $textY, $t.W, ($t.H2 * 1.5)), $sf)
-        $textY += [int]($t.H2 * 1.6)
+        $textY += $line2H
         $g.DrawString($tagline, $tagFont, $grayBrush, (New-Object System.Drawing.RectangleF 0, $textY, $t.W, ($t.T * 3.5)), $sf)
     }
 

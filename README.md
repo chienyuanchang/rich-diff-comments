@@ -73,13 +73,16 @@ docs/PUBLISHING.md   Store submission and release workflow
 
 ## Tests
 
-Pure helpers (line matching, response parsing, table arithmetic, code-block fence detection, anchor-key encoding) have unit tests using Node's built-in test runner — no `npm install` required.
+Pure helpers (line matching, response parsing, table arithmetic, code-block fence detection, anchor-key encoding) plus DOM-coupled glue (per-file block→line mapping, `+`-button anchor selection, `styles.css` coverage) have unit tests using Node's built-in test runner.
 
 ```bash
-node --test tests/*.test.js
+npm install        # one-time, fetches jsdom (only devDependency)
+npm test           # or: node --test tests/*.test.js
 ```
 
-DOM glue and the network layer aren't unit-tested — they're covered by the [manual test checklist](docs/DEV_NOTES.md#manual-test-checklist).
+The extension itself ships zero runtime npm dependencies — `jsdom` is only used by the test suite.
+
+The network layer and click-level UX (`+` visible on hover, drag-range tinting) aren't covered by unit tests — they're covered by the [manual test checklist](docs/DEV_NOTES.md#manual-test-checklist).
 
 ## Packaging a release
 

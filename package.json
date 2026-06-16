@@ -1,0 +1,13 @@
+{
+  "name": "markdown-pr-comments-for-github",
+  "version": "1.5.1",
+  "private": true,
+  "description": "Test-time tooling for the Markdown PR Comments for GitHub browser extension. The extension itself ships zero runtime npm dependencies — these devDependencies only support the Node-based test suite.",
+  "license": "See LICENSE",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}

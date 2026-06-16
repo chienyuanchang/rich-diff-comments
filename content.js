@@ -42,6 +42,10 @@
     classifyChangeKind,
     buildChangeSnippet,
     nextChangeIndex,
+    isDiagramBlock,
+    isInDeletedBlock,
+    mapBlocksToSourceLines,
+    buttonAnchor,
   } = (typeof window !== 'undefined' && window.GRDC) || {};
 
   // Wrap findTextInSource so we can keep the per-file diagnostic counter behavior
@@ -1363,261 +1367,33 @@
     );
 
     // ── Phase 2: synchronous per-file matching pass ───────────────────────
+    // Delegates to `mapBlocksToSourceLines` (src/lib/lineMap.js). That
+    // function is pure-DOM (no fetches, no module globals) so it can be
+    // unit-tested with jsdom fixtures. See tests/lineMap.test.js for
+    // regression coverage of every bug we've shipped in this code path
+    // (YAML frontmatter, mermaid diagrams, deleted blocks, table rows).
+    const deps = {
+      buildSourceIndex,
+      findTextInSource,
+      computeTableRowLine,
+      findFrontmatterRange,
+    };
     eligible.forEach(({ path, richDiff }, idx) => {
+      findTextInSource._logCount = 0; // reset per-file diagnostic counter
       const rawSource = rawSources[idx];
       const sourceLines = rawSource ? rawSource.split('\n') : null;
-      const sourceIndex = sourceLines ? buildSourceIndex(sourceLines) : null;
-      const maxLine = sourceLines ? sourceLines.length : Number.MAX_SAFE_INTEGER;
-
-      // Detect the rendered YAML frontmatter table (if any) once per file.
-      // GitHub renders a leading `---\n...\n---\n` block as a <table> at the
-      // very top of the rich-diff. Two layouts are common:
-      //
-      //   (a) "2-column" key/value table:
-      //         <table><tbody>
-      //           <tr><td>feature</td><td>cu-cli</td></tr>
-      //           <tr><td>area</td><td>integration</td></tr>
-      //           ...
-      //         </tbody></table>
-      //       → tbody row count === YAML key count, we map per-row.
-      //
-      //   (b) "wide" header/values table (GFM default):
-      //         <table>
-      //           <thead><tr><th>feature</th><th>area</th>...</tr></thead>
-      //           <tbody><tr><td>cu-cli</td><td>integration</td>...</tr></tbody>
-      //         </table>
-      //       → tbody row count (1) !== YAML key count (N), so we fall back
-      //         to pinning all rendered rows to the FIRST key's source line
-      //         (line 2). Reviewers still get at least one `+` to drop a
-      //         comment on the frontmatter range; precision per-key isn't
-      //         possible without per-cell `+` buttons (which would conflict
-      //         with general table cell semantics).
-      //
-      // Either way, all blocks descended from the frontmatter table early-
-      // return from the matching loop, so their text content can't poison
-      // `lastOffset` and the body still anchors correctly. The source-side
-      // mask in `buildSourceIndex` handles the complementary case where the
-      // matcher tries to *land in* the frontmatter source.
-      const frontmatter = sourceLines && findFrontmatterRange
-        ? findFrontmatterRange(sourceLines)
-        : null;
-      const frontmatterTable = frontmatter ? richDiff.querySelector('table') : null;
-      const frontmatterRowToLine = new Map(); // <tr> → 1-based source line
-      if (frontmatterTable && frontmatter && frontmatter.keyLines.length > 0) {
-        const bodyRows = frontmatterTable.querySelectorAll(':scope > tbody > tr');
-        const allRows = frontmatterTable.querySelectorAll(':scope > thead > tr, :scope > tbody > tr');
-        if (bodyRows.length === frontmatter.keyLines.length) {
-          // 2-column layout — per-row mapping
-          bodyRows.forEach((tr, idx) => {
-            frontmatterRowToLine.set(tr, frontmatter.keyLines[idx]);
-          });
-          console.log(`[GRDC] Frontmatter ${path}: 2-col layout, ${bodyRows.length} rows mapped to YAML key lines`);
-        } else if (allRows.length >= 1) {
-          // Wide layout (or any other) — pin all rendered rows to the first
-          // YAML key's line so the user gets at least one `+` in the
-          // frontmatter range. Posts will land on the first key (e.g. line 2).
-          allRows.forEach((tr) => {
-            frontmatterRowToLine.set(tr, frontmatter.keyLines[0]);
-          });
-          console.log(`[GRDC] Frontmatter ${path}: ${allRows.length} rendered rows vs ${frontmatter.keyLines.length} YAML keys — pinning all rows to line ${frontmatter.keyLines[0]} (first key)`);
-        } else {
-          console.log(`[GRDC] Frontmatter ${path}: detected a leading --- block but no rendered <tr> rows in the first <table>; no + buttons added in frontmatter range`);
-        }
-      }
-
-      // Map block-level elements (avoid containers whose children are also matched)
-      const blocks = richDiff.querySelectorAll(
-        "p, h1, h2, h3, h4, h5, h6, li, tr, pre"
-      );
-
-      let fallbackLine = 1;
-      let lastOffset = 0; // Track position for sequential forward search
-      let lastLine = 1;   // Last line we returned (for nudging unmatched blocks forward)
-      let matchCount = 0;
-      // Cache of table → header-row source line. Lets us compute later rows
-      // arithmetically (header + rowIndex + 1, accounting for the |---| divider
-      // which exists in markdown source but not in the rendered DOM).
-      const tableHeaderLine = new Map();
-      findTextInSource._logCount = 0; // reset debug counter per file
-      blocks.forEach((block) => {
-        // Skip mermaid / diagram blocks — they render to SVG with no useful text,
-        // and their textual code form (if present) breaks forward-scan matching.
-        if (isDiagramBlock(block)) return;
-        // Skip blocks wholly inside a <del> — they're deleted content that
-        // doesn't exist in the post-change source. Attaching a `+` would post
-        // at the wrong (right-side) line; counting them would drift every
-        // downstream block. Commenting on deleted lines (side="LEFT") is a
-        // separate planned feature. See `isInDeletedBlock` for details.
-        if (isInDeletedBlock(block)) return;
-        // Frontmatter handling (see `frontmatterTable` comment above).
-        // Top-level YAML rows get mapped to their source line so reviewers
-        // can comment on `area:`, `status:`, `related:` etc. Nested rows
-        // and inner <p> / <li> / <pre> are skipped (and crucially do NOT
-        // advance `lastOffset`) so their text content can't poison the
-        // body matcher.
-        if (frontmatterTable && frontmatterTable.contains(block)) {
-          if (frontmatterRowToLine.has(block)) {
-            fileLineMap.set(block, { path, line: frontmatterRowToLine.get(block) });
-          }
-          return;
-        }
-        // Skip <p> that lives inside an <li> — the parent <li> already gets a button
-        // and the inner <p> would be a duplicate. Standalone <p> (incl. blockquotes)
-        // must NOT be skipped, otherwise paragraphs get no `+` at all.
-        if (block.tagName === "P" && block.closest("li")) return;
-        // NOTE: We used to skip nested <li> here (`block.parentElement?.closest("li")`),
-        // which collapsed an outer `<li>` with a nested `<ul>` into a single
-        // commentable block and gave nested bullets no `+` button of their own.
-        // Now we map every `<li>` regardless of nesting depth. The parent's
-        // `rawText` strips the nested list's text below, so they don't fight
-        // for the same source line.
-
-        // For li with nested sub-lists, use only the direct text (not nested list text)
-        let rawText = block.textContent;
-        if (block.tagName === "LI") {
-          const nested = block.querySelector("ul, ol");
-          if (nested) {
-            rawText = rawText.replace(nested.textContent, '');
-          }
-        }
-        // For <tr>, join cells with explicit spaces. Without this, browsers may
-        // concatenate cell text with no separator (e.g. "AB" instead of "A B"),
-        // which breaks matching against source (where `|` was replaced by space)
-        // and makes every row in the table fall back to the same line.
-        if (block.tagName === "TR") {
-          const cells = block.querySelectorAll("td, th");
-          if (cells.length) {
-            rawText = Array.from(cells).map(c => c.textContent).join(" ");
-          }
-        }
-
-        let line;
-        // Special handling for table rows: only text-match the header row,
-        // then compute subsequent rows arithmetically. Markdown source for a table:
-        //   line N    : | header | header |
-        //   line N+1  : |--------|--------|     ← divider, NOT a <tr> in rendered DOM
-        //   line N+2  : | row 0  | ...     |
-        //   line N+3  : | row 1  | ...     |
-        // So DOM <tr>[k] for k≥1 maps to source line headerLine + k + 1.
-        if (block.tagName === "TR" && sourceIndex) {
-          const table = block.closest("table");
-          const allRows = table ? Array.from(table.querySelectorAll("tr")) : [block];
-          const rowIndex = allRows.indexOf(block);
-
-          if (rowIndex === 0 || !tableHeaderLine.has(table)) {
-            // Header row (or first row we see for this table): match by text
-            const result = findTextInSource(sourceIndex, rawText, lastOffset);
-            if (result.offset > lastOffset) {
-              line = result.line;
-              lastOffset = result.offset;
-              lastLine = line;
-              matchCount++;
-              if (table) tableHeaderLine.set(table, { headerLine: line, rowIndex });
-            } else {
-              lastLine = Math.min(lastLine + 1, maxLine);
-              line = lastLine;
-            }
-          } else {
-            // Subsequent row: compute from cached header line
-            const cached = tableHeaderLine.get(table);
-            line = Math.min(computeTableRowLine(cached.headerLine, rowIndex, cached.rowIndex), maxLine);
-            lastLine = line;
-          }
-          fileLineMap.set(block, { path, line });
-          return;
-        }
-
-        if (sourceIndex) {
-          const result = findTextInSource(sourceIndex, rawText, lastOffset);
-          if (result.offset > lastOffset) {
-            // Real match
-            line = result.line;
-            lastOffset = result.offset;
-            lastLine = line;
-            matchCount++;
-          } else {
-            // No match: advance one line past the previous block so consecutive
-            // unmatched rows (e.g. table rows whose textContent doesn't tokenize
-            // cleanly) don't all collapse to the same line. Cap at the source
-            // file's actual line count so we never produce impossible line
-            // numbers (which would 422 with "Line could not be resolved").
-            lastLine = Math.min(lastLine + 1, maxLine);
-            line = lastLine;
-          }
-        } else {
-          line = fallbackLine;
-          fallbackLine += estimateLines(block);
-        }
-
-        fileLineMap.set(block, { path, line });
-      });
-
-      console.log(`[GRDC] Mapped ${fileLineMap.size} elements for ${path} (source-matched: ${!!sourceLines}, text-hits: ${matchCount})`);
+      const perFileMap = mapBlocksToSourceLines(richDiff, sourceLines, path, deps, console.log.bind(console));
+      perFileMap.forEach((info, el) => fileLineMap.set(el, info));
     });
   }
 
-  function estimateLines(element) {
-    const text = element.textContent || "";
-    const newlines = (text.match(/\n/g) || []).length;
-    return Math.max(1, newlines + 1);
-  }
-
-  // Detect mermaid / diagram blocks rendered by GitHub's prose-diff.
-  // GitHub renders them as <svg> wrapped in various containers; the source
-  // <pre><code class="language-mermaid"> may also still be in the DOM.
-  function isDiagramBlock(el) {
-    if (!el) return false;
-    if (el.tagName === 'PRE') {
-      const code = el.querySelector('code');
-      const cls = (code?.className || '') + ' ' + (el.className || '');
-      if (/language-mermaid|language-plantuml|language-dot|language-graphviz/i.test(cls)) return true;
-      // Rendered diagram: <pre> contains <svg> with no useful prose
-      if (el.querySelector('svg') && !el.textContent.trim()) return true;
-    }
-    // Anywhere inside a mermaid container
-    if (el.closest && el.closest('[class*="mermaid" i], .highlight-source-mermaid, pre code.language-mermaid')) return true;
-    return false;
-  }
-
-  // Detect blocks that sit wholly inside a `<del>` ancestor — GitHub's
-  // prose-diff wraps deleted prose blocks the same way it wraps inserted
-  // ones in `<ins>`. Such blocks don't exist in the post-change source, so
-  // our forward-scan matcher always fails on them and they fall through to
-  // the `lastLine + 1` nudge. Worse, the nudge advances `lastLine` once per
-  // deleted block, so every subsequent block ends up anchored that many
-  // lines too early — cumulative downstream drift on any diff with
-  // deletions. We skip these blocks entirely in `buildLineMap` so no `+` is
-  // rendered and no source line is consumed. Commenting on deleted lines
-  // (which would require posting with `side: "LEFT"` against the BASE
-  // file's line number) is a separate feature tracked in FEATURES.md.
-  //
-  // GitHub's prose-diff also uses a `class="removed"` marker on the block
-  // ITSELF (e.g. `<li class="removed">...</li>`) for whole-block deletions,
-  // without a `<del>` wrapper. We check both: the semantic `<del>` ancestor
-  // AND any `.removed` ancestor (including the block itself).
-  //
-  // Tag/class-only check (matches `topUnderlinedAncestor` style) — no
-  // `getComputedStyle` so we don't trigger a layout recalc per block.
-  function isInDeletedBlock(el) {
-    if (!el) return false;
-    if (el.tagName === 'DEL' || el.tagName === 'S') return true;
-    if (el.classList && el.classList.contains('removed')) return true;
-    return !!(el.closest && el.closest('del, s, .removed'));
-  }
+  // `estimateLines`, `isDiagramBlock`, `isInDeletedBlock`, and `buttonAnchor`
+  // moved to src/lib/lineMap.js (alongside the per-file matching loop they
+  // belong to). Destructured at the top of this file so they're still
+  // available to the rest of content.js.
 
   // ── UI: Comment Buttons ────────────────────────────────────────────────────
 
-  // For elements that aren't valid parents/siblings for our injected nodes
-  // (notably <tr>), return a sensible anchor instead.
-  // - Buttons go INSIDE the first <td> of a <tr> (so they're a valid descendant).
-  // - Comment boxes / threads go AFTER the parent <table> (a <div> between <tr>s
-  //   gets repaired and scrambled by the HTML parser).
-  function buttonAnchor(element) {
-    if (element.tagName === 'TR') {
-      return element.querySelector('td, th') || element;
-    }
-    return element;
-  }
   // Walk up from `node` and find the topmost ancestor that paints an
   // underline — in practice GitHub's prose-diff renders inserted blocks as
   // `<ins>` (sometimes `<u>`). CSS text-decoration set on an ancestor is

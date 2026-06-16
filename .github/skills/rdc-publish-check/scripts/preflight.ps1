@@ -189,6 +189,17 @@ try {
   if (Test-Path "tests") {
     $testFiles = Get-ChildItem "tests\*.test.js" -ErrorAction SilentlyContinue
     if ($testFiles) {
+      # Ensure jsdom (the only devDependency) is installed. The test suite
+      # uses it for DOM-coupled tests (lineMap, buttonAttachment); without
+      # `npm install` the tests fail with "Cannot find module 'jsdom'".
+      if ((Test-Path "package.json") -and -not (Test-Path "node_modules\jsdom")) {
+        Write-Verbose "node_modules/jsdom missing — running 'npm install'"
+        & npm install --no-fund --no-audit --silent 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+          Fail "npm install failed — can't run the test suite. Run 'npm install' manually."
+        }
+      }
+
       Write-Verbose "running $($testFiles.Count) test files"
       $testResult = & node --test ($testFiles.FullName) 2>&1
       $testExit = $LASTEXITCODE
@@ -196,7 +207,7 @@ try {
         $passCount = ($testResult | Select-String -Pattern '^# pass (\d+)' | ForEach-Object { $_.Matches[0].Groups[1].Value }) -join ""
         Pass "test suite passed ($passCount tests)"
       } else {
-        Fail "test suite failed (exit $testExit) — run 'node --test tests/*.test.js' to see details"
+        Fail "test suite failed (exit $testExit) — run 'npm test' to see details"
         Write-Verbose ($testResult -join "`n")
       }
     } else {

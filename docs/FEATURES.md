@@ -73,7 +73,7 @@ What works today, what's planned, and what we deliberately won't do.
 
 ### Testing
 
-- [x] **196 unit tests** for pure helpers (line matching, response parsing, markersMap parsing, table arithmetic, markdown preview, HTML escaping, time formatting, sidebar helpers incl. `isMarkdownPath`, heading slugify, outline tree + thread attribution + fold-at-level) using Node's built-in `node:test` — zero dependencies
+- [x] **268 tests** covering pure helpers (line matching, response parsing, markersMap parsing, table arithmetic, markdown preview, HTML escaping, time formatting, sidebar helpers incl. `isMarkdownPath`, heading slugify, outline tree + thread attribution + fold-at-level), the per-file block→line mapping in [src/lib/lineMap.js](../src/lib/lineMap.js) against jsdom fixtures (regression net for YAML frontmatter, mermaid, deleted blocks, and table-row arithmetic — every line-mapping bug we've shipped), `styles.css` coverage (every host tag `buttonAnchor()` can target must have a positioning override so the `+` is visible), and `+`-button attachment (the `<th>`-host case for YAML frontmatter rows that broke in v1.5.1). Runs as `npm test` via Node's built-in `node:test`; jsdom is the only devDependency.
 - [x] **Regression tests** for every bug in the changelog
 - [x] **Manual test checklist** in DEV_NOTES for DOM/network paths not covered by unit tests
 

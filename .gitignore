@@ -6,3 +6,8 @@ node_modules/
 
 # Release artifacts — reproducible via release-prep.ps1
 releases/
+
+# Playwright e2e test artifacts (traces, screenshots, reports)
+test-results/
+playwright-report/
+last-e2e.log

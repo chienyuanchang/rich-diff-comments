@@ -79,7 +79,7 @@ try {
       Pass "all content_scripts.js entries are in the zip"
 
       # Forbidden dev-only entries
-      $forbidden = @('tests/', 'docs/', 'test_md_files/', 'design/', 'node_modules/', 'package.json', 'package-lock.json', '.git/', 'local-only/', '_local_only/', '.github/')
+      $forbidden = @('tests/', 'docs/', 'test_md_files/', 'design/', 'node_modules/', 'package.json', 'package-lock.json', 'playwright.config.js', 'test-results/', 'playwright-report/', '.git/', 'local-only/', '_local_only/', '.github/')
       foreach ($f in $forbidden) {
         $hit = $entries | Where-Object { $_ -like "$f*" }
         if ($hit) {

@@ -4,6 +4,10 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+### Internal
+
+- **Added a Playwright e2e test suite (20 tests).** Covers `+` button visibility (including the v1.5.1 `<th>` regression), end-to-end line mapping on real DOM, click → comment box behavior, and keyboard shortcuts. Runs against captured rich-diff HTML fixtures in headless Chromium — no live github.com calls. Combined with the existing 268 Node:test unit tests, the suite now totals **288 tests**. `npm test` runs the fast unit tests (unchanged); `npm run test:e2e` runs Playwright; `npm run test:all` runs both. Dev-only — no impact on the shipped extension zip.
+
 ## [1.5.1] — 2026-06-16
 
 ### Fixed

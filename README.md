@@ -73,16 +73,24 @@ docs/PUBLISHING.md   Store submission and release workflow
 
 ## Tests
 
-Pure helpers (line matching, response parsing, table arithmetic, code-block fence detection, anchor-key encoding) plus DOM-coupled glue (per-file block→line mapping, `+`-button anchor selection, `styles.css` coverage) have unit tests using Node's built-in test runner.
+Two suites, both local — no live github.com calls.
 
 ```bash
-npm install        # one-time, fetches jsdom (only devDependency)
-npm test           # or: node --test tests/*.test.js
+npm install         # one-time: fetches jsdom + @playwright/test (devDeps only)
+npx playwright install chromium    # one-time: ~150 MB Chromium for e2e tests
+
+npm test            # 268 fast unit tests (Node:test + jsdom), ~2s
+npm run test:e2e    # 20 Playwright e2e tests in headless Chromium, ~35s
+npm run test:all    # both
 ```
 
-The extension itself ships zero runtime npm dependencies — `jsdom` is only used by the test suite.
+**Unit tests** (`tests/*.test.js`) cover the pure helpers (line matching, response parsing, table arithmetic, code-block fence detection, anchor-key encoding) and DOM-coupled glue (per-file block→line mapping, `+`-button anchor selection, `styles.css` coverage).
 
-The network layer and click-level UX (`+` visible on hover, drag-range tinting) aren't covered by unit tests — they're covered by the [manual test checklist](docs/DEV_NOTES.md#manual-test-checklist).
+**E2E tests** (`tests/e2e/*.spec.js`) drive the extension end-to-end against captured rich-diff HTML fixtures — covers what jsdom can't: real CSS layout (is the `+` actually visible?), real `:hover` semantics, real keydown events. Catches the class of bug that passes unit tests but fails in a browser.
+
+The extension itself ships zero runtime npm dependencies — `jsdom` and `@playwright/test` are devDependencies only. The published zip contains no `node_modules`, no `package.json`, no test files.
+
+The network layer (posting comments to GitHub) and drag-range tinting aren't unit-tested — they're covered by the [manual test checklist](docs/DEV_NOTES.md#manual-test-checklist).
 
 ## Packaging a release
 

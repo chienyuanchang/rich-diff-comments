@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Test fixture: YAML frontmatter + body</title>
+  <!--
+    A trimmed but realistic GitHub PR "Files changed" rich-diff DOM snapshot
+    for a Markdown file that starts with YAML frontmatter. Used by the
+    e2e tests to verify:
+      • the v1.5.1 frontmatter line-anchoring fix doesn't regress
+      • + buttons render on each frontmatter <th>/<td> row AND on body blocks
+      • CSS makes those buttons visible (positive left, inside host bbox)
+
+    See _helpers.js for the test harness that drives this fixture.
+
+    The DOM shape mirrors what GitHub serves on /pull/<n>/files for a
+    Markdown file rendered in rich-diff mode:
+
+      <div id="diff-..." data-tagsearch-path="<file>">
+        <a href="/owner/repo/blob/<40-hex-sha>/<file>">  ← SHA discovery
+        <div class="prose-diff">
+          <div class="markdown-body">
+            <table>...frontmatter table...</table>
+            <h1>Title</h1>
+            ...rest of body...
+          </div>
+        </div>
+      </div>
+  -->
+</head>
+<body>
+  <div class="repository-content">
+    <div id="files">
+      <div id="diff-test1" data-tagsearch-path="docs/sample-frontmatter.md">
+        <div class="file-header">
+          <a class="Link--primary" href="/test-owner/test-repo/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/docs/sample-frontmatter.md">docs/sample-frontmatter.md</a>
+        </div>
+        <div class="prose-diff">
+          <div class="markdown-body">
+
+            <!-- YAML frontmatter rendered as 2-column key/value table.
+                 GitHub uses <th> for the key cell, <td> for the value cell. -->
+            <table class="rich-diff-level-one">
+              <tbody>
+                <tr><th>feature</th><td>sample-feature</td></tr>
+                <tr><th>area</th><td>testing</td></tr>
+                <tr><th>status</th><td>draft</td></tr>
+                <tr><th>related</th><td>another-feature similar-to A note that mentions sample-feature.</td></tr>
+              </tbody>
+            </table>
+
+            <h1>Test Design Doc: Sample Feature Integration</h1>
+
+            <p>This document exists to exercise the extension.</p>
+
+            <h2>Overview</h2>
+
+            <p>This is the overview paragraph with some <strong>emphasis</strong>.</p>
+
+            <ul>
+              <li>First overview bullet</li>
+              <li>Second overview bullet</li>
+            </ul>
+
+            <h2>Change Log</h2>
+
+            <table>
+              <thead><tr><th>Date</th><th>Author</th><th>Change</th></tr></thead>
+              <tbody>
+                <tr><td>2026-06-16</td><td>Test User</td><td>Added sample-feature note about another-feature.</td></tr>
+              </tbody>
+            </table>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

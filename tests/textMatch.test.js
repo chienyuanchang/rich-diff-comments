@@ -11,6 +11,7 @@ const {
   buildSourceIndex,
   findLineAtOffset,
   findTextInSource,
+  findFrontmatterRange,
 } = require('../src/lib/textMatch.js');
 
 test('stripMarkdown removes headings', () => {
@@ -189,4 +190,145 @@ test('buildSourceIndex — nested fenced block inside a mermaid fence is fully m
   assert.ok(idx.concat.includes('after diagram paragraph'));
   assert.ok(!idx.concat.includes('graph td'), 'mermaid body masked');
   assert.ok(!idx.concat.includes('a --> b'), 'mermaid body masked');
+});
+
+// ── YAML frontmatter (`---\n...\n---\n`) ────────────────────────────────
+// GitHub renders frontmatter as a 2-column <table> in the rich-diff view.
+// Without masking, long YAML values (e.g. an inline `related:` array) get
+// stringified into one cell whose text accidentally substring-matches body
+// content later in the document (a Related Features table, a Change Log row).
+// `findTextInSource` then jumps `lastOffset` far downstream and every
+// block after frontmatter falls back to the `lastLine + 1` nudge path,
+// landing on the very last lines of the file.
+//
+// Repro from local-only/138_line_issue.md: a 138-line proposal whose H1
+// (source line 19) was being anchored at line 85, TOC at 87, etc.
+test('findFrontmatterRange — detects leading `---` ... `---` block and lists top-level keys', () => {
+  const src = [
+    '---',
+    'feature: cu-cli',
+    'related:',
+    '  - foo',
+    '---',
+    '',
+    '# Title',
+  ];
+  // `feature: cu-cli` (line 2) and `related:` (line 3) are top-level keys.
+  // `  - foo` (line 4) is indented + an array item, so excluded.
+  assert.deepEqual(findFrontmatterRange(src), { start: 1, end: 5, keyLines: [2, 3] });
+});
+
+test('findFrontmatterRange — tolerates blank lines before the opening fence', () => {
+  const src = ['', '', '---', 'k: v', '---', '# Title'];
+  assert.deepEqual(findFrontmatterRange(src), { start: 3, end: 5, keyLines: [4] });
+});
+
+test('findFrontmatterRange — returns null when there is no leading `---`', () => {
+  assert.equal(findFrontmatterRange(['# Title', 'body']), null);
+  assert.equal(findFrontmatterRange(['intro', '---', 'mid-doc separator']), null);
+});
+
+test('findFrontmatterRange — returns null when the opening `---` is never closed', () => {
+  assert.equal(findFrontmatterRange(['---', 'k: v', 'no closing fence']), null);
+});
+
+test('findFrontmatterRange — keyLines lists every top-level YAML key, skipping nested keys and array items', () => {
+  // Mirrors local-only/138_line_issue.md: a `related:` array with nested
+  // objects whose own `feature:` / `path:` / `note:` keys are indented and
+  // therefore NOT top-level.
+  const src = [
+    '---',                                                  // 1
+    'feature: cu-cli',                                      // 2  ← top
+    'semester: CY-2026-H1',                                 // 3  ← top
+    'milestone: tbd',                                       // 4  ← top
+    'area: integration',                                    // 5  ← top
+    'status: proposal',                                     // 6  ← top
+    'based-on: {}',                                         // 7  ← top
+    'related:',                                             // 8  ← top
+    '  - feature: agent-assisted-analyzer-authoring',       // 9  (indented array item)
+    '    path: planning/foo/',                              // 10 (indented)
+    '    relationship: similar-to',                         // 11 (indented)
+    '    note: Same value prop, different shape.',          // 12 (indented)
+    '  - feature: markitdown-integration',                  // 13 (indented array item)
+    '    relationship: similar-to',                         // 14 (indented)
+    '---',                                                  // 15
+    '',
+    '# Title',
+  ];
+  const fm = findFrontmatterRange(src);
+  assert.deepEqual(fm.keyLines, [2, 3, 4, 5, 6, 7, 8]);
+});
+
+test('findFrontmatterRange — keyLines excludes comment lines (`# ...`)', () => {
+  const src = [
+    '---',
+    '# YAML comment, not a key',
+    'real-key: value',
+    '---',
+    '# Markdown heading',
+  ];
+  const fm = findFrontmatterRange(src);
+  assert.deepEqual(fm.keyLines, [3]);
+});
+
+test('buildSourceIndex — masks YAML frontmatter so body content matches its real line', () => {
+  // Mirrors the bug from local-only/138_line_issue.md, in miniature:
+  // a `related:` array value that textually overlaps with a Change Log row
+  // later in the document. With masking, frontmatter text is unreachable
+  // and the body's H1 resolves to its true source line, not the Change Log.
+  const src = [
+    '---',                                        // 1
+    'feature: cu-cli',                            // 2
+    'related: markitdown-integration',            // 3
+    '---',                                        // 4
+    '',                                           // 5
+    '# Feature Proposal',                         // 6
+    '',                                           // 7
+    '| Date | Change |',                          // 8
+    '|------|--------|',                          // 9
+    '| 2026 | Added markitdown-integration link |', // 10
+  ];
+  const idx = buildSourceIndex(src);
+  assert.ok(!idx.concat.includes('feature: cu-cli'), 'frontmatter masked');
+  assert.ok(!idx.concat.includes('cu-cli'), 'frontmatter masked');
+  // Body text still findable
+  const r = findTextInSource(idx, 'Feature Proposal', 0);
+  assert.equal(r.line, 6, 'H1 anchors to its real source line, not a Change Log row');
+});
+
+test('buildSourceIndex — frontmatter `<tr>` walk does not pollute lastOffset for body blocks', () => {
+  // Simulate the full buildLineMap loop's effect: walk frontmatter-derived
+  // rendered <tr> rows first (whose text comes from GitHub's table cells),
+  // then walk body blocks. After the fix, frontmatter rows fail to match
+  // (so lastOffset stays at 0); the body's H1 then resolves correctly.
+  const src = [
+    '---',                                                              // 1
+    'feature: cu-cli',                                                  // 2
+    'related: markitdown-integration similar-to MarkItDown CLI option', // 3
+    '---',                                                              // 4
+    '',                                                                 // 5
+    '# Feature Proposal: CU CLI',                                       // 6
+    '',                                                                 // 7
+    '## Related Features',                                              // 8
+    '',                                                                 // 9
+    'markitdown-integration similar-to MarkItDown CLI option',          // 10 (overlaps frontmatter text)
+  ];
+  const idx = buildSourceIndex(src);
+
+  // GitHub renders frontmatter as <tr> cells; the cell text includes the key.
+  const frontmatterRowTexts = [
+    'feature cu-cli',
+    'related markitdown-integration similar-to MarkItDown CLI option',
+  ];
+  let lastOffset = 0;
+  for (const t of frontmatterRowTexts) {
+    const r = findTextInSource(idx, t, lastOffset);
+    // After the fix, frontmatter text isn't in the masked source ⇒ no match
+    // ⇒ findTextInSource returns the fallback {line, offset: lastOffset}.
+    assert.equal(r.offset, lastOffset, `frontmatter row "${t}" should not advance lastOffset`);
+  }
+
+  // Now the body walks: H1 must land on line 6, not line 10.
+  const h1 = findTextInSource(idx, 'Feature Proposal: CU CLI', lastOffset);
+  assert.equal(h1.line, 6);
 });

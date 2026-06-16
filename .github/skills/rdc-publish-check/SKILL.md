@@ -23,6 +23,33 @@ The Chrome Web Store rejected version 1.0.2 (May 2026) for declaring the `active
 
 The preflight script (`scripts/preflight.ps1`) implements the **policy-lens checks** from PUBLISHING.md as automated checks so we don't ship another rejection.
 
+## CHANGELOG / release-notes writing rules
+
+> **⚠️ CHANGELOG, README "What's new" blocks, and submission-template release notes are user-facing, not engineering notes.** Every bullet must read like a feature announcement to someone who has never opened the source code.
+>
+> Applies to **every** doc that ships release notes:
+>
+> - [CHANGELOG.md](../../../CHANGELOG.md) (the source of truth, edited every release — often during feature work via the [rdc-feature-dev](../rdc-feature-dev/SKILL.md) loop, not just at publish time)
+> - The `🆕 What's new in v...` lead block at the top of the Description in each submission template ([CHROME_SUBMISSION.md](./templates/CHROME_SUBMISSION.md), [EDGE_SUBMISSION.md](./templates/EDGE_SUBMISSION.md))
+> - The `## What's new in this version` section at the bottom of each submission template
+> - Any new-feature mention in [README.md](../../../README.md)
+>
+> **Forbidden:** internal class names (`.prose-diff`, `.added`, `<ins>`), CSS variable names (`--fgColor-accent`), file or function names (`siblingAnchor`, `routeData.diffSummaries`), URL paths (`/changes`, `/files`), pixel measurements, JS API hints (`localStorage` keys, event listeners), DOM-shape detail ("2-column key/value table vs wide table"), specific source line numbers from a bug repro file, and "we did X via Y" implementation talk.
+>
+> **Required:** describe what the user sees, when they'd notice it, and why it's better. Use product names ("the threads sidebar", "the Outline tab", "the Files-changed page") not selectors. Keep entries to 1–3 sentences — longer prose is a smell that you're explaining the mechanism instead of the change.
+>
+> **Examples of the right level:**
+>
+> - ❌ *"Bound `bindSidebarResizeClamp` IIFE on `window.resize` to call `clampDragPos` with `{dx:0,dy:0}`."*
+> - ✅ *"The sidebar can no longer get stranded offscreen after a window resize."*
+>
+> - ❌ *"GitHub renders frontmatter as a 2-column table; long values used to substring-match body content downstream, pushing the H1 to line ~85."*
+> - ✅ *"Comments on Markdown files that start with YAML frontmatter no longer land at the bottom of the file."*
+>
+> Implementation detail belongs in [docs/DEV_NOTES.md](../../../docs/DEV_NOTES.md) (engineer-facing) and the per-change comment block in `content.js` — keep CHANGELOG, README, and submission "What's new" blocks clean.
+>
+> **When in doubt**: write the entry, then ask "would a non-developer Chrome extension user understand what changed for them?" If no, rewrite.
+
 ## Workflow
 
 ### 1. Run the preflight script
@@ -100,17 +127,15 @@ Before submitting, edit these two files **in place** with the changes for this r
 
 - [ ] **`{{VERSION}}` placeholder** — search-and-replace with the new manifest version (`{{VERSION}}` appears in the title and Package section). Two find-replaces total per file.
 
-- [ ] **`{{CHANGELOG}}` placeholder** — replace with the `## [<version>] — <date>` block from `CHANGELOG.md` (Added / Changed / Fixed bullets). If `CHANGELOG.md` is out of date relative to `manifest.json`, fix `CHANGELOG.md` first.
+- [ ] **`## What's new in this version` section at the bottom** — replace with the **latest 3 versions** from `CHANGELOG.md`, newest first, each under an `### v<version> — <date>` subheading followed by `#### Added` / `#### Changed` / `#### Fixed` blocks. Lead the section with a one-line `Includes all changes from v<latest>, v<latest-1>, and v<latest-2>.` summary so reviewers know the scope at a glance.
 
-  > **⚠️ CHANGELOG is user-facing, not engineering notes.** Every bullet must read like a feature announcement to someone who has never opened the source code. Specifically:
-  >
-  > - **Forbidden:** internal class names (`.prose-diff`, `.added`, `<ins>`), CSS variable names (`--fgColor-accent`), file or function names (`siblingAnchor`, `routeData.diffSummaries`), URL paths (`/changes`, `/files`), pixel measurements, JS API hints (`localStorage` keys, event listeners), and "we did X via Y" implementation talk.
-  > - **Required:** describe what the user sees, when they'd notice it, and why it's better. Use product names ("the threads sidebar", "the Outline tab", "the Files-changed page") not selectors.
-  > - **Examples of the right level:**
-  >   - ❌ *"Bound `bindSidebarResizeClamp` IIFE on `window.resize` to call `clampDragPos` with `{dx:0,dy:0}`."*
-  >   - ✅ *"The sidebar can no longer get stranded offscreen after a window resize."*
-  >
-  > Implementation detail belongs in `docs/DEV_NOTES.md` (engineer-facing) — keep CHANGELOG, README, and submission "What's new" blocks clean.
+  Why three versions, not one: the store's "What's new" field is the only per-release surface the dashboard shows, but **users who skip a release or two only ever see the most recent submission's `What's new`** — so collapsing the last few releases here ensures someone auto-updating from v1.3.0 → v1.5.0 isn't missing v1.4.0's changes. Three is the sweet spot: enough recent history for users who skip a release, short enough that reviewers don't have to scroll past every change since v1.0.0.
+
+  Trim per-bullet detail where it's safe to do so — keep the headline sentence in bold and drop the longer "why we did it / how the regression test pins it" tail that lives in `CHANGELOG.md`. Reviewers want to see *what changed*, not the engineering rationale.
+
+  If `CHANGELOG.md` is out of date relative to `manifest.json`, fix `CHANGELOG.md` first.
+
+  See [CHANGELOG / release-notes writing rules](#changelog--release-notes-writing-rules) above — same rules apply here.
 
 - [ ] **`## Submission notes (edit before submitting)`** at the top of each file. The block is an HTML comment by default. Fill it in if the reviewer needs context that isn't true of every version. Common cases:
   - **Resubmitting after a rejection** — reference the violation code (e.g. "Purple Potassium") and state exactly what changed.

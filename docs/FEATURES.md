@@ -54,6 +54,7 @@ What works today, what's planned, and what we deliberately won't do.
 
 - [x] **Forward-scan text matching** against raw source (no source map needed)
 - [x] **Mermaid / PlantUML / DOT / Graphviz fence content blanked** so it doesn't poison `lastOffset`
+- [x] **YAML frontmatter (`---` ... `---`) handled correctly on both sides** — GitHub renders it as a `<table>` at the top of the rich-diff, and its cell text used to substring-match body content downstream and push every block after frontmatter to the last lines of the file. `buildSourceIndex` masks the frontmatter source so the matcher can't land inside it; `buildLineMap` resolves the rendered frontmatter table and maps each direct `<tbody> > <tr>` to its top-level YAML key's source line (`frontmatter.keyLines`) so reviewers can still `+`-comment on `area:` / `status:` / `related:` etc. Nested / inner blocks inside the table are skipped so their text can't poison `lastOffset` for the body. See [APPROACH.md → Edge cases that bit us](./APPROACH.md#edge-cases-that-bit-us) for the diagnosis.
 - [x] **Table-row arithmetic** — first row text-matched, remaining rows computed as `headerLine + rowIndex + 1` (accounts for `|---|` divider not present in DOM)
 - [x] **Code-block range hint** derived from `<code>.textContent.split('\n').length`
 - [x] **`<tr>` button anchoring** — button injected into `<td>` (not `<tr>` directly, which the HTML parser rejects); comment boxes / threads placed *after* `<table>`

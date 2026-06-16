@@ -104,6 +104,7 @@ After the feature ships:
   - Add any newly captured payloads, DOM-class discoveries, or "I thought X but actually Y" entries under the relevant section.
 - [CHANGELOG.md](../../../CHANGELOG.md):
   - Append to `[Unreleased]` under `### Added` / `### Fixed`.
+  - **User-facing language only.** Write each bullet like a feature announcement to someone who has never opened the source. No file/function/class names, no CSS selectors, no DOM-shape detail, no specific line numbers from a bug repro file. Stick to *what the user sees, when they'd notice it, why it's better.* Full rules and examples in [rdc-publish-check → CHANGELOG / release-notes writing rules](../rdc-publish-check/SKILL.md#changelog--release-notes-writing-rules).
 
 Then commit, push, and the user moves to the next iteration.
 

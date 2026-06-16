@@ -55,17 +55,23 @@
   border-radius: 4px;
 }
 
-/* When the host is a <td> (table-cell), absolute positioning still works,
-   but `left: -30px` may fall outside the table. Pull the button inward. */
-td.grdc-hoverable {
+/* When the host is a <td> or <th> (table-cell), absolute positioning still
+   works, but `left: -30px` may fall outside the table. Pull the button
+   inward. <th> shows up as the first cell of YAML frontmatter rows (GitHub
+   renders the keys column as headers), and inside a regular pipe-table's
+   header row when we anchor on the first <th>. */
+td.grdc-hoverable,
+th.grdc-hoverable {
   position: relative;
 }
-td.grdc-hoverable .grdc-comment-btn {
+td.grdc-hoverable .grdc-comment-btn,
+th.grdc-hoverable .grdc-comment-btn {
   left: 2px;
   top: 4px;
   transform: none;
 }
-td.grdc-hoverable:hover {
+td.grdc-hoverable:hover,
+th.grdc-hoverable:hover {
   background: rgba(9, 105, 218, 0.06);
 }
 

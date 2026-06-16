@@ -4,6 +4,16 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+## [1.5.1] — 2026-06-16
+
+### Fixed
+
+- **Comments on Markdown files that start with YAML frontmatter (the `---` ... `---` block at the top of design docs and dev plans) no longer land at the bottom of the file.** Headings, paragraphs, list items, and tables now anchor to their real source lines whether or not the file has frontmatter.
+
+### Added
+
+- **You can now leave inline `+` comments on YAML frontmatter rows.** Hover any row in the metadata block at the top of a file — `area:`, `status:`, `related:`, etc. — and click the `+` to comment on the metadata without flipping to source-diff.
+
 ## [1.5.0] — 2026-06-12
 
 ### Added

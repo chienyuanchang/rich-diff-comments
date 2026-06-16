@@ -17,6 +17,7 @@
     buildSourceIndex,
     findLineAtOffset,
     findTextInSource: _findTextInSourceLib,
+    findFrontmatterRange,
     looksLikePath,
     findBlobInJson,
     threadResponseToComments,
@@ -1368,6 +1369,62 @@
       const sourceIndex = sourceLines ? buildSourceIndex(sourceLines) : null;
       const maxLine = sourceLines ? sourceLines.length : Number.MAX_SAFE_INTEGER;
 
+      // Detect the rendered YAML frontmatter table (if any) once per file.
+      // GitHub renders a leading `---\n...\n---\n` block as a <table> at the
+      // very top of the rich-diff. Two layouts are common:
+      //
+      //   (a) "2-column" key/value table:
+      //         <table><tbody>
+      //           <tr><td>feature</td><td>cu-cli</td></tr>
+      //           <tr><td>area</td><td>integration</td></tr>
+      //           ...
+      //         </tbody></table>
+      //       → tbody row count === YAML key count, we map per-row.
+      //
+      //   (b) "wide" header/values table (GFM default):
+      //         <table>
+      //           <thead><tr><th>feature</th><th>area</th>...</tr></thead>
+      //           <tbody><tr><td>cu-cli</td><td>integration</td>...</tr></tbody>
+      //         </table>
+      //       → tbody row count (1) !== YAML key count (N), so we fall back
+      //         to pinning all rendered rows to the FIRST key's source line
+      //         (line 2). Reviewers still get at least one `+` to drop a
+      //         comment on the frontmatter range; precision per-key isn't
+      //         possible without per-cell `+` buttons (which would conflict
+      //         with general table cell semantics).
+      //
+      // Either way, all blocks descended from the frontmatter table early-
+      // return from the matching loop, so their text content can't poison
+      // `lastOffset` and the body still anchors correctly. The source-side
+      // mask in `buildSourceIndex` handles the complementary case where the
+      // matcher tries to *land in* the frontmatter source.
+      const frontmatter = sourceLines && findFrontmatterRange
+        ? findFrontmatterRange(sourceLines)
+        : null;
+      const frontmatterTable = frontmatter ? richDiff.querySelector('table') : null;
+      const frontmatterRowToLine = new Map(); // <tr> → 1-based source line
+      if (frontmatterTable && frontmatter && frontmatter.keyLines.length > 0) {
+        const bodyRows = frontmatterTable.querySelectorAll(':scope > tbody > tr');
+        const allRows = frontmatterTable.querySelectorAll(':scope > thead > tr, :scope > tbody > tr');
+        if (bodyRows.length === frontmatter.keyLines.length) {
+          // 2-column layout — per-row mapping
+          bodyRows.forEach((tr, idx) => {
+            frontmatterRowToLine.set(tr, frontmatter.keyLines[idx]);
+          });
+          console.log(`[GRDC] Frontmatter ${path}: 2-col layout, ${bodyRows.length} rows mapped to YAML key lines`);
+        } else if (allRows.length >= 1) {
+          // Wide layout (or any other) — pin all rendered rows to the first
+          // YAML key's line so the user gets at least one `+` in the
+          // frontmatter range. Posts will land on the first key (e.g. line 2).
+          allRows.forEach((tr) => {
+            frontmatterRowToLine.set(tr, frontmatter.keyLines[0]);
+          });
+          console.log(`[GRDC] Frontmatter ${path}: ${allRows.length} rendered rows vs ${frontmatter.keyLines.length} YAML keys — pinning all rows to line ${frontmatter.keyLines[0]} (first key)`);
+        } else {
+          console.log(`[GRDC] Frontmatter ${path}: detected a leading --- block but no rendered <tr> rows in the first <table>; no + buttons added in frontmatter range`);
+        }
+      }
+
       // Map block-level elements (avoid containers whose children are also matched)
       const blocks = richDiff.querySelectorAll(
         "p, h1, h2, h3, h4, h5, h6, li, tr, pre"
@@ -1392,6 +1449,18 @@
         // downstream block. Commenting on deleted lines (side="LEFT") is a
         // separate planned feature. See `isInDeletedBlock` for details.
         if (isInDeletedBlock(block)) return;
+        // Frontmatter handling (see `frontmatterTable` comment above).
+        // Top-level YAML rows get mapped to their source line so reviewers
+        // can comment on `area:`, `status:`, `related:` etc. Nested rows
+        // and inner <p> / <li> / <pre> are skipped (and crucially do NOT
+        // advance `lastOffset`) so their text content can't poison the
+        // body matcher.
+        if (frontmatterTable && frontmatterTable.contains(block)) {
+          if (frontmatterRowToLine.has(block)) {
+            fileLineMap.set(block, { path, line: frontmatterRowToLine.get(block) });
+          }
+          return;
+        }
         // Skip <p> that lives inside an <li> — the parent <li> already gets a button
         // and the inner <p> would be a duplicate. Standalone <p> (incl. blockquotes)
         // must NOT be skipped, otherwise paragraphs get no `+` at all.

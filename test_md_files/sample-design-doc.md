@@ -1,3 +1,21 @@
+---
+feature: sample-feature-integration
+quarter: 2026-Q2
+milestone: tbd
+area: testing
+status: draft
+based-on: {}
+related:
+  - feature: another-sample-feature
+    path: docs/specs/another-sample-feature/
+    relationship: similar-to
+    note: Same plumbing shape delivered as a smaller test fixture; this doc supersedes it for line-mapping coverage.
+  - feature: legacy-routing-integration
+    path: docs/specs/legacy-routing-integration/
+    relationship: similar-to
+    note: Legacy routing already covers backend selection; this proposal layers smart routing on top — an option to explore, not a recommendation.
+---
+
 # Test Design Doc: Sample Feature Integration
 
 > **Area**: testing

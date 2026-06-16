@@ -47,13 +47,21 @@ Comment, reply, resolve, and collapse sections directly in GitHub PR rich-diff (
 ### Description (for users)
 
 > *Ensure your extension description is clear and detailed, covering all its functionalities.*
-> *Lead with a short "What's new in vX.Y.Z (YYYY-MM-DD)" block so existing users (who see this listing after auto-update) immediately notice this release's changes — the date matches the `## [X.Y.Z] — YYYY-MM-DD` heading in `CHANGELOG.md`. Keep it to 3–6 bullets — the full list still lives in the "What's new in this version" section below and in `CHANGELOG.md`.*
+> *Lead with a short "What's new in recent releases" block grouping the **latest 3 versions** (newest first) under per-version `vX.Y.Z (YYYY-MM-DD)` sub-headers so existing users (who see this listing after auto-update) immediately notice recent changes — the dates match the `## [X.Y.Z] — YYYY-MM-DD` headings in `CHANGELOG.md`. Keep it to 1–2 bullets per version, 4–6 total — the full list still lives in the "What's new in this version" section below and in `CHANGELOG.md`.*
 
 ```
-🆕 What's new in v1.5.1 (2026-06-16)
+🆕 What's new in recent releases
 
-• Fixed: comments on Markdown files that start with YAML frontmatter (the `---` ... `---` block at the top of design docs and dev plans) no longer land at the bottom of the file. Headings and paragraphs now anchor to their real source lines.
-• New: hover any row in the metadata block at the top of a file and click the `+` to comment on `area:`, `status:`, `related:`, etc. — no need to flip to source-diff just to push back on the frontmatter.
+v1.5.1 (2026-06-16)
+• Fixed: comments on Markdown files with YAML frontmatter (the `---` ... `---` block at the top of design docs and dev plans) now anchor to their real source lines instead of landing at the bottom of the file.
+• New: hover any row in the metadata block at the top of a file and click `+` to comment on `area:`, `status:`, `related:`, etc.
+
+v1.5.0 (2026-06-12)
+• New "Changes" tab in the sidebar — jump between added / removed / modified blocks without re-reading the kept prose. Step with `[` / `]`, or press `1` / `2` / `3` to switch sidebar tabs.
+• Renamed to "Markdown PR — Markdown PR Comments for GitHub" so narrow contexts like the browser toolbar tooltip and store carousel cards show a short prefix that fits.
+
+v1.4.0 (2026-06-05)
+• Editing your own comment is now one click — a direct `Edit` link sits in the comment header next to `GitHub ↗`.
 
 📌 Just installed? Hard-refresh (Ctrl+Shift+R / Cmd+Shift+R) any GitHub PR tab that was already open when you clicked Get — the extension only activates on tabs loaded AFTER install. New tabs work automatically.
 

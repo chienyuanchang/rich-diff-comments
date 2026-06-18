@@ -2924,7 +2924,7 @@
   // We clamp persisted sizes on both read and write so a transient narrow
   // render (e.g. during initial paint before content settles) can't poison
   // localStorage with a tiny size that the next page load would honor.
-  const SIDEBAR_MIN_WIDTH = 220;
+  const SIDEBAR_MIN_WIDTH = 400;
   const SIDEBAR_MIN_HEIGHT = 120;
   const SIDEBAR_TAB_KEY = 'grdc_sidebar_tab';
   let sidebarCurrentIdx = 0;
@@ -3116,6 +3116,82 @@
     ro.observe(sidebar);
   }
 
+  // Poll the DOM for headings (the signal that GitHub has finished
+  // mounting the rich-diff prose after a toggle click). Resolves true as
+  // soon as at least one heading is visible, OR false at the timeout.
+  // Used by `expandAndRenderAllMd` to avoid the race where we rebuild
+  // the sidebar before GitHub finishes async-rendering the prose — a
+  // race that left users on the Threads tab after clicking the book
+  // button instead of landing on Outline.
+  async function waitForOutlineHeadings(maxMs = 3000) {
+    const start = Date.now();
+    while (Date.now() - start < maxMs) {
+      try {
+        if (typeof collectHeadings === 'function' && collectHeadings().length >= 1) {
+          return true;
+        }
+      } catch (_) {}
+      await new Promise((r) => setTimeout(r, 80));
+    }
+    return false;
+  }
+
+  // Expand the sidebar (if collapsed) and render every `.md` file as
+  // rich-diff, with tooltip + disabled feedback on the book button while
+  // the work runs. Used by THREE call-sites:
+  //   1. The header book button's click handler (which then ALSO switches
+  //      to the Outline tab — see the spec: book = "Toggle outline").
+  //   2. The empty-state CTA in the Threads pane.
+  //   3. The empty-state CTA in the Changes pane.
+  // The CTAs intentionally skip the Outline tab-switch — they live inside
+  // the Threads/Changes panes and the user clicked them expecting to see
+  // those panes populate. Only an explicit click on the book button
+  // signals "show me the outline".
+  async function expandAndRenderAllMd(sidebar) {
+    const btn = sidebar.querySelector('.grdc-sidebar-render-md');
+    const orig = btn ? btn.getAttribute('title') : null;
+    if (btn) {
+      btn.setAttribute('title', 'Rendering Markdown files…');
+      btn.setAttribute('disabled', 'true');
+    }
+    if (sidebar.classList.contains('grdc-sidebar-collapsed')) {
+      sidebar.classList.remove('grdc-sidebar-collapsed');
+      try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, '0'); } catch (_) {}
+    }
+    try {
+      const n = await flipAllMdToRichDiff();
+      // CRITICAL: wait for GitHub to actually mount the rich-diff prose
+      // in the DOM. `flipAllMdToRichDiff`'s per-step dwell (~100–180 ms)
+      // is often not enough on slow connections — the toggle click
+      // returns immediately but GitHub renders the prose async. Without
+      // this poll, the next sync `buildThreadsSidebar()` finds zero
+      // headings, leaves the Outline tab hidden, and any caller's
+      // `setSidebarTab(..., 'outline')` silently falls back to Threads.
+      // We poll up to 3 s for the first heading to appear; if it never
+      // does (PR has no headings, or no .md files), we proceed with the
+      // rebuild anyway — the caller's tab switch will gracefully fall
+      // back to Threads, which is the correct UX for an outline-less PR.
+      await waitForOutlineHeadings(3000);
+      // Now force a sidebar rebuild so the Outline tab unhides (if
+      // headings appeared) and `buildOutlinePane` runs. `flipAll-
+      // MdToRichDiff` already schedules a deferred rebuild for ~400 ms
+      // later as a safety net for late-arriving headings; calling it
+      // here is idempotent (rebuilds from live DOM each time).
+      try { buildThreadsSidebar(); } catch (_) {}
+      if (btn) {
+        btn.setAttribute('title', n === 0
+          ? 'All Markdown files are already in rich-diff'
+          : `Rendered ${n} Markdown file${n === 1 ? '' : 's'} as rich-diff`);
+      }
+      return n;
+    } finally {
+      if (btn) {
+        btn.removeAttribute('disabled');
+        setTimeout(() => { if (orig) btn.setAttribute('title', orig); }, 2500);
+      }
+    }
+  }
+
   function buildThreadsSidebar() {
     const threadEls = Array.from(document.querySelectorAll('.grdc-existing-thread'));
     let sidebar = document.querySelector('.grdc-sidebar');
@@ -3168,22 +3244,57 @@
           <button class="grdc-sidebar-collapse" title="Collapse / expand sidebar (t) — Shift+T to reset position" aria-label="Toggle sidebar">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75Zm0 5A.75.75 0 0 1 1.75 7h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.75Zm0 5a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1-.75-.75Z"/></svg>
           </button>
-          <span class="grdc-sidebar-nav">
-            <button class="grdc-sidebar-prev" title="Previous thread (k)" aria-label="Previous thread">
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M3.22 9.78a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 1 1-1.06 1.06L8 5.81 4.28 9.78a.75.75 0 0 1-1.06 0Z"/></svg>
-            </button>
-            <span class="grdc-sidebar-count" aria-live="polite">0/0</span>
-            <button class="grdc-sidebar-next" title="Next thread (j)" aria-label="Next thread">
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12.78 6.22a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 7.28a.75.75 0 1 1 1.06-1.06L8 10.19l3.72-3.97a.75.75 0 0 1 1.06 0Z"/></svg>
-            </button>
-          </span>
-          <span class="grdc-sidebar-changes-nav" hidden>
-            <button class="grdc-sidebar-prev-change" title="Previous change ([) — first change ({)" aria-label="Previous change">
-              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M11 2.5 4 8l7 5.5z"/></svg>
+          <span class="grdc-sidebar-separator" aria-hidden="true"></span>
+          <button class="grdc-sidebar-render-md" title="Show Outline — also renders Markdown files (b)" aria-label="Show Outline">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"/></svg>
+          </button>
+          <span class="grdc-sidebar-separator" aria-hidden="true"></span>
+          <span class="grdc-sidebar-changes-nav">
+            <button class="grdc-sidebar-diff-icon" title="Next change ( ] ) — or first if none visible" aria-label="Go to next change">
+              <!-- Custom diff icon: document with green (added) + yellow (removed) stripe markers and dim grey text lines, matching the user-provided mockup. -->
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <!-- Document outline (white, inherits currentColor) with folded corner -->
+                <path fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" d="M3 1.5h7l3 3v10a.5.5 0 0 1-.5.5h-9.5a.5.5 0 0 1-.5-.5v-13a.5.5 0 0 1 .5-.5z"/>
+                <path fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" d="M10 1.5v3h3"/>
+                <!-- Green added stripe -->
+                <rect x="4.5" y="6.5" width="1.4" height="2.6" rx="0.4" fill="#3fb950"/>
+                <!-- Text lines next to green stripe (faint grey via 60% opacity on currentColor) -->
+                <path stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-opacity="0.55" d="M6.6 7.3h4.5M6.6 8.5h3.4"/>
+                <!-- Yellow removed stripe -->
+                <rect x="4.5" y="10" width="1.4" height="2.6" rx="0.4" fill="#d29922"/>
+                <!-- Text lines next to yellow stripe -->
+                <path stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-opacity="0.55" d="M6.6 10.8h4.5M6.6 12h2.6"/>
+              </svg>
             </button>
             <span class="grdc-sidebar-changes-count" aria-live="polite">0/0</span>
-            <button class="grdc-sidebar-next-change" title="Next change (]) — last change (})" aria-label="Next change">
-              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M5 2.5 12 8l-7 5.5z"/></svg>
+            <button class="grdc-sidebar-prev-change" title="Previous change ( [ ) — first change ( { )" aria-label="Previous change">
+              <!-- chevron-left -->
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M9.78 12.78a.75.75 0 0 1-1.06 0L4.47 8.53a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 1.06L6.06 8l3.72 3.72a.75.75 0 0 1 0 1.06Z"/></svg>
+            </button>
+            <button class="grdc-sidebar-next-change" title="Next change ( ] ) — last change ( } )" aria-label="Next change">
+              <!-- chevron-right -->
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"/></svg>
+            </button>
+          </span>
+          <span class="grdc-sidebar-separator" aria-hidden="true"></span>
+          <span class="grdc-sidebar-nav">
+            <button class="grdc-sidebar-thread-icon" title="Next thread ( j ) — or first if none visible" aria-label="Go to next thread">
+              <!-- Custom thread icon: two overlapping outlined speech bubbles, matching the user-provided mockup. -->
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round">
+                <!-- Top-left bubble (rounded rect with tail pointing down-left) -->
+                <path d="M2.2 2.2h7.4a.6.6 0 0 1 .6.6v4.6a.6.6 0 0 1-.6.6H4.5l-2 1.6V2.8a.6.6 0 0 1 .6-.6z"/>
+                <!-- Bottom-right bubble (rounded rect with tail pointing down-right) -->
+                <path d="M13.8 6.4H7.6a.6.6 0 0 0-.6.6v4.6a.6.6 0 0 0 .6.6h6.7l1.7 1.6V7a.6.6 0 0 0-.6-.6h-1.6z"/>
+              </svg>
+            </button>
+            <span class="grdc-sidebar-count" aria-live="polite">0/0</span>
+            <button class="grdc-sidebar-prev" title="Previous thread ( k ) — first thread ( h )" aria-label="Previous thread">
+              <!-- chevron-left -->
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M9.78 12.78a.75.75 0 0 1-1.06 0L4.47 8.53a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 1.06L6.06 8l3.72 3.72a.75.75 0 0 1 0 1.06Z"/></svg>
+            </button>
+            <button class="grdc-sidebar-next" title="Next thread ( j ) — last thread ( l )" aria-label="Next thread">
+              <!-- chevron-right -->
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"/></svg>
             </button>
           </span>
           <button class="grdc-sidebar-header-filter" title="Unresolved only" aria-label="Toggle unresolved only" aria-pressed="false">
@@ -3192,14 +3303,11 @@
               <path class="grdc-icon-solid" fill="currentColor" d="M.75 3A.75.75 0 0 1 1.5 2.25h13a.75.75 0 0 1 .6 1.2L10 10.25v3.25a.75.75 0 0 1-1.2.6l-2.5-1.88a.75.75 0 0 1-.3-.6V10.25L.9 3.45A.75.75 0 0 1 .75 3Z"/>
             </svg>
           </button>
-          <button class="grdc-sidebar-render-md" title="Render all Markdown files as rich-diff" aria-label="Render all Markdown files as rich-diff">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"/></svg>
-          </button>
         </div>
         <div class="grdc-sidebar-tabs" role="tablist">
-          <button class="grdc-sidebar-tab grdc-sidebar-tab-active" data-grdc-tab="threads" role="tab" aria-selected="true" title="Threads (1)">Threads</button>
-          <button class="grdc-sidebar-tab" data-grdc-tab="outline" role="tab" aria-selected="false" title="Outline (2)">Outline</button>
-          <button class="grdc-sidebar-tab" data-grdc-tab="changes" role="tab" aria-selected="false" title="Changes (3)">Changes</button>
+          <button class="grdc-sidebar-tab grdc-sidebar-tab-active" data-grdc-tab="changes" role="tab" aria-selected="true" title="Changes (1)">Changes</button>
+          <button class="grdc-sidebar-tab" data-grdc-tab="threads" role="tab" aria-selected="false" title="Threads (2)">Threads</button>
+          <button class="grdc-sidebar-tab" data-grdc-tab="outline" role="tab" aria-selected="false" title="Outline (3)">Outline</button>
         </div>
         <div class="grdc-sidebar-pane grdc-sidebar-pane-threads" data-grdc-pane="threads">
           <label class="grdc-sidebar-filter">
@@ -3240,6 +3348,18 @@
       // distinct from the thread prev/next chevrons next door.
       sidebar.querySelector('.grdc-sidebar-prev-change').addEventListener('click', () => changesJump(-1));
       sidebar.querySelector('.grdc-sidebar-next-change').addEventListener('click', () => changesJump(+1));
+      // Diff/Thread icon shortcuts — clicking the file-diff icon or the
+      // comment-discussion icon acts as "go to next" (same as the right
+      // chevron). The mockup spec calls this out: "File diff and comment
+      // icons are informational by default, but also act as shortcuts to
+      // navigate to the next item (same as the right chevron)." Since
+      // `changesJump`/`sidebarJump` already start at index 0 (and `nextChangeIndex`
+      // wraps), the first click naturally lands on item 1 — the "first if
+      // none in view" behaviour is implicit.
+      const diffIconBtn = sidebar.querySelector('.grdc-sidebar-diff-icon');
+      if (diffIconBtn) diffIconBtn.addEventListener('click', () => changesJump(+1));
+      const threadIconBtn = sidebar.querySelector('.grdc-sidebar-thread-icon');
+      if (threadIconBtn) threadIconBtn.addEventListener('click', () => sidebarJump(+1));
       sidebar.querySelector('.grdc-sidebar-filter-cb').addEventListener('change', (e) => {
         try { localStorage.setItem(SIDEBAR_FILTER_KEY, e.target.checked ? '1' : '0'); } catch (_) {}
         // Sync the header icon's pressed state.
@@ -3255,35 +3375,19 @@
         cb.dispatchEvent(new Event('change', { bubbles: true }));
       });
 
-      // "Render all .md as rich-diff" — walk every file container, find
-      // the per-file source/rendered toggle, and click it on Markdown
-      // files that are currently in source-diff mode. Useful on PRs with
-      // many .md changes where toggling each file by hand is tedious.
+      // Book button = "Show Outline" per the v2 spec. Side effect: also
+      // renders any not-yet-rendered .md files, since the Outline pane is
+      // only meaningful once headings exist in the rendered DOM. The two
+      // actions naturally pair with one user intent: "navigate this PR by
+      // document structure". Implementation:
+      //   1. Expand the panel (if collapsed) and render all .md files
+      //      via `expandAndRenderAllMd` (shared with the empty-state CTAs).
+      //   2. Switch to the Outline tab so the user lands on the result.
+      // Clicking again while already on Outline is a no-op (idempotent).
       sidebar.querySelector('.grdc-sidebar-render-md').addEventListener('click', async (e) => {
         e.preventDefault();
-        const btn = e.currentTarget;
-        const orig = btn.getAttribute('title');
-        btn.setAttribute('title', 'Rendering Markdown files…');
-        btn.setAttribute('disabled', 'true');
-        // If the sidebar is collapsed, expand it so the user can actually
-        // see threads / outline populate as files render. Without this,
-        // clicking the book icon while collapsed produced the impression
-        // that "only some files opened" — the files were flipped fine,
-        // but the threads pane stayed hidden behind the slim bar.
-        const wasCollapsed = sidebar.classList.contains('grdc-sidebar-collapsed');
-        if (wasCollapsed) {
-          sidebar.classList.remove('grdc-sidebar-collapsed');
-          try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, '0'); } catch (_) {}
-        }
-        try {
-          const n = await flipAllMdToRichDiff();
-          btn.setAttribute('title', n === 0
-            ? 'All Markdown files are already in rich-diff'
-            : `Rendered ${n} Markdown file${n === 1 ? '' : 's'} as rich-diff`);
-        } finally {
-          btn.removeAttribute('disabled');
-          setTimeout(() => { if (orig) btn.setAttribute('title', orig); }, 2500);
-        }
+        await expandAndRenderAllMd(sidebar);
+        setSidebarTab(sidebar, 'outline');
       });
 
       // Tab switching. Active state persists in `localStorage` per origin.
@@ -3348,18 +3452,18 @@
       empty.innerHTML = `
         <p class="grdc-sidebar-empty-msg">${escapeHtml(msg)}</p>
         <button type="button" class="grdc-sidebar-empty-cta">
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"/></svg>
           <span>Render all Markdown files as rich-diff</span>
         </button>
       `;
       const cta = empty.querySelector('.grdc-sidebar-empty-cta');
       cta.addEventListener('click', () => {
-        // Reuse the header-icon click handler by forwarding to it. Falls
-        // back to a direct call if for any reason the header button isn't
-        // present (e.g. future refactor).
-        const headerBtn = sidebar.querySelector('.grdc-sidebar-render-md');
-        if (headerBtn) headerBtn.click();
-        else flipAllMdToRichDiff();
+        // Render-only — do NOT switch to the Outline tab. The user
+        // clicked this CTA inside the Threads pane expecting threads to
+        // appear after the render, not to be whisked away to Outline.
+        // (The header book button is the explicit "show Outline" entry
+        // point; this CTA is context-bound to the Threads pane.)
+        expandAndRenderAllMd(sidebar);
       });
       list.appendChild(empty);
     }
@@ -3423,7 +3527,7 @@
     // so the empty Threads list doesn't look like "the sidebar is
     // broken". Doesn't persist — once threads are back, the user's
     // saved preference resumes.
-    const savedTab = localStorage.getItem(SIDEBAR_TAB_KEY) || 'threads';
+    const savedTab = localStorage.getItem(SIDEBAR_TAB_KEY) || 'changes';
     setSidebarTab(sidebar, forceOutlineTab ? 'outline' : savedTab);
   }
 
@@ -3799,7 +3903,11 @@
       if (visibleRootCount === 0) {
         // Case A: actionable empty state.
         tab.hidden = false;
-        if (headerCluster) headerCluster.hidden = true;
+        // Keep the header cluster visible at `0/0` so the two nav clusters
+        // always render symmetrically. Hiding it when empty made the
+        // header layout shift between "only Threads" and "both" states
+        // — visual jitter that obscured the fact that Changes nav exists.
+        if (headerCluster) headerCluster.hidden = false;
         sidebar._grdcChangeBlocks = [];
         list.innerHTML = '';
         const empty = document.createElement('div');
@@ -3807,17 +3915,18 @@
         empty.innerHTML = `
           <p class="grdc-sidebar-empty-msg">No changes visible yet. Render the Markdown files as rich-diff to see them.</p>
           <button type="button" class="grdc-sidebar-empty-cta">
-            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"/></svg>
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"/></svg>
             <span>Render all Markdown files as rich-diff</span>
           </button>
         `;
         const cta = empty.querySelector('.grdc-sidebar-empty-cta');
         cta.addEventListener('click', () => {
-          // Forward to the header book icon's existing handler so the
-          // loading overlay + scroll-restore behaviour stays consistent.
-          const headerBtn = sidebar.querySelector('.grdc-sidebar-render-md');
-          if (headerBtn) headerBtn.click();
-          else flipAllMdToRichDiff();
+          // Render-only — do NOT switch to the Outline tab. The user
+          // clicked this CTA inside the Changes pane expecting changes
+          // to appear after the render. (The header book button is the
+          // explicit "show Outline" entry point; this CTA is context-
+          // bound to the Changes pane.)
+          expandAndRenderAllMd(sidebar);
         });
         list.appendChild(empty);
         updateChangesCount(sidebar);
@@ -3826,7 +3935,11 @@
 
       // Case B: hide the tab outright (truly no changes).
       tab.hidden = true;
-      if (headerCluster) headerCluster.hidden = true;
+      // Even with the tab hidden, keep the header cluster visible at `0/0`
+      // so the two nav clusters always render symmetrically. Without this
+      // the header layout would still shift between "only Threads" and
+      // "both clusters" depending on the PR's contents.
+      if (headerCluster) headerCluster.hidden = false;
       if (localStorage.getItem(SIDEBAR_TAB_KEY) === 'changes') {
         try { localStorage.setItem(SIDEBAR_TAB_KEY, 'threads'); } catch (_) {}
       }
@@ -3969,6 +4082,18 @@
       toggleSidebarCollapsed();
       return;
     }
+    // `b` — "book" / show Outline. Mirrors clicking the header book
+    // button: expand the panel (if collapsed), render all .md files,
+    // then switch to the Outline tab. Idempotent: pressing `b` again
+    // while already on Outline does the render-check and stays put.
+    if (e.key === 'b' && !e.shiftKey) {
+      const sidebar = document.querySelector('.grdc-sidebar');
+      if (!sidebar) return;
+      e.preventDefault();
+      const btn = sidebar.querySelector('.grdc-sidebar-render-md');
+      if (btn) btn.click();
+      return;
+    }
     // Tab-switch shortcuts — single digit 1/2/3 maps to Threads / Outline /
     // Changes respectively. Auto-expands the sidebar if collapsed (same
     // affordance the render-md button uses) so pressing `3` on a fresh
@@ -3983,9 +4108,9 @@
         sidebar.classList.remove('grdc-sidebar-collapsed');
         try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, '0'); } catch (_) {}
       }
-      const target = e.key === '1' ? 'threads'
-        : e.key === '2' ? 'outline'
-        : 'changes';
+      const target = e.key === '1' ? 'changes'
+        : e.key === '2' ? 'threads'
+        : 'outline';
       setSidebarTab(sidebar, target);
       return;
     }

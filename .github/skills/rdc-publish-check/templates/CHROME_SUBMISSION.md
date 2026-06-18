@@ -78,7 +78,7 @@ What it does:
 • Existing review threads render inline as "N comments" badges, anchored to the rendered block they belong to. Expand a thread to read, reply, resolve, or unresolve — all without leaving rich-diff.
 • Comment box matches GitHub's UI: Markdown toolbar, Write / Preview tabs, @mention autocomplete, Cmd/Ctrl+Enter to submit.
 • Threads sidebar — a draggable, resizable panel lists every review thread on the page, with prev / next navigation, an "unresolved only" filter, and j / k / h / l keyboard shortcuts. Press `t` to toggle the sidebar, `Shift+T` to reset its position.
-• Changes tab — a list of every changed block in document order with an added / removed / mixed glyph and a snippet, so you can scan the edits without reading the kept prose. Step through with `[` / `]` or use the header `◀ N/M ▶` counter. Press `1` / `2` / `3` to switch sidebar tabs from the keyboard.
+• Changes tab — a list of every changed block in document order with an added / removed / mixed glyph and a snippet, so you can scan the edits without reading the kept prose. Step through with `[` / `]` or use the header `◀ N/M ▶` counter. Press `1` / `2` / `3` to switch sidebar tabs (Changes / Threads / Outline) from the keyboard.
 • "Render all Markdown files as rich-diff" in one click — a book icon in the sidebar header opens every .md file in the PR as rich-diff at once, so all comments on Markdown files load without you having to toggle each file by hand.
 • Outline tab — a heading tree of every modified Markdown file with a comment-count pill per section; click to jump, fold individual sections or bulk-fold by level (Fold H1 / H2 / H3 / Expand all).
 • Heading anchor links (Table of Contents) work in rich-diff — clicking `[Section](#section)` scrolls to the heading.
@@ -226,7 +226,7 @@ Includes all changes from v1.5.1, v1.5.0, and v1.4.0.
 
 - **Changes navigation — jump between added / removed / modified blocks without reading the kept prose around them.** A new **Changes** tab in the sidebar lists every changed paragraph, list item, table row, code block, heading, and blockquote in document order, with a kind glyph (`+` added / `−` removed / `±` mixed), a coloured left rail, a file:line label, and a snippet of the changed text. Click a card to jump; the target block briefly pulses so you see where you landed. The sidebar header also gets a `◀ N/M ▶` counter next to the existing thread `↑ ↓` (separated by a subtle divider so the two are clearly different concerns), and the same prev/next is bound to `[` and `]` (vim's `[c` / `]c` convention). The Changes tab and the header counter auto-hide when there's nothing to navigate (e.g. before any file is opened in rich-diff).
 - **First / last change shortcuts: `Shift+[` (`{`) jumps to the first change, `Shift+]` (`}`) to the last.** Mirrors `h` / `l` for threads.
-- **Tab-switch shortcuts: press `1`, `2`, or `3`** to switch the sidebar to Threads, Outline, or Changes respectively. Auto-expands the sidebar if it was collapsed. Tab labels now carry tooltips (`Threads (1)`, `Outline (2)`, `Changes (3)`).
+- **Tab-switch shortcuts: press `1`, `2`, or `3`** to switch the sidebar to Changes, Threads, or Outline respectively. Auto-expands the sidebar if it was collapsed. Tab labels now carry tooltips (`Changes (1)`, `Threads (2)`, `Outline (3)`).
 - **"Render all Markdown files as rich-diff" CTA now also appears in the empty Changes pane** — previously the Changes tab was hidden whenever no file was rendered, so users on a fresh `/changes` page never saw it.
 
 #### Changed

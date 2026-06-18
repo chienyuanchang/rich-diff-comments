@@ -165,6 +165,80 @@ test('content.js: changes-nav functions query the changes list explicitly', () =
 });
 
 // ───────────────────────────────────────────────────────────────────────────
+// Tab order contract — Changes / Threads / Outline (1.5.0+).
+//
+// The 1.5.0 reorder put Changes first because reviewers reach for "next
+// change" before "next comment" when opening a PR. Three things need to
+// stay in sync or the UX gets confusing:
+//
+//   1. The HTML render order of the .grdc-sidebar-tab buttons
+//   2. The keyboard mapping (1=Changes, 2=Threads, 3=Outline)
+//   3. The default fallback tab when no preference is saved
+//
+// These tests pin all three so a future refactor doesn't silently break
+// one of them. They mirror the rationale of the selector-scoping tests
+// above: the bug class is "easy to introduce, hard to notice".
+// ───────────────────────────────────────────────────────────────────────────
+
+test('content.js: sidebar tab buttons render in Changes / Threads / Outline order', () => {
+  // Look for the three `<button class="grdc-sidebar-tab …" data-grdc-tab="…">`
+  // declarations and verify the order is changes → threads → outline.
+  // Match the data-grdc-tab attribute since the visible label could
+  // theoretically be localised in the future without changing semantics.
+  const re = /<button[^>]*class="grdc-sidebar-tab[^"]*"[^>]*data-grdc-tab="(changes|threads|outline)"/g;
+  const order = [];
+  let m;
+  while ((m = re.exec(content)) !== null) order.push(m[1]);
+
+  assert.deepEqual(
+    order,
+    ['changes', 'threads', 'outline'],
+    `Expected sidebar tab buttons to render in Changes / Threads / Outline order ` +
+    `(1.5.0 reorder for the reviewer-first flow). Found: [${order.join(', ')}].`
+  );
+});
+
+test('content.js: 1/2/3 keyboard shortcuts map to Changes / Threads / Outline', () => {
+  // Find the inline ternary in the document-level keydown handler that
+  // maps e.key to a tab name. The exact form lives in content.js as:
+  //   const target = e.key === '1' ? 'changes'
+  //     : e.key === '2' ? 'threads'
+  //     : 'outline';
+  // Tolerate whitespace variation but pin the mapping.
+  const mappingRe = /e\.key\s*===\s*['"]1['"]\s*\?\s*['"](\w+)['"]\s*:\s*e\.key\s*===\s*['"]2['"]\s*\?\s*['"](\w+)['"]\s*:\s*['"](\w+)['"]/;
+  const m = content.match(mappingRe);
+  assert.ok(
+    m,
+    `Could not find the 1/2/3 → tab mapping in content.js. ` +
+    `Expected a ternary like \`e.key === '1' ? 'changes' : e.key === '2' ? 'threads' : 'outline'\`. ` +
+    `If you refactored to a different shape, update this regex and confirm the mapping.`
+  );
+  assert.equal(m[1], 'changes', `Expected key '1' → 'changes' (1.5.0 reorder). Got '${m[1]}'.`);
+  assert.equal(m[2], 'threads', `Expected key '2' → 'threads' (1.5.0 reorder). Got '${m[2]}'.`);
+  assert.equal(m[3], 'outline', `Expected key '3' (fallthrough) → 'outline' (1.5.0 reorder). Got '${m[3]}'.`);
+});
+
+test('content.js: default sidebar tab is `changes` when no preference saved', () => {
+  // The default-tab fallback lives where the localStorage read is done:
+  //   const savedTab = localStorage.getItem(SIDEBAR_TAB_KEY) || 'changes';
+  // We scan for that pattern. If it changes shape, the test fails loudly.
+  const defaultRe = /localStorage\.getItem\(\s*SIDEBAR_TAB_KEY\s*\)\s*\|\|\s*['"](\w+)['"]/;
+  const m = content.match(defaultRe);
+  assert.ok(
+    m,
+    `Could not find the default-tab fallback in content.js. ` +
+    `Expected \`localStorage.getItem(SIDEBAR_TAB_KEY) || '…'\`.`
+  );
+  assert.equal(
+    m[1],
+    'changes',
+    `Expected default tab to be 'changes' (1.5.0 reorder \u2014 reviewers reach for change-nav first). ` +
+    `Got '${m[1]}'. If you intentionally reverted the default, update this test and the matching ` +
+    `entry in CHANGELOG.md so the change is recorded.`
+  );
+});
+
+// ───────────────────────────────────────────────────────────────────────────
 // Sanity check on the test itself — if the file no longer exists or has
 // shrunk dramatically, every other assertion would silently pass with
 // zero offenders. Catch that obvious failure mode.

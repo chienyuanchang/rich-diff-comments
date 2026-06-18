@@ -37,7 +37,7 @@ Tabs you open *after* installing work automatically — the tip above only matte
 
 - **Multi-line range comments**: hold the `+` button on one block and drag to another block. A yellow band shows the range while you drag.
 - **Changes tab + `[` / `]` keys**: jump straight to the next (or previous) changed block — paragraph, list item, table row, code block, heading. The sidebar's **Changes** tab lists every change with a `+` / `−` / `±` glyph and a snippet; the `◀ N/M ▶` counter in the sidebar header lets you skim without opening the tab. Press `{` / `}` (Shift+[ / Shift+]) to jump to the first or last change. Best way to scan a Markdown PR for the first time without re-reading the unchanged prose.
-- **Sidebar tab shortcuts**: press `1`, `2`, or `3` to switch the sidebar to Threads, Outline, or Changes. Auto-expands the sidebar if collapsed.
+- **Sidebar tab shortcuts**: press `1`, `2`, or `3` to switch the sidebar to Changes, Threads, or Outline. Auto-expands the sidebar if collapsed.
 - **Collapse sections**: click the small chevron next to any heading to fold that whole section. Useful for focusing on what's left to review.
 - **`@mention`**: type `@` in the comment box to get GitHub's user autocomplete.
 - **Markdown preview**: click the **Preview** tab in the comment box to see how your comment will render.

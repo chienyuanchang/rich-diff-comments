@@ -897,14 +897,21 @@ li.grdc-hoverable .grdc-comment-btn {
   position: fixed;
   top: 80px;
   right: 12px;
-  width: 320px;
+  width: 400px;
   height: auto;
-  min-width: 220px;
+  min-width: 400px;
   min-height: 120px;
-  max-width: 90vw;
+  /* Cap height but NOT width — narrow viewports should still let the
+     sidebar be 400px (users will scroll the page horizontally if needed,
+     and the alternative is the funnel + nav clusters getting clipped
+     because `max-width: 90vw` would cap the sidebar below its content). */
   max-height: calc(100vh - 40px);
   display: flex;
   flex-direction: column;
+  /* Container query target so .grdc-sidebar-nav-glyph can hide itself
+     when the sidebar's own width drops below ~260px (not the viewport's). */
+  container-type: inline-size;
+  container-name: grdc-sidebar;
   /* Opaque pale blue — NOT rgba. The sidebar sits ON TOP of page content,
      so any alpha < 1 lets the underlying prose bleed through (visible
      especially when scrolled past tall content). #eaf2fb is the rough
@@ -917,28 +924,65 @@ li.grdc-hoverable .grdc-comment-btn {
   font-size: 12px;
   color: var(--fgColor-default, var(--color-fg-default, #1f2328));
   z-index: 100;
+  /* Both axes resizable, with min-width: 400px and min-height: 120px
+     floors enforced via CSS. The browser's native resize handle respects
+     `min-width` / `min-height`, so users can grow but not shrink past
+     these. Allowing horizontal resize lets people widen the sidebar to
+     read longer card snippets without truncation. */
   resize: both;
   overflow: hidden;
 }
-/* When collapsed, suppress the resize handle (would be a confusing affordance
-   on a 1-line widget) AND override any persisted height so the sidebar
-   shrinks to just the header. `min-height: 0` is required because the
-   uncollapsed rule sets `min-height: 120px`. The width stays user-set. */
+/* When collapsed, suppress the resize handle (would be a confusing
+   affordance on a 1-line widget) AND override any persisted height so
+   the sidebar shrinks to just the header. `min-height: 0` is required
+   because the uncollapsed rule sets `min-height: 120px`.
+   Width: INHERITS from the parent .grdc-sidebar (400px default, or the
+   user's persisted width). The collapsed strip is the same width as the
+   expanded sidebar so the funnel on the right edge stays in the same
+   screen position. Earlier versions used `width: auto !important` which
+   shrank the strip to its content but pulled the funnel inward and
+   looked visually disconnected from the expanded layout. */
 .grdc-sidebar-collapsed {
   resize: none;
   height: auto !important;
   min-height: 0 !important;
-  width: auto !important;
-  min-width: 0;
+  /* Don't override width — inherit from .grdc-sidebar's `width: 400px`
+     (or the user's persisted width if they resized). */
 }
+/* Force the collapsed header to stay on ONE row. The expanded header uses
+   `flex-wrap: wrap` so a user-shrunk sidebar degrades gracefully, but the
+   collapsed strip's whole point is to be a thin one-line bar — wrapping
+   to a second row defeats it. With min-width: 360px on the strip itself,
+   the content should always fit. nowrap is a safety net for transient
+   measurement hiccups. */
+.grdc-sidebar-collapsed .grdc-sidebar-header { flex-wrap: nowrap; }
 .grdc-sidebar-collapsed .grdc-sidebar-filter,
 .grdc-sidebar-collapsed .grdc-sidebar-list { display: none; }
 .grdc-sidebar-collapsed .grdc-sidebar-header { border-bottom: none; }
+/* Note: in collapsed mode we INTENTIONALLY keep both nav clusters
+   visible (.grdc-sidebar-nav and .grdc-sidebar-changes-nav). The at-a-
+   glance `[↑ ± N/M ↓] │ [↑ 💬 N/M ↓]` counters were the whole point of
+   collapsing — losing them defeats the purpose of the slim strip. The
+   `min-width: 380px` on .grdc-sidebar-collapsed above ensures the strip
+   stays wide enough to fit both clusters + filter + book on one row. */
 .grdc-sidebar-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+  /* Locked to one row — no wrap. The sidebar's `min-width: 400px` and
+   * no-horizontal-resize guarantee the content always fits. Wrapping
+   * to a second row would defeat the v2 design's clean horizontal
+   * navigation bar. */
+  flex-wrap: nowrap;
+  /* Compact v2 spec: 8px between groups (the spec says 16px but that's
+   * too generous for our floating-sidebar footprint). Tighter local
+   * gaps inside each cluster set per-element below. */
+  gap: 8px;
+  /* Compact horizontal padding. Spec says 16px; we use 8px to fit more
+   * content into a reasonable sidebar width. */
+  padding: 0 8px;
+  /* Compact 40px bar height (option B — 80% of v2 spec's 48px). Still
+   * bigger than 1.5.0's ~30px and gives breathing room for 16px icons. */
+  min-height: 40px;
   border-bottom: 1px solid var(--borderColor-default, var(--color-border-default, #c3d4ea));
   /* Match GitHub's link blue (`--fgColor-accent` — `#0969da` light,
      `#2f81f7` dark) so the header reads as "part of GitHub's UI". Using
@@ -957,65 +1001,65 @@ li.grdc-hoverable .grdc-comment-btn {
   cursor: grabbing;
 }
 .grdc-sidebar-dragging .grdc-sidebar-header { cursor: grabbing; }
+/* Header buttons: white icons (100%), 28×28 click target (option B — 80%
+   of v2 spec's 32×32). `padding: 6px` on a 16×16 SVG = 28×28 total. */
 .grdc-sidebar-header button {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 4px;
-  padding: 2px 6px;
+  padding: 6px;
   cursor: pointer;
   font-size: 13px;
-  line-height: 1;
-  color: inherit;
-}
-.grdc-sidebar-header button:hover {
-  background: rgba(255, 255, 255, 0.18);
-  border-color: rgba(255, 255, 255, 0.35);
-}
-.grdc-sidebar-collapse { margin-right: 2px; }
-/* Group prev/next together so they read as a pair, not as two solo arrows
-   sitting on either side of the count. The inline count (.grdc-sidebar-count)
-   sits BETWEEN the chevrons; align-items: center keeps it vertically
-   centered with the SVG glyphs. */
-.grdc-sidebar-nav {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-/* Push the filter + render-md icons to the right edge — they used to be
-   pushed there by `.grdc-sidebar-count { margin-left: auto }`, which moved
-   into the nav cluster as the inline counter. Without this, the icons hug
-   the changes cluster and the header reads cramped. */
-.grdc-sidebar-header-filter { margin-left: auto; }
-/* Change-nav cluster — sits next to thread-nav in the header. Uses solid
-   triangle glyphs (vs the thread-nav chevrons) so the two clusters read
-   as separate concerns at a glance. A small gap and a subtle vertical
-   divider separate them visually. */
-.grdc-sidebar-changes-nav {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: 6px;
-  padding-left: 8px;
-  border-left: 1px solid rgba(255, 255, 255, 0.25);
-}
-.grdc-sidebar-changes-nav[hidden] { display: none; }
-.grdc-sidebar-header .grdc-sidebar-prev-change,
-.grdc-sidebar-header .grdc-sidebar-next-change {
+  line-height: 0;
+  color: var(--fgColor-onEmphasis, var(--color-fg-on-emphasis, #ffffff));
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 3px;
 }
-.grdc-sidebar-header .grdc-sidebar-prev-change svg,
-.grdc-sidebar-header .grdc-sidebar-next-change svg { display: block; }
-.grdc-sidebar-changes-count {
-  /* Min-width so the counter doesn't jitter when going from 9/47 to 10/47. */
-  min-width: 36px;
+.grdc-sidebar-header button:hover {
+  /* Hover state per v2 spec: subtle white wash. */
+  background: rgba(255, 255, 255, 0.1);
+  border-color: transparent;
+}
+.grdc-sidebar-header button:active {
+  /* Active / pressed state per v2 spec: slightly stronger background. */
+  background: rgba(255, 255, 255, 0.2);
+}
+.grdc-sidebar-header button svg { display: block; }
+/* 1×22px vertical separator (option B — ~55% of the 40px bar height,
+   keeping the spec's visual proportion). White at 24% opacity. */
+.grdc-sidebar-separator {
+  display: inline-block;
+  width: 1px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.24);
+  flex-shrink: 0;
+}
+/* Cluster wrappers: keep the chevrons + icon + count tight together
+   (the 8px header gap shouldn't apply between siblings inside a cluster
+   — those use 4-6px). */
+.grdc-sidebar-nav,
+.grdc-sidebar-changes-nav {
+  display: inline-flex;
+  align-items: center;
+  /* 4px gap between icon, count, and chevrons inside a cluster (compact
+     v2: spec says 8px, we use 4 to keep the cluster tight). */
+  gap: 4px;
+}
+/* Push the funnel to the right edge — it's the trailing item per the
+   v2 spec ("filter...after threads"). */
+.grdc-sidebar-header-filter { margin-left: auto; }
+/* Counts (informational, 60% white, 12px Medium for the compact bar).
+   `min-width: 28px` keeps the chevrons from jittering between 9/47 and
+   10/47. Tabular nums = monospace digits for the same reason. */
+.grdc-sidebar-changes-count,
+.grdc-sidebar-count {
+  min-width: 28px;
   text-align: center;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: rgba(255, 255, 255, 0.88);
+  font-size: 12px;
   font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.6);
 }
 .grdc-sidebar-header .grdc-sidebar-collapse,
 .grdc-sidebar-header .grdc-sidebar-prev,
@@ -1076,19 +1120,9 @@ li.grdc-hoverable .grdc-comment-btn {
      contrast. */
   background: rgba(255, 255, 255, 0.92);
 }
-/* Inline thread counter — sits BETWEEN the prev / next chevrons inside
-   `.grdc-sidebar-nav`, matching the Changes cluster's `[◀ N/M ▶]`
-   layout. Reads as `[↑ N/M ↓]`. Tabular nums + min-width prevent the
-   chevrons from jittering as the counter goes from 9/47 to 10/47. */
-.grdc-sidebar-count {
-  display: inline-block;
-  min-width: 36px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.88);
-}
+/* (The `.grdc-sidebar-count` rule now lives next to `.grdc-sidebar-changes-count`
+   higher up — both counters share styling so the two clusters render
+   symmetrically. Don't re-add a rule here without also removing it there.) */
 .grdc-sidebar-filter {
   display: flex;
   align-items: center;
@@ -1396,12 +1430,13 @@ li.grdc-hoverable .grdc-comment-btn {
 }
 .grdc-sidebar-card-change-kind {
   display: inline-block;
-  min-width: 14px;
+  min-width: 18px;
   text-align: center;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
   font-weight: 700;
-  font-size: 12px;
-  margin-right: 6px;
+  font-size: 16px;
+  line-height: 1;
+  margin-right: 8px;
 }
 .grdc-sidebar-card-change-added .grdc-sidebar-card-change-kind {
   color: var(--fgColor-success, var(--color-success-fg, #1a7f37));

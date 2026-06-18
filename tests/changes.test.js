@@ -230,6 +230,35 @@ test('findChangeBlocks — <tr class="added"> inside <table> → 1 stop on the t
   assert.equal(blocks[0], tr);
 });
 
+// Regression: a partially-changed list (one new item among unchanged
+// ones) must land on the specific changed `<li>`, not the whole list.
+test('findChangeBlocks — <ul> with one <li class="added"> among unchanged → 1 stop on the changed li', () => {
+  const li1 = el('li', {}, 'unchanged');
+  const li2 = el('li', { classes: ['added'] }, 'new item');
+  const li3 = el('li', {}, 'unchanged too');
+  const ul = el('ul', {}, li1, li2, li3);
+  const root = container(ul);
+  const blocks = findChangeBlocks(root);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0], li2);
+});
+
+// Documented limitation: `<ins><table>…</table></ins>` (whole replaced
+// table — marker is ANCESTOR only, no self / no descendant marker on
+// the table) is NOT detected as a change stop. Earlier attempts to
+// walk ancestors looking for markers caused whole-new-file rich-diffs
+// to flood the Changes pane with one entry per paragraph/heading; the
+// trade-off is intentional. Users navigate to those by scrolling.
+test('findChangeBlocks — <ins><table>…</table></ins> (whole new table) → 0 stops (documented limitation)', () => {
+  const tr = el('tr', {}, el('td', {}, 'cell'));
+  const table = el('table', {}, tr);
+  const ins = el('ins', {}, table);
+  const root = container(ins);
+  const blocks = findChangeBlocks(root);
+  // Intentional: ancestor markers are not walked to avoid whole-new-file flood.
+  assert.equal(blocks.length, 0);
+});
+
 test('findChangeBlocks — heading change registers (h1..h6)', () => {
   const h1 = el('h1', {}, el('ins', {}, 'New section title'));
   const h3 = el('h3', { classes: ['added'] }, 'Another new heading');

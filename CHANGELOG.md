@@ -4,6 +4,10 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+### Changed
+
+- **Sidebar header refreshed per the v2 design spec.** New layout (`≡ │ book │ 📄 N/M < > │ 💬 N/M < > ▽`) puts the diff and thread icons front-and-centre — both icons now double as one-click "go to next" shortcuts (the file-diff icon scrolls to the next change, the comment-discussion icon scrolls to the next thread). Chevrons switched from vertical `↑ ↓` to horizontal `< >`. Counts dim slightly (60% white) to read as informational; separators between groups dim further (24%) to keep the eye on the action. The **book icon now opens the Outline tab** (with a new `b` keyboard shortcut) — it still renders any not-yet-rendered Markdown files as a side-effect, so the Outline pane has headings to show. See [docs/SIDEBAR_HEADER_V2.md](docs/SIDEBAR_HEADER_V2.md) for the full design.
+
 ## [1.5.1] — 2026-06-16
 
 ### Fixed
@@ -20,7 +24,7 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 - **Changes navigation — jump between added / removed / modified blocks without reading the kept prose around them.** A new **Changes** tab in the sidebar lists every changed paragraph, list item, table row, code block, heading, and blockquote in document order, with a kind glyph (`+` added / `−` removed / `±` mixed), a coloured left rail, a file:line label, and a snippet of the changed text. Click a card to jump; the target block briefly pulses so you see where you landed. The sidebar header also gets a `◀ N/M ▶` counter next to the existing thread `↑ ↓` (separated by a subtle divider so the two are clearly different concerns), and the same prev/next is bound to `[` and `]` (vim's `[c` / `]c` convention). The Changes tab and the header counter auto-hide when there's nothing to navigate (e.g. before any file is opened in rich-diff). This is the first thing reviewers reach for when opening a Markdown PR for the first time — scan the edits without re-reading the unchanged prose.
 - **First / last change shortcuts: `Shift+[` (`{`) jumps to the first change, `Shift+]` (`}`) to the last.** Mirrors `h` / `l` for threads. Useful for jumping back to the top of a long PR after scrolling deep, or skipping straight to the final hunk to check the end-state.
-- **Tab-switch shortcuts: press `1`, `2`, or `3`** to switch the sidebar to Threads, Outline, or Changes respectively. Auto-expands the sidebar if it was collapsed so you don't end up swapping a tab hidden behind the slim bar. Tab labels now carry tooltips (`Threads (1)`, `Outline (2)`, `Changes (3)`) so the shortcut is discoverable on hover.
+- **Tab-switch shortcuts: press `1`, `2`, or `3`** to switch the sidebar to Changes, Threads, or Outline respectively. Auto-expands the sidebar if it was collapsed so you don't end up swapping a tab hidden behind the slim bar. Tab labels now carry tooltips (`Changes (1)`, `Threads (2)`, `Outline (3)`) so the shortcut is discoverable on hover.
 - **"Render all Markdown files as rich-diff" CTA now also appears in the empty Changes pane** — previously the Changes tab was hidden whenever no file was rendered, so users on a fresh `/changes` page never saw it; now the tab stays visible with the same primary action button that the empty Threads pane has, so the next step is obvious from any tab.
 
 ### Changed

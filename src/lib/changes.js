@@ -49,6 +49,15 @@
   // changed parent block subsumes its changed descendant blocks (e.g. a
   // changed `<li>` is one stop even if it wraps a changed `<p>`).
   //
+  // NOTE: This deliberately does NOT check ancestor markers. GitHub's
+  // whole-new-file rich-diff wraps the entire file body in a single
+  // `<ins>` — if we walked ancestors we'd light up every paragraph and
+  // heading inside, flooding the Changes pane. The trade-off: a wholly-
+  // replaced table rendered as `<ins><table>…</table></ins>` won't be
+  // detected (the `<table>` has no self-marker and no marker descendants).
+  // Users navigate to those by scrolling. See the 2026-06-17 conversation
+  // for the full history of attempts to handle ancestor markers safely.
+  //
   // Defensive against null / non-element input — returns `[]`.
   function findChangeBlocks(rootEl) {
     if (!rootEl || typeof rootEl.querySelectorAll !== 'function') return [];

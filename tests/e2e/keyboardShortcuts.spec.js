@@ -10,7 +10,7 @@
  * Covers the shortcuts content.js binds at the document level:
  *   • `t`         — toggle sidebar collapsed / expanded
  *   • `Shift+T`   — reset sidebar position / size
- *   • `1` / `2` / `3` — switch sidebar to Threads / Outline / Changes
+ *   • `1` / `2` / `3` — switch sidebar to Changes / Threads / Outline (1.5.0 order)
  *   • `[` / `]`   — prev / next change card
  *
  * Tests skipped (need fixtures with threads or many changes):
@@ -55,13 +55,57 @@ test.describe('keyboard shortcuts', () => {
     expect(finalState).toBe(wasCollapsedBefore);
   });
 
-  test('pressing `2` switches the sidebar to the Outline tab', async ({ page }) => {
+  test('collapsing the sidebar keeps it visible with both nav clusters intact', async ({ page }) => {
+    // 2026-06 design: collapsed mode keeps both nav clusters (Changes +
+    // Threads) visible because the at-a-glance counters are the whole
+    // point of the slim strip. The collapsed sidebar must reserve
+    // enough width (`min-width: 300px` in CSS) to fit both clusters
+    // plus filter + book icons on one row.
+    const sidebar = page.locator('.grdc-sidebar');
+    await expect(sidebar).toBeVisible();
+
+    // Ensure we start expanded — t toggles, so if the saved state was
+    // collapsed press once to expand first.
+    const startsCollapsed = await sidebar.evaluate((el) =>
+      el.classList.contains('grdc-sidebar-collapsed')
+    );
+    if (startsCollapsed) await page.keyboard.press('t');
+
+    // Now collapse with `t`.
+    await page.keyboard.press('t');
+    await expect(sidebar).toHaveClass(/grdc-sidebar-collapsed/);
+
+    // Sidebar element itself is still visible (not display:none).
+    await expect(sidebar).toBeVisible();
+
+    // Sidebar bounding box is at least as wide as the CSS min-width
+    // (300px floor) — anything narrower means the collapsed strip
+    // couldn't reserve room for both nav clusters and they'd clip.
+    const box = await sidebar.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box.width).toBeGreaterThanOrEqual(400);
+    expect(box.height).toBeGreaterThan(20);
+
+    // Both nav clusters MUST stay visible in collapsed mode — that's the
+    // whole reason for the wide min-width. Hiding them was a v2 fix that
+    // got reverted in v3 because it removed the counter that made the
+    // collapsed strip useful.
+    await expect(page.locator('.grdc-sidebar-nav')).toBeVisible();
+    await expect(page.locator('.grdc-sidebar-changes-nav')).toBeVisible();
+
+    // Collapse toggle button must STAY visible — without it the user
+    // would be trapped in collapsed mode.
+    await expect(page.locator('.grdc-sidebar-collapse')).toBeVisible();
+  });
+
+  test('pressing `3` switches the sidebar to the Outline tab', async ({ page }) => {
+    // 1.5.0 tab order is Changes (1) / Threads (2) / Outline (3).
     // The fixture has no threads, so 1.5.0's auto-expand behavior will
     // expand the sidebar if collapsed; either way the Outline tab must
     // end up active.
     await expect(page.locator('.grdc-sidebar')).toBeVisible();
 
-    await page.keyboard.press('2');
+    await page.keyboard.press('3');
 
     const outlineTab = page.locator('.grdc-sidebar-tab[data-grdc-tab="outline"]');
     await expect(outlineTab).toHaveClass(/grdc-sidebar-tab-active/);
@@ -70,22 +114,24 @@ test.describe('keyboard shortcuts', () => {
     await expect(page.locator('.grdc-sidebar-tab[data-grdc-tab="changes"]')).not.toHaveClass(/grdc-sidebar-tab-active/);
   });
 
-  test('pressing `1` returns the sidebar to the Threads tab', async ({ page }) => {
+  test('pressing `2` returns the sidebar to the Threads tab', async ({ page }) => {
+    // 1.5.0 tab order is Changes (1) / Threads (2) / Outline (3).
     await expect(page.locator('.grdc-sidebar')).toBeVisible();
-    await page.keyboard.press('2'); // first go to Outline
-    await page.keyboard.press('1'); // then back to Threads
+    await page.keyboard.press('3'); // first go to Outline
+    await page.keyboard.press('2'); // then back to Threads
     await expect(
       page.locator('.grdc-sidebar-tab[data-grdc-tab="threads"]')
     ).toHaveClass(/grdc-sidebar-tab-active/);
   });
 
   test('pressing the same shortcut repeatedly is idempotent (no flicker / state drift)', async ({ page }) => {
+    // 1.5.0: `1` is Changes (the new tab #1).
     await expect(page.locator('.grdc-sidebar')).toBeVisible();
     await page.keyboard.press('1');
     await page.keyboard.press('1');
     await page.keyboard.press('1');
     await expect(
-      page.locator('.grdc-sidebar-tab[data-grdc-tab="threads"]')
+      page.locator('.grdc-sidebar-tab[data-grdc-tab="changes"]')
     ).toHaveClass(/grdc-sidebar-tab-active/);
   });
 

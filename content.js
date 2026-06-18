@@ -1091,7 +1091,7 @@
       // past the bottom for nothing.
       let y = 0;
       let guard = 0;
-      const dwell = 100;
+      const dwell = 125;
       // First scan from current viewport (in case user clicked while
       // already at the top and the first batch is already mounted).
       clicked += clickRichTogglesOnce(seen);
@@ -3161,7 +3161,7 @@
     try {
       const n = await flipAllMdToRichDiff();
       // CRITICAL: wait for GitHub to actually mount the rich-diff prose
-      // in the DOM. `flipAllMdToRichDiff`'s per-step dwell (~100–180 ms)
+      // in the DOM. `flipAllMdToRichDiff`'s per-step dwell (~125–180 ms)
       // is often not enough on slow connections — the toggle click
       // returns immediately but GitHub renders the prose async. Without
       // this poll, the next sync `buildThreadsSidebar()` finds zero

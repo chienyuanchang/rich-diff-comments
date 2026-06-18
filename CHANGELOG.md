@@ -4,9 +4,14 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+### Added
+
+- **The page icon and speech-bubble icon in the sidebar header are now one-click "go to next" shortcuts.** Click the page icon to jump to the next change; click the speech-bubble to jump to the next thread. The previous count between them tells you where you are at a glance (e.g. `3/12`). If nothing is currently in view, the click takes you to the first item — so opening a PR and tapping either icon lands you on the first change or thread.
+- **`b` shortcut opens the Outline tab.** Tap `b` anywhere on a Files-changed page to expand the sidebar (if collapsed) and switch to Outline. If any Markdown files aren't rendered yet, they're rendered first so the outline has something to show.
+
 ### Changed
 
-- **Sidebar header refreshed per the v2 design spec.** New layout (`≡ │ book │ 📄 N/M < > │ 💬 N/M < > ▽`) puts the diff and thread icons front-and-centre — both icons now double as one-click "go to next" shortcuts (the file-diff icon scrolls to the next change, the comment-discussion icon scrolls to the next thread). Chevrons switched from vertical `↑ ↓` to horizontal `< >`. Counts dim slightly (60% white) to read as informational; separators between groups dim further (24%) to keep the eye on the action. The **book icon now opens the Outline tab** (with a new `b` keyboard shortcut) — it still renders any not-yet-rendered Markdown files as a side-effect, so the Outline pane has headings to show. See [docs/SIDEBAR_HEADER_V2.md](docs/SIDEBAR_HEADER_V2.md) for the full design.
+- **Cleaner, easier-to-scan sidebar header.** The diff and thread shortcuts now sit front-and-centre with sideways `<` / `>` arrows instead of stacked up / down ones, the count next to each is dimmed so the icons read first, and a thin separator keeps the two groups visually distinct. The book icon — previously "render all Markdown files" — is now the **Outline** button: click it to switch to the Outline tab (rendering any not-yet-rendered Markdown files along the way so the outline has headings to show).
 
 ## [1.5.1] — 2026-06-16
 

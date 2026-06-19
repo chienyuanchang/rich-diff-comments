@@ -897,9 +897,9 @@ li.grdc-hoverable .grdc-comment-btn {
   position: fixed;
   top: 80px;
   right: 12px;
-  width: 400px;
+  width: 420px;
   height: auto;
-  min-width: 400px;
+  min-width: 420px;
   min-height: 120px;
   /* Cap height but NOT width — narrow viewports should still let the
      sidebar be 400px (users will scroll the page horizontally if needed,
@@ -946,8 +946,16 @@ li.grdc-hoverable .grdc-comment-btn {
   resize: none;
   height: auto !important;
   min-height: 0 !important;
-  /* Don't override width — inherit from .grdc-sidebar's `width: 400px`
-     (or the user's persisted width if they resized). */
+  /* Collapsed always snaps to the locked min-width (420px) regardless
+     of any user-resized expanded width. Earlier versions inherited the
+     expanded width which left a wide empty strip when the user had
+     resized the sidebar large; now the collapsed strip is always the
+     same compact size matching the locked width.
+     420 (not 400) so the funnel button + 12px margin-right doesn't
+     overflow when counts get wide (e.g. `29/39 9/9`). With 400 the
+     funnel was extending ~9px past the sidebar's rounded right corner
+     and getting visually clipped. */
+  width: 420px !important;
 }
 /* Force the collapsed header to stay on ONE row. The expanded header uses
    `flex-wrap: wrap` so a user-shrunk sidebar degrades gracefully, but the
@@ -978,7 +986,9 @@ li.grdc-hoverable .grdc-comment-btn {
    * gaps inside each cluster set per-element below. */
   gap: 8px;
   /* Compact horizontal padding. Spec says 16px; we use 8px to fit more
-   * content into a reasonable sidebar width. */
+   * content into a reasonable sidebar width. The funnel button adds its
+   * own `margin-right` (see `.grdc-sidebar-header-filter` below) so it
+   * doesn't crowd the rounded corner. */
   padding: 0 8px;
   /* Compact 40px bar height (option B — 80% of v2 spec's 48px). Still
    * bigger than 1.5.0's ~30px and gives breathing room for 16px icons. */
@@ -1046,9 +1056,11 @@ li.grdc-hoverable .grdc-comment-btn {
      v2: spec says 8px, we use 4 to keep the cluster tight). */
   gap: 4px;
 }
-/* Push the funnel to the right edge — it's the trailing item per the
-   v2 spec ("filter...after threads"). */
-.grdc-sidebar-header-filter { margin-left: auto; }
+/* Funnel sits immediately after its separator — no margin push to the
+   right edge. The 2026-06-18 design groups all navigation (book + diff
+   + thread + funnel) tightly together with separators between groups,
+   so an `margin-left: auto` would create an awkward gap between the
+   thread separator and the funnel. */
 /* Counts (informational, 60% white, 12px Medium for the compact bar).
    `min-width: 28px` keeps the chevrons from jittering between 9/47 and
    10/47. Tabular nums = monospace digits for the same reason. */
@@ -1093,6 +1105,12 @@ li.grdc-hoverable .grdc-comment-btn {
      funnel white at reduced opacity instead. */
   color: rgba(255, 255, 255, 1);
   display: none;
+  /* Push the funnel away from the sidebar's rounded right corner. The
+     header has 8px right padding; this margin adds another 12px so the
+     funnel SVG (especially its top-right triangle tip) sits well clear
+     of the curve in BOTH expanded and collapsed mode. 6px wasn't enough
+     when the counters render at their widest (e.g. `29/39 9/9`). */
+  margin-right: 12px;
   transition: opacity 0.12s, background 0.12s, color 0.12s;
 }
 .grdc-sidebar-collapsed .grdc-sidebar-header-filter {
@@ -1322,12 +1340,21 @@ li.grdc-hoverable .grdc-comment-btn {
   flex: 1;
 }
 .grdc-sidebar-outline-file {
+  /* Button-element reset — the JS uses <button> so this label is clickable
+     (jumps Changes/Threads counters to this file's first card). Strip the
+     default browser button chrome and re-apply the original visual style. */
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
   padding: 6px 10px 4px;
   font-size: 10px;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
   color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  border: none;
   border-top: 1px solid var(--borderColor-muted, var(--color-border-muted, #d8dee4));
   margin-top: 4px;
   /* Long labels still get a normal right-side ellipsis as a safety net;
@@ -1335,6 +1362,11 @@ li.grdc-hoverable .grdc-comment-btn {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: background 0.12s, color 0.12s;
+}
+.grdc-sidebar-outline-file:hover {
+  background: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
+  color: var(--fgColor-default, var(--color-fg-default, #1f2328));
 }
 .grdc-sidebar-outline-file:first-child { border-top: none; margin-top: 0; }
 .grdc-sidebar-outline-row {

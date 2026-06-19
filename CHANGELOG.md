@@ -4,14 +4,25 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-06-18
+
 ### Added
 
 - **The page icon and speech-bubble icon in the sidebar header are now one-click "go to next" shortcuts.** Click the page icon to jump to the next change; click the speech-bubble to jump to the next thread. The previous count between them tells you where you are at a glance (e.g. `3/12`). If nothing is currently in view, the click takes you to the first item — so opening a PR and tapping either icon lands you on the first change or thread.
 - **`b` shortcut opens the Outline tab.** Tap `b` anywhere on a Files-changed page to expand the sidebar (if collapsed) and switch to Outline. If any Markdown files aren't rendered yet, they're rendered first so the outline has something to show.
+- **Click a file in the Outline pane to jump Changes & Threads to that file.** Each file label in the Outline (the `../folder/file.md` headers) is now clickable — clicking jumps both the Changes and Threads counters to the first item in that file, so `[` / `]` and `j` / `k` continue navigation within that file. Useful when you've scrolled to a specific file and want the sidebar to follow.
+- **Sidebar Changes & Threads auto-follow as you scroll between files.** When the file you're reading changes, the Changes and Threads counters automatically jump to that file's first item. Pair with `[` / `]` and `j` / `k` to keep navigating the file you just scrolled into.
 
 ### Changed
 
 - **Cleaner, easier-to-scan sidebar header.** The diff and thread shortcuts now sit front-and-centre with sideways `<` / `>` arrows instead of stacked up / down ones, the count next to each is dimmed so the icons read first, and a thin separator keeps the two groups visually distinct. The book icon — previously "render all Markdown files" — is now the **Outline** button: click it to switch to the Outline tab (rendering any not-yet-rendered Markdown files along the way so the outline has headings to show).
+- **Loading overlay text matches the toolbar.** While rendering Markdown files, the splash now reads "Rendering Markdown files as rich-diff" instead of the older "Loading Markdown files".
+
+### Fixed
+
+- **Changes pane now picks up more kinds of edits in modified files.** Newly added headings, paragraphs, list items, and tables that GitHub wraps in `<ins>` / `<del>` now show up as Changes entries — previously a whole replaced table or a brand-new heading appended to CHANGELOG.md was invisible in the Changes list.
+- **Brand-new files no longer flood the Changes pane with one entry per paragraph.** When a PR adds a whole new Markdown file (e.g. a new README), the file's content stays visible in the rich-diff view and in the Outline tab, but it no longer dumps every heading and bullet into Changes — that "this file is new" signal is already in the diff header.
+- **"Render all Markdown files as rich-diff" no longer skips files in the middle of long PRs.** Rewritten as a two-phase pass (mount-then-click) so even a PR with 8+ Markdown files reliably opens every one of them instead of stopping at the first few.
 
 ## [1.5.1] — 2026-06-16
 

@@ -243,20 +243,108 @@ test('findChangeBlocks — <ul> with one <li class="added"> among unchanged → 
   assert.equal(blocks[0], li2);
 });
 
-// Documented limitation: `<ins><table>…</table></ins>` (whole replaced
-// table — marker is ANCESTOR only, no self / no descendant marker on
-// the table) is NOT detected as a change stop. Earlier attempts to
-// walk ancestors looking for markers caused whole-new-file rich-diffs
-// to flood the Changes pane with one entry per paragraph/heading; the
-// trade-off is intentional. Users navigate to those by scrolling.
-test('findChangeBlocks — <ins><table>…</table></ins> (whole new table) → 0 stops (documented limitation)', () => {
-  const tr = el('tr', {}, el('td', {}, 'cell'));
-  const table = el('table', {}, tr);
+// `<ins><table>…</table></ins>` (whole replaced table) IS detected via
+// the narrow table-only ancestor walker. Walking ancestors for other
+// block types caused whole-new-file rich-diff to flood the Changes
+// pane in earlier attempts; limiting it to `<table>` plus skipping
+// ADDED / REMOVED files at the content.js level keeps the surface area
+// safe. Tables are special because they're one semantic block but
+// contain many rows — wrapping in `<ins>` is almost always an
+// intentional "this table was replaced" pattern.
+test('findChangeBlocks — <ins><table>…</table></ins> (whole replaced table) → 1 stop on the table', () => {
+  const tr1 = el('tr', {}, el('td', {}, 'header'));
+  const tr2 = el('tr', {}, el('td', {}, 'row 1'));
+  const table = el('table', {}, tr1, tr2);
   const ins = el('ins', {}, table);
   const root = container(ins);
   const blocks = findChangeBlocks(root);
-  // Intentional: ancestor markers are not walked to avoid whole-new-file flood.
-  assert.equal(blocks.length, 0);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0], table);
+});
+
+test('findChangeBlocks — <del><table>…</table></del> (whole removed table) → 1 stop on the table', () => {
+  const tr = el('tr', {}, el('td', {}, 'old cell'));
+  const table = el('table', {}, tr);
+  const del = el('del', {}, table);
+  const root = container(del);
+  const blocks = findChangeBlocks(root);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0], table);
+});
+
+// Regression: a table with one changed CELL (descendant marker on a
+// `<td>`'s `<ins>`) must still land on the specific changed `<tr>`,
+// not aggregate to the whole table. Tables intentionally don't
+// qualify via descendant markers — only self / ancestor.
+test('findChangeBlocks — <table> with one changed cell → per-row stop, NOT whole table', () => {
+  const trUnchanged = el('tr', {}, el('td', {}, 'unchanged'));
+  const trChanged = el('tr', {}, el('td', {}, el('ins', {}, 'edited cell')));
+  const table = el('table', {}, trUnchanged, trChanged);
+  const root = container(table);
+  const blocks = findChangeBlocks(root);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0], trChanged);
+});
+
+test('classifyChangeKind — <ins><table>…</table></ins> → "added"', () => {
+  const tr = el('tr', {}, el('td', {}, 'cell'));
+  const table = el('table', {}, tr);
+  el('ins', {}, table); // wrap so table.parentElement is the ins
+  assert.equal(classifyChangeKind(table), 'added');
+});
+
+test('classifyChangeKind — <del><table>…</table></del> → "removed"', () => {
+  const tr = el('tr', {}, el('td', {}, 'cell'));
+  const table = el('table', {}, tr);
+  el('del', {}, table);
+  assert.equal(classifyChangeKind(table), 'removed');
+});
+
+// The lib's ancestor walker DOES detect per-block-wrap patterns:
+//   <ins><h1>…</h1></ins>
+//   <ins><p>…</p></ins>
+//   <ins><li>…</li></ins>
+// GitHub uses this pattern in MODIFIED files for per-block insertions
+// (e.g. a new heading + paragraph appended to CHANGELOG.md). The
+// whole-new-file flood that earlier blocked this is prevented in
+// content.js (`buildChangesPane` filters ADDED / REMOVED files via
+// `pathChangeTypeMap` BEFORE calling `findChangeBlocks`), so the lib
+// can be permissive.
+test('findChangeBlocks — <ins> wrapping h1+p+p+ul (per-block-wrap pattern) → detects each block', () => {
+  const h1 = el('h1', {}, 'New File Title');
+  const p1 = el('p', {}, 'first paragraph');
+  const p2 = el('p', {}, 'second paragraph');
+  const li1 = el('li', {}, 'item 1');
+  const li2 = el('li', {}, 'item 2');
+  const ul = el('ul', {}, li1, li2);
+  const ins = el('ins', {}, h1, p1, p2, ul);
+  const root = container(ins);
+  const blocks = findChangeBlocks(root);
+  // Each reading-unit child gets one stop via ancestor-marker detection.
+  // Ordering follows DOM order; the `<ul>` wrapper isn't a reading unit
+  // so it contributes its two `<li>` children directly.
+  assert.equal(blocks.length, 5);
+  assert.equal(blocks[0], h1);
+  assert.equal(blocks[1], p1);
+  assert.equal(blocks[2], p2);
+  assert.equal(blocks[3], li1);
+  assert.equal(blocks[4], li2);
+});
+
+// The CHANGELOG.md case the user reported: per-block `<ins>` wraps in
+// a MODIFIED file. Each new entry is a separate `<ins>` immediately
+// wrapping a single reading unit (h2, h3, etc.).
+test('findChangeBlocks — multiple sibling <ins><h2></ins> + <ins><h3></ins> wraps → each detected', () => {
+  const h2 = el('h2', {}, '1.2.0b3 (Unreleased)');
+  const h3 = el('h3', {}, 'Other Changes');
+  const root = container(
+    el('ins', {}, h2),
+    el('ins', {}, h3),
+  );
+  const blocks = findChangeBlocks(root);
+  assert.equal(blocks.length, 2);
+  assert.equal(blocks[0], h2);
+  assert.equal(blocks[1], h3);
 });
 
 test('findChangeBlocks — heading change registers (h1..h6)', () => {

@@ -873,6 +873,13 @@
   let routeData = null;
   // Map from pathDigest → file path (from diffSummaries)
   let pathDigestMap = new Map();
+  // Map from path → GitHub's `changeType` ("ADDED" | "MODIFIED" |
+  // "REMOVED" | "RENAMED" | …). Used by `buildChangesPane` to skip
+  // ADDED / REMOVED files — those are already labeled in the diff list,
+  // so flooding Changes with one entry per paragraph/heading inside them
+  // adds no value (and several attempts to detect those patterns via DOM
+  // alone caused worse regressions — see the 2026-06-17 conversation).
+  let pathChangeTypeMap = new Map();
 
   // Invalidate the route-data cache so the next `fetchRouteData()` re-fetches.
   // Call this after any mutation that adds a comment / reply / resolution so
@@ -1071,9 +1078,6 @@
       document.documentElement.scrollHeight,
       document.body.scrollHeight
     );
-    // 0.8× viewport keeps us fast (fewer iterations) while still small
-    // enough to land each not-yet-mounted header inside one step.
-    const step = Math.max(500, window.innerHeight * 0.8);
 
     // Diagnostic: how many .md files does the page CLAIM to have?
     const expectedMd = (routeData?.diffSummaries || [])
@@ -1082,33 +1086,68 @@
 
     const overlay = document.createElement('div');
     overlay.className = 'grdc-render-overlay';
-    overlay.innerHTML = '<div class="grdc-render-overlay-card">Loading Markdown files…</div>';
+    overlay.innerHTML = '<div class="grdc-render-overlay-card">Rendering Markdown files as rich-diff…</div>';
     document.body.appendChild(overlay);
 
     try {
-      // Single top-to-bottom pass. Scan at each step; bail out as soon as
-      // we've covered every expected .md file so we don't keep scrolling
-      // past the bottom for nothing.
-      let y = 0;
-      let guard = 0;
-      const dwell = 125;
-      // First scan from current viewport (in case user clicked while
-      // already at the top and the first batch is already mounted).
-      clicked += clickRichTogglesOnce(seen);
-      while (y < docHeight() && guard < 60) {
-        if (expectedMd && seen.size >= expectedMd) break;
-        window.scrollTo({ top: y, behavior: 'instant' });
-        await new Promise(r => setTimeout(r, dwell));
-        clicked += clickRichTogglesOnce(seen);
-        y += step;
-        guard++;
-      }
-      // Final scan at the very bottom for the last header (often needs a
-      // touch more time to mount than the in-loop dwell).
-      if (!expectedMd || seen.size < expectedMd) {
+      // Two-phase approach:
+      //
+      //   Phase 1 — MOUNT: scroll the page top→bottom WITHOUT clicking
+      //   anything. This forces every lazy-mounted file header into the
+      //   DOM. Because we don't click during this phase, the page
+      //   height doesn't change underneath us, so later files don't
+      //   get jumped over.
+      //
+      //   Phase 2 — CLICK: scroll top→bottom again, this time clicking
+      //   the rich-diff toggle on every Markdown file we encounter.
+      //   Headers are already in the DOM from phase 1, so this pass is
+      //   stable and reliable.
+      //
+      // Earlier versions tried multi-pass click-while-scrolling, but
+      // every click expanded the file inline, shifting later files
+      // down past the scroll cursor before their headers mounted.
+      // Separating the phases sidesteps that race entirely.
+      const dwell = 100;
+      const step = Math.max(500, window.innerHeight * 0.8);
+
+      // Phase 1: mount-only sweep. No clicks. Just scroll through the
+      // whole document so GitHub's intersection observers mount every
+      // file header.
+      {
+        let y = 0;
+        let guard = 0;
+        while (y < docHeight() && guard < 80) {
+          window.scrollTo({ top: y, behavior: 'instant' });
+          await new Promise((r) => setTimeout(r, dwell));
+          y += step;
+          guard++;
+        }
+        // Final touch at the very bottom for the last header.
         window.scrollTo({ top: docHeight(), behavior: 'instant' });
-        await new Promise(r => setTimeout(r, 180));
+        await new Promise((r) => setTimeout(r, 200));
+        console.log(`[GRDC] flipAllMdToRichDiff: phase 1 (mount sweep) done`);
+      }
+
+      // Phase 2: click sweep. All headers should now be in the DOM, so
+      // a single top→bottom pass with clicks is enough.
+      {
+        let y = 0;
+        let guard = 0;
+        // First scan from current position (bottom of doc) before
+        // scrolling back to top — catches any toggles still in view.
         clicked += clickRichTogglesOnce(seen);
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        await new Promise((r) => setTimeout(r, dwell));
+        clicked += clickRichTogglesOnce(seen);
+        while (y < docHeight() && guard < 80) {
+          if (expectedMd && seen.size >= expectedMd) break;
+          window.scrollTo({ top: y, behavior: 'instant' });
+          await new Promise((r) => setTimeout(r, dwell));
+          clicked += clickRichTogglesOnce(seen);
+          y += step;
+          guard++;
+        }
+        console.log(`[GRDC] flipAllMdToRichDiff: phase 2 (click sweep) done — ${seen.size}/${expectedMd || '?'}`);
       }
     } finally {
       window.scrollTo({ top: origScroll, behavior: 'instant' });
@@ -1160,21 +1199,18 @@
         const data = await res.json();
         routeData = data?.payload?.pullRequestsChangesRoute || null;
 
-        // Build pathDigest → path mapping
+        // Build pathDigest → path mapping and path → changeType mapping.
+        // `changeType` is "ADDED" / "MODIFIED" / "REMOVED" / "RENAMED" —
+        // we use it in `buildChangesPane` to skip whole-new and whole-
+        // deleted files (they're already labeled in the diff list).
         if (routeData?.diffSummaries) {
           routeData.diffSummaries.forEach(s => {
             pathDigestMap.set(s.pathDigest, s.path);
+            if (s.path && s.changeType) {
+              pathChangeTypeMap.set(s.path, s.changeType);
+            }
           });
-          console.log(`[GRDC] Path digest map: ${pathDigestMap.size} entries`);
-          // One-shot diagnostic dump
-          if (routeData.diffSummaries[0]) {
-            const ds = routeData.diffSummaries[0];
-            console.log('[GRDC] diffSummary keys:', Object.keys(ds));
-            console.log('[GRDC] diffSummary.markersMap sample:', ds.markersMap);
-          }
-          if (routeData.comparison) {
-            console.log('[GRDC] comparison keys:', Object.keys(routeData.comparison));
-          }
+          console.log(`[GRDC] Path digest map: ${pathDigestMap.size} entries; changeType map: ${pathChangeTypeMap.size} entries`);
         }
       }
     } catch (e) {
@@ -2924,7 +2960,7 @@
   // We clamp persisted sizes on both read and write so a transient narrow
   // render (e.g. during initial paint before content settles) can't poison
   // localStorage with a tiny size that the next page load would honor.
-  const SIDEBAR_MIN_WIDTH = 400;
+  const SIDEBAR_MIN_WIDTH = 420;
   const SIDEBAR_MIN_HEIGHT = 120;
   const SIDEBAR_TAB_KEY = 'grdc_sidebar_tab';
   let sidebarCurrentIdx = 0;
@@ -3151,7 +3187,7 @@
     const btn = sidebar.querySelector('.grdc-sidebar-render-md');
     const orig = btn ? btn.getAttribute('title') : null;
     if (btn) {
-      btn.setAttribute('title', 'Rendering Markdown files…');
+      btn.setAttribute('title', 'Rendering Markdown files as rich-diff…');
       btn.setAttribute('disabled', 'true');
     }
     if (sidebar.classList.contains('grdc-sidebar-collapsed')) {
@@ -3161,7 +3197,7 @@
     try {
       const n = await flipAllMdToRichDiff();
       // CRITICAL: wait for GitHub to actually mount the rich-diff prose
-      // in the DOM. `flipAllMdToRichDiff`'s per-step dwell (~125–180 ms)
+      // in the DOM. `flipAllMdToRichDiff`'s per-step dwell (~100–250 ms)
       // is often not enough on slow connections — the toggle click
       // returns immediately but GitHub renders the prose async. Without
       // this poll, the next sync `buildThreadsSidebar()` finds zero
@@ -3297,6 +3333,7 @@
               <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"/></svg>
             </button>
           </span>
+          <span class="grdc-sidebar-separator" aria-hidden="true"></span>
           <button class="grdc-sidebar-header-filter" title="Unresolved only" aria-label="Toggle unresolved only" aria-pressed="false">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
               <path class="grdc-icon-outline" fill="currentColor" fill-rule="evenodd" d="M.75 3A.75.75 0 0 1 1.5 2.25h13a.75.75 0 0 1 .6 1.2L10 10.25v3.25a.75.75 0 0 1-1.2.6l-2.5-1.88a.75.75 0 0 1-.3-.6V10.25L.9 3.45A.75.75 0 0 1 .75 3Zm2.25.75 4.6 6.13a.75.75 0 0 1 .15.45v1.69l1 .75v-2.44a.75.75 0 0 1 .15-.45L13.5 3.75h-10.5Z"/>
@@ -3479,6 +3516,9 @@
       const path = threadEl.dataset.grdcPath || '';
       const line = threadEl.dataset.grdcLine || '';
       const file = path.split('/').pop() || path;
+      // Stash the full path on the card so the Outline pane's file-label
+      // click handler can find the first Threads card per file.
+      if (path) card.dataset.grdcPath = path;
       const tags = [];
       if (threadEl.classList.contains('grdc-thread-resolved')) tags.push('✓ resolved');
       if (threadEl.classList.contains('grdc-thread-outdated')) tags.push('outdated');
@@ -3620,18 +3660,21 @@
     treeEl.innerHTML = '';
 
     // Multi-file mode: group by file when more than one file contributes
-    // headings. Render the file path as an un-clickable label above each
-    // group.
+    // headings. The file path is rendered as a clickable button — clicking
+    // it moves the Changes and Threads counters to the first card
+    // belonging to that file (without switching tabs).
     const fileSet = new Set(headings.map(h => h.file).filter(Boolean));
     const multiFile = fileSet.size > 1;
     let currentFile = null;
 
     function renderNode(node, indent) {
       // File group label (only emitted at depth 0 in multi-file mode when
-      // the file changes).
+      // the file changes). Clickable: jumps Changes and Threads to the
+      // first card for this file.
       if (multiFile && indent === 0 && node.file && node.file !== currentFile) {
         currentFile = node.file;
-        const label = document.createElement('div');
+        const label = document.createElement('button');
+        label.type = 'button';
         label.className = 'grdc-sidebar-outline-file';
         // Show just the immediate parent folder + filename, with one
         // `../` per truncated ancestor so the depth of the file is still
@@ -3650,7 +3693,15 @@
           short = `${'../'.repeat(dropped)}${parts.slice(-2).join('/')}`;
         }
         label.textContent = short;
-        label.title = node.file;
+        label.title = `${node.file} — click to jump Changes & Threads to first item in this file`;
+        const filePath = node.file;
+        label.addEventListener('click', (ev) => {
+          console.log('[GRDC] Outline file-label clicked:', filePath);
+          jumpSidebarListsToFile(sidebar, filePath);
+          // Defensive: stop propagation so any ancestor scroll/click
+          // handler can't swallow or override our jump.
+          ev.stopPropagation();
+        });
         treeEl.appendChild(label);
       }
       const row = document.createElement('div');
@@ -3712,6 +3763,11 @@
     if (outlineActiveObserver) outlineActiveObserver.disconnect();
     if (typeof IntersectionObserver !== 'undefined') {
       const visibleHeadings = new Set();
+      // Track the last file the user was reading so we only re-jump the
+      // Changes/Threads counters when the user crosses a file boundary
+      // (not on every intra-file heading change). Starts as `null` so
+      // the first observed file definitely fires.
+      let lastFollowedFile = null;
       outlineActiveObserver = new IntersectionObserver((entries) => {
         for (const e of entries) {
           if (e.isIntersecting) visibleHeadings.add(e.target);
@@ -3731,6 +3787,17 @@
           if (match) {
             const row = sidebar.querySelector(`.grdc-sidebar-outline-row[data-grdc-heading-id="${match.id}"]`);
             if (row) row.classList.add('grdc-sidebar-outline-active');
+            // Scroll-follow for Changes & Threads: if the user has
+            // crossed into a different file (compared to the last
+            // tracked file), jump the sidebar lists to that file's
+            // first card. Within the same file we don't move — the
+            // intent is "land me on this file's items" not "track me
+            // per heading". `jumpSidebarListsToFile` is a silent no-op
+            // for files with 0 changes & 0 threads.
+            if (match.file && match.file !== lastFollowedFile) {
+              lastFollowedFile = match.file;
+              jumpSidebarListsToFile(sidebar, match.file);
+            }
           }
         }
       }, { rootMargin: '-120px 0px -70% 0px' });
@@ -3852,6 +3919,49 @@
     setTimeout(() => badge.classList.remove('grdc-thread-flash'), 1200);
   }
 
+  // Move both the Threads and Changes counters/highlights to the first
+  // card belonging to `filePath`. Called when the user clicks a file
+  // label in the Outline pane. Does NOT switch tabs and does NOT scroll
+  // the document — the user stays on whatever tab they were on; the
+  // intent is "set me up to navigate within this file". After this,
+  // `j` / `k` walk the file's threads and `[` / `]` walk its changes
+  // because the counters now point at the right starting position.
+  // Files with zero changes / zero threads are silent no-ops on the
+  // missing side; if both lists are empty for the file, nothing happens.
+  function jumpSidebarListsToFile(sidebar, filePath) {
+    if (!sidebar || !filePath) return;
+
+    // Threads list — find first card whose data-grdc-path === filePath.
+    const threadCards = Array.from(sidebar.querySelectorAll('.grdc-sidebar-list .grdc-sidebar-card'));
+    const threadIdx = threadCards.findIndex(c => c.dataset.grdcPath === filePath);
+    if (threadIdx >= 0) {
+      sidebarCurrentIdx = threadIdx;
+      updateSidebarCount();
+      threadCards[threadIdx].scrollIntoView({ block: 'nearest' });
+    }
+
+    // Changes list — same shape.
+    const changeCards = Array.from(sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card'));
+    const changeIdx = changeCards.findIndex(c => c.dataset.grdcPath === filePath);
+    // Diagnostic: log how we matched. If the user reports "nothing
+    // happens" on click, the log shows which paths we have vs. what
+    // we were looking for — most likely a `data-grdc-path` mismatch.
+    console.log('[GRDC] jumpSidebarListsToFile:', {
+      filePath,
+      threadCards: threadCards.length,
+      threadPaths: threadCards.map(c => c.dataset.grdcPath || '(none)'),
+      threadIdx,
+      changeCards: changeCards.length,
+      changePaths: changeCards.map(c => c.dataset.grdcPath || '(none)'),
+      changeIdx,
+    });
+    if (changeIdx >= 0) {
+      changesCurrentIdx = changeIdx;
+      updateChangesCount(sidebar);
+      changeCards[changeIdx].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
   // ── Changes navigation ────────────────────────────────────────────────────
   //
   // Walk every `.prose-diff` container, ask `findChangeBlocks` for the
@@ -3873,6 +3983,14 @@
     // Collect every visible `.prose-diff` root and union their change blocks.
     // Multiple files = multiple containers; same dedupe rules apply within
     // each container.
+    //
+    // Per-file skip rule (Option 2 — file status from `routeData.diffSummaries`):
+    // whole-new (`changeType === 'ADDED'`) and whole-deleted
+    // (`changeType === 'REMOVED'`) files contribute 0 stops. Those file
+    // states are already labeled in the diff list — flooding Changes
+    // with one entry per paragraph/heading inside them adds no value.
+    // This is more reliable than walking DOM ancestors (which can't tell
+    // a file-level `<ins>` from an intentional `<ins><table>` wrap).
     const roots = document.querySelectorAll('.prose-diff');
     const blocks = [];
     roots.forEach((root) => {
@@ -3881,6 +3999,14 @@
       // source-diff still being shown. We skip invisible roots so the
       // counter never counts changes the user can't see.
       if (!root.offsetParent && root !== document.body) return;
+      // Per-file skip for ADDED / REMOVED files.
+      const fileContainer = root.closest && root.closest('div[id^="diff-"], [data-tagsearch-path], .file[data-path]');
+      const path = fileContainer ? (function() { try { return getFilePath(fileContainer) || ''; } catch (_) { return ''; } })() : '';
+      const changeType = path && pathChangeTypeMap.get(path);
+      if (changeType === 'ADDED' || changeType === 'REMOVED') {
+        console.log(`[GRDC] Changes: skipping ${changeType} file ${path}`);
+        return;
+      }
       const found = findChangeBlocks(root);
       for (const b of found) blocks.push(b);
     });
@@ -3987,6 +4113,9 @@
       card.type = 'button';
       card.className = `grdc-sidebar-card grdc-sidebar-card-change grdc-sidebar-card-change-${kind}`;
       card.setAttribute('role', 'listitem');
+      // Stash the full path on the card so the Outline pane's file-label
+      // click handler can find the first Changes card per file.
+      if (path) card.dataset.grdcPath = path;
       const isTruncated = snippet.endsWith('\u2026');
       const bodyClass = 'grdc-sidebar-card-body' + (isTruncated ? ' grdc-sidebar-card-body-truncated' : '');
       const bodyText = isTruncated ? snippet.slice(0, -1).trimEnd() : snippet;

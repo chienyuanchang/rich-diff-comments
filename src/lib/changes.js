@@ -26,10 +26,12 @@
   'use strict';
 
   // Block-level tags that we treat as "reading units" — the granularity
-  // at which a user wants to land when pressing "next change". Lists and
-  // tables themselves are NOT here because the user wants to land on the
-  // specific changed `<li>` / `<tr>`, not on the wrapper.
-  const READING_BLOCK_SELECTOR = 'p, li, tr, pre, h1, h2, h3, h4, h5, h6, blockquote';
+  // at which a user wants to land when pressing "next change". Lists are
+  // NOT here because the user wants to land on the specific changed
+  // `<li>`, not on the wrapper `<ul>` / `<ol>`. Tables ARE here so the
+  // narrow ancestor-walker rule below can detect GitHub's `<ins><table>…
+  // </table></ins>` whole-replaced-table pattern.
+  const READING_BLOCK_SELECTOR = 'p, li, tr, pre, h1, h2, h3, h4, h5, h6, blockquote, table';
 
   // Selector for the markers GitHub's prose-diff renderer leaves on changed
   // content. Both the semantic tags AND the class markers are checked
@@ -39,24 +41,60 @@
   // tag for layout reasons).
   const CHANGE_MARKER_SELECTOR = 'ins, del, .added, .removed';
 
+  // File-scope boundary for the table ancestor walker — stops at the
+  // file's `.markdown-body` / `.prose-diff` container so it can't climb
+  // into a wholesale file-level wrapper.
+  const FILE_BOUNDARY_SELECTOR = '.markdown-body, .prose-diff';
+
   // Containers we inject ourselves — must be excluded so reading a comment
   // body doesn't register as a "change in the document".
   const INJECTED_UI_SELECTOR =
     '.grdc-comment-box, .grdc-thread, .grdc-sidebar, .grdc-comment-edit, .grdc-reply-box';
 
-  // Find every reading-unit block inside `rootEl` that either IS a change
-  // marker or CONTAINS one. Returns elements in DOM order, deduped so a
-  // changed parent block subsumes its changed descendant blocks (e.g. a
-  // changed `<li>` is one stop even if it wraps a changed `<p>`).
+  // Ancestor-marker walker. Returns true if a parent up the tree
+  // (bounded by FILE_BOUNDARY_SELECTOR) matches `selector` (defaults
+  // to CHANGE_MARKER_SELECTOR).
   //
-  // NOTE: This deliberately does NOT check ancestor markers. GitHub's
-  // whole-new-file rich-diff wraps the entire file body in a single
-  // `<ins>` — if we walked ancestors we'd light up every paragraph and
-  // heading inside, flooding the Changes pane. The trade-off: a wholly-
-  // replaced table rendered as `<ins><table>…</table></ins>` won't be
-  // detected (the `<table>` has no self-marker and no marker descendants).
-  // Users navigate to those by scrolling. See the 2026-06-17 conversation
-  // for the full history of attempts to handle ancestor markers safely.
+  // Used to catch GitHub's per-block-wrap pattern, where each newly
+  // added reading unit is rendered as `<ins><h2>…</h2></ins>`,
+  // `<ins><p>…</p></ins>`, `<ins><table>…</table></ins>`, etc.
+  // The reading block itself has no marker class — the marker is the
+  // immediate parent (or near-ancestor).
+  //
+  // SAFETY: applied uniformly to all reading-unit types. This could
+  // misfire on whole-new-file rich-diffs (where one big `<ins>` wraps
+  // the entire body, so every block inside has a marker ancestor),
+  // BUT content.js's `buildChangesPane` filters ADDED / REMOVED files
+  // BEFORE calling `findChangeBlocks` — those files never reach this
+  // code. Inside a MODIFIED file, an `<ins>` wrapping many blocks is
+  // far less common; the bounded walk + file-level filter together
+  // are the safety net.
+  function hasAncestorMarker(el, selector) {
+    if (!el || typeof el.matches !== 'function') return false;
+    const sel = selector || CHANGE_MARKER_SELECTOR;
+    let cur = el.parentElement;
+    while (cur) {
+      if (cur.matches && cur.matches(FILE_BOUNDARY_SELECTOR)) return false;
+      if (cur.matches && cur.matches(sel)) return true;
+      cur = cur.parentElement;
+    }
+    return false;
+  }
+
+  // Find every reading-unit block inside `rootEl` that either IS a change
+  // marker or CONTAINS / is WRAPPED BY one. Returns elements in DOM order,
+  // deduped so a changed parent block subsumes its changed descendant
+  // blocks (e.g. a changed `<li>` is one stop even if it wraps a changed
+  // `<p>`).
+  //
+  // Three detection paths:
+  //   (a) Self marker        — `<li class="added">`, `<tr class="added">`
+  //   (b) Descendant marker  — `<p>before <ins>edit</ins> after</p>`
+  //   (c) Ancestor marker    — `<ins><h2>…</h2></ins>`, `<ins><p>…</p></ins>`
+  //
+  // `<table>` is special-cased to skip (b) (descendant) so a table with
+  // one changed `<td>` lands as a per-`<tr>` stop, not as a whole-table
+  // aggregate. See the in-line comment in `findChangeBlocks` for why.
   //
   // Defensive against null / non-element input — returns `[]`.
   function findChangeBlocks(rootEl) {
@@ -69,9 +107,19 @@
       // Skip blocks inside our own injected UI.
       if (block.closest && block.closest(INJECTED_UI_SELECTOR)) continue;
 
-      // Is the block itself or any descendant a change marker?
       const selfIsMarker = block.matches && block.matches(CHANGE_MARKER_SELECTOR);
-      const hasMarker = selfIsMarker || (block.querySelector && block.querySelector(CHANGE_MARKER_SELECTOR) !== null);
+      const isTable = block.tagName === 'TABLE';
+      // Tables: skip the descendant check so per-`<tr>` stops win for
+      // partial-table edits (only one cell changed).
+      const hasDescendantMarker = !isTable
+        && block.querySelector
+        && block.querySelector(CHANGE_MARKER_SELECTOR) !== null;
+      // All block types: check ancestor markers (covers GitHub's per-
+      // block wrap pattern). Whole-new-file flood is prevented at the
+      // content.js level by skipping ADDED / REMOVED files via
+      // `pathChangeTypeMap` BEFORE this function is called.
+      const ancestorIsMarker = hasAncestorMarker(block);
+      const hasMarker = selfIsMarker || hasDescendantMarker || ancestorIsMarker;
       if (!hasMarker) continue;
 
       // Per-block dedupe: if an earlier (outer) result already contains
@@ -106,8 +154,16 @@
     const innerAdded = blockEl.querySelector && blockEl.querySelector('ins, .added') !== null;
     const innerRemoved = blockEl.querySelector && blockEl.querySelector('del, s, .removed') !== null;
 
-    const hasAdd = selfAdded || innerAdded;
-    const hasDel = selfRemoved || innerRemoved;
+    // Also walk ancestors so a block inside `<ins>` / `<del>` gets the
+    // right `+` / `−` glyph instead of falling through to the default.
+    // Same scope as `findChangeBlocks` — see `hasAncestorMarker` for why
+    // this is safe (file-level filter in content.js prevents the
+    // whole-new-file flood).
+    const ancestorAdded = hasAncestorMarker(blockEl, 'ins, .added');
+    const ancestorRemoved = hasAncestorMarker(blockEl, 'del, s, .removed');
+
+    const hasAdd = selfAdded || innerAdded || ancestorAdded;
+    const hasDel = selfRemoved || innerRemoved || ancestorRemoved;
 
     if (hasAdd && hasDel) return 'mixed';
     if (hasAdd) return 'added';

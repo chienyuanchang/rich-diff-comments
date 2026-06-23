@@ -4,6 +4,18 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-06-22
+
+### Added
+
+- **Brand-new and deleted Markdown files now appear as a single summary card in the Changes pane.** Previously they were silently skipped (because flooding the pane with one entry per paragraph wasn't useful). Now you get one clearly-labelled card per whole-file change — green `+ NEW FILE · path/file.md` for added files, red `− DELETED · path/file.md` for deleted ones — with the file's first heading as a one-line preview. Click the card to jump straight to the file. Modified files still show per-block changes as before.
+
+### Changed
+
+- **Default sidebar position moved to the top-centre of the page**, sitting on the PR title line instead of the right edge. This keeps file contents below fully visible on first install — the previous right-dock layout could overlap diff content on narrower windows. Drag-and-drop still works; your custom position is remembered. Press `Shift+T` to snap back to the new default if you ever want to.
+- **Speech-bubble icon redesigned to two solid filled bubbles** — cleaner, more legible, and no longer clipped at the right edge of the icon. It now reads as a discussion at a glance instead of an outlined sketch.
+- **Page icon: cleaned up a stray pixel** on the left edge so the document outline now closes cleanly.
+
 ## [1.6.0] — 2026-06-18
 
 ### Added

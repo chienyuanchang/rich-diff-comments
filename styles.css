@@ -895,8 +895,19 @@ li.grdc-hoverable .grdc-comment-btn {
    Click a card to jump to that thread. Header carries prev/next nav. */
 .grdc-sidebar {
   position: fixed;
-  top: 80px;
-  right: 12px;
+  /* Default position: sit on the title line (top of the PR page where
+     the title / status / reviewer chips live, around y ~16) and
+     horizontally centered. This avoids occluding any file content in
+     the diff view below. Users can drag-and-drop to relocate; their
+     position is persisted in localStorage and restored on next visit.
+     Shift+T resets back to these defaults.
+     `left: 50%` + `transform: translateX(-50%)` is the standard
+     horizontal-center trick for a fixed-position element of dynamic
+     width. JS dragging sets explicit `left` + `transform: none` to
+     pin to the dragged location instead. */
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
   width: 420px;
   height: auto;
   min-width: 420px;
@@ -1478,6 +1489,40 @@ li.grdc-hoverable .grdc-comment-btn {
 }
 .grdc-sidebar-card-change-mixed .grdc-sidebar-card-change-kind {
   color: var(--fgColor-attention, var(--color-attention-fg, #9a6700));
+}
+
+/* Whole-file summary card (1.7.0) — emitted for ADDED / REMOVED files
+   instead of per-block flooding. The card uses the same coloured left
+   rail as a regular change card (green for added, red for removed) but
+   carries a bold "NEW FILE" / "DELETED" label inline with the file
+   name, and the body shows the file's first heading as a one-line
+   preview. */
+.grdc-sidebar-card-wholefile .grdc-sidebar-card-wholefile-label {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  margin-right: 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+.grdc-sidebar-card-change-added.grdc-sidebar-card-wholefile .grdc-sidebar-card-wholefile-label {
+  color: var(--fgColor-success, var(--color-success-fg, #1a7f37));
+  background: var(--bgColor-success-muted, var(--color-success-subtle, #dafbe1));
+  border: 1px solid var(--borderColor-success-muted, var(--color-success-muted, #4ac26b));
+}
+.grdc-sidebar-card-change-removed.grdc-sidebar-card-wholefile .grdc-sidebar-card-wholefile-label {
+  color: var(--fgColor-danger, var(--color-danger-fg, #cf222e));
+  background: var(--bgColor-danger-muted, var(--color-danger-subtle, #ffebe9));
+  border: 1px solid var(--borderColor-danger-muted, var(--color-danger-muted, #ff8182));
+}
+/* Whole-file card body reads as a one-line preview, no wrap or
+   line-clamp shenanigans (regular change cards clamp at 2 lines). */
+.grdc-sidebar-card-wholefile .grdc-sidebar-card-body {
+  -webkit-line-clamp: 1;
+  font-style: italic;
+  color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
 }
 
 /* Brief highlight pulse on the badge after click-to-jump. */

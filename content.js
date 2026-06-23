@@ -2970,6 +2970,18 @@
   // (walks the 💬 badges). User-facing keys: `[` / `]`.
   let changesCurrentIdx = 0;
   let outlineActiveObserver = null; // IntersectionObserver for active-section highlight
+  // Timestamp (ms) until which the Outline IntersectionObserver should NOT
+  // call `jumpSidebarListsToFile` on file-boundary crossings. Bumped by any
+  // explicit user click that scrolls the page (Changes cards, NEW FILE /
+  // DELETED cards). Without this guard, the IO fires *during* the smooth-
+  // scroll animation, sees the previous file's heading still topmost in
+  // the viewport, and yanks the sidebar selection back to the previous
+  // file — undoing the user's click. Especially bad for ADDED files that
+  // have no headings of their own (e.g. a `.md` with only a code block),
+  // because then no heading in the new file ever "wins" the topmost
+  // contest. 1500ms covers the typical smooth-scroll duration on a long
+  // page; after that, IO is back in charge.
+  let scrollFollowSuppressedUntil = 0;
 
   // Drag-to-move on the header. Position persists in `localStorage` as
   // `{left, top}` in viewport coordinates. We clamp to keep at least 80px
@@ -2995,6 +3007,9 @@
         sidebar.style.left = `${left}px`;
         sidebar.style.top = `${top}px`;
         sidebar.style.right = 'auto';
+        // Defeat the default `transform: translateX(-50%)` (which centers
+        // the sidebar) so the explicit `left` from the drag wins.
+        sidebar.style.transform = 'none';
       };
       const onUp = () => {
         document.removeEventListener('mousemove', onMove);
@@ -3033,6 +3048,9 @@
           sidebar.style.left = `${cLeft}px`;
           sidebar.style.top = `${cTop}px`;
           sidebar.style.right = 'auto';
+          // Defeat the default `transform: translateX(-50%)` so the
+          // restored explicit `left` from a previous drag wins.
+          sidebar.style.transform = 'none';
         }
       }
     } catch (_) {}
@@ -3089,6 +3107,9 @@
         sidebar.style.left = `${left}px`;
         sidebar.style.top = `${top}px`;
         sidebar.style.right = 'auto';
+        // Defeat the default centering transform so the restored explicit
+        // `left` from a previous drag wins.
+        sidebar.style.transform = 'none';
       }, 200);
     });
   })();
@@ -3110,6 +3131,9 @@
       sidebar.style.right = '';
       sidebar.style.width = '';
       sidebar.style.height = '';
+      // Clear inline transform so the CSS default (translateX(-50%) for
+      // horizontal centering on the title row) takes over again.
+      sidebar.style.transform = '';
       sidebar.classList.remove('grdc-sidebar-collapsed');
     }
     try { buildThreadsSidebar(); } catch (_) {}
@@ -3289,8 +3313,8 @@
             <button class="grdc-sidebar-diff-icon" title="Next change ( ] ) — or first if none visible" aria-label="Go to next change">
               <!-- Custom diff icon: document with green (added) + yellow (removed) stripe markers and dim grey text lines, matching the user-provided mockup. -->
               <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <!-- Document outline (white, inherits currentColor) with folded corner -->
-                <path fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" d="M3 1.5h7l3 3v10a.5.5 0 0 1-.5.5h-9.5a.5.5 0 0 1-.5-.5v-13a.5.5 0 0 1 .5-.5z"/>
+                <!-- Document outline (white, inherits currentColor) with folded corner. NOTE: the path uses v-12.5 (not v-13) so the closing arc lands exactly at the start point (3, 1.5) — using v-13 leaves a stray 0.5 px vertical segment at x=3 that appears as extra pixels on the left side of the icon. -->
+                <path fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" d="M3 1.5h7l3 3v10a.5.5 0 0 1-.5.5h-9.5a.5.5 0 0 1-.5-.5v-12.5a.5.5 0 0 1 .5-.5z"/>
                 <path fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" d="M10 1.5v3h3"/>
                 <!-- Green added stripe -->
                 <rect x="4.5" y="6.5" width="1.4" height="2.6" rx="0.4" fill="#3fb950"/>
@@ -3315,12 +3339,18 @@
           <span class="grdc-sidebar-separator" aria-hidden="true"></span>
           <span class="grdc-sidebar-nav">
             <button class="grdc-sidebar-thread-icon" title="Next thread ( j ) — or first if none visible" aria-label="Go to next thread">
-              <!-- Custom thread icon: two overlapping outlined speech bubbles, matching the user-provided mockup. -->
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round">
-                <!-- Top-left bubble (rounded rect with tail pointing down-left) -->
-                <path d="M2.2 2.2h7.4a.6.6 0 0 1 .6.6v4.6a.6.6 0 0 1-.6.6H4.5l-2 1.6V2.8a.6.6 0 0 1 .6-.6z"/>
-                <!-- Bottom-right bubble (rounded rect with tail pointing down-right) -->
-                <path d="M13.8 6.4H7.6a.6.6 0 0 0-.6.6v4.6a.6.6 0 0 0 .6.6h6.7l1.7 1.6V7a.6.6 0 0 0-.6-.6h-1.6z"/>
+              <!-- Custom thread icon: two SOLID-FILLED overlapping speech bubbles. Each bubble is a rounded rectangle PLUS a sharp triangular tail spike at its bottom-outer corner (front: down-left, back: down-right). The back bubble (drawn first) uses an SVG mask that strokes the front bubble's outline in black, cutting a thin gap where the front overlaps so the two solid shapes read as separate. The viewBox is "1 1 14 14" (not 0 0 16 16) so the bubbles render ~14% larger inside the same 16×16 button — gives the icon better visual weight without changing the path coordinates. Both bubbles still fit fully inside the new tighter viewport. -->
+              <svg viewBox="1 1 14 14" width="16" height="16" aria-hidden="true">
+                <defs>
+                  <mask id="grdc-thread-icon-mask">
+                    <rect width="16" height="16" fill="white"/>
+                    <path d="M3.1 2.5H9.4a.6.6 0 0 1 .6.6V7.4a.6.6 0 0 1-.6.6H5L2 10l1.5-2H2.5a.6.6 0 0 1-.6-.6V3.1a.6.6 0 0 1 .6-.6Z" fill="none" stroke="black" stroke-width="0.8"/>
+                  </mask>
+                </defs>
+                <!-- Back bubble (bottom-right). v2 design — rounded rectangle body x 6-13.5, y 7-12, with sharp triangular tail from the right edge to (14, 14). All four corners ARE rounded (the body uses .6,.6 corner arcs at every corner; the tail is a small triangular cutout from the right edge that's separate from the body corners). Masked where the front bubble overlaps so a thin gap shows between the two solid shapes. -->
+                <path fill="currentColor" mask="url(#grdc-thread-icon-mask)" d="M6.6 7H13a.6.6 0 0 1 .6.6V11.4a.6.6 0 0 1-.6.6L14 14 11.3 12H6.6a.6.6 0 0 1-.6-.6V7.6a.6.6 0 0 1 .6-.6Z"/>
+                <!-- Front bubble (top-left, drawn last on top). Body x 2.5–10, y 2.5–8, with triangular tail spike to (2, 10). -->
+                <path fill="currentColor" d="M3.1 2.5H9.4a.6.6 0 0 1 .6.6V7.4a.6.6 0 0 1-.6.6H5L2 10l1.5-2H2.5a.6.6 0 0 1-.6-.6V3.1a.6.6 0 0 1 .6-.6Z"/>
               </svg>
             </button>
             <span class="grdc-sidebar-count" aria-live="polite">0/0</span>
@@ -3794,9 +3824,21 @@
             // intent is "land me on this file's items" not "track me
             // per heading". `jumpSidebarListsToFile` is a silent no-op
             // for files with 0 changes & 0 threads.
+            //
+            // The `scrollFollowSuppressedUntil` guard is critical: if
+            // we just yielded to an explicit user click (Changes card,
+            // NEW FILE card, etc.) the page is still smooth-scrolling
+            // toward the clicked file, and the topmost heading right
+            // now is the *previous* file's. Letting the jump fire here
+            // would yank the sidebar selection back, undoing the click
+            // the user just made. We still update `lastFollowedFile`
+            // so that once suppression lifts, we don't mistakenly re-
+            // fire for the previously-tracked file.
             if (match.file && match.file !== lastFollowedFile) {
               lastFollowedFile = match.file;
-              jumpSidebarListsToFile(sidebar, match.file);
+              if (Date.now() >= scrollFollowSuppressedUntil) {
+                jumpSidebarListsToFile(sidebar, match.file);
+              }
             }
           }
         }
@@ -3981,16 +4023,17 @@
     if (!tab || !list) return;
 
     // Collect every visible `.prose-diff` root and union their change blocks.
-    // Multiple files = multiple containers; same dedupe rules apply within
-    // each container.
     //
-    // Per-file skip rule (Option 2 — file status from `routeData.diffSummaries`):
-    // whole-new (`changeType === 'ADDED'`) and whole-deleted
-    // (`changeType === 'REMOVED'`) files contribute 0 stops. Those file
-    // states are already labeled in the diff list — flooding Changes
-    // with one entry per paragraph/heading inside them adds no value.
-    // This is more reliable than walking DOM ancestors (which can't tell
-    // a file-level `<ins>` from an intentional `<ins><table>` wrap).
+    // Per-file rule based on `routeData.diffSummaries.changeType`:
+    //   ADDED   → emit ONE "whole new file" summary card (don't flood
+    //              the Changes pane with per-block stops). 1.7.0 change
+    //              from "silently skip".
+    //   REMOVED → emit ONE "deleted file" summary card. Same reasoning.
+    //   MODIFIED → per-block stops as usual.
+    //
+    // Synthetic whole-file blocks are tagged via the `wholeFileBlocks`
+    // WeakMap so the renderer can produce a different-shaped card for them.
+    const wholeFileBlocks = new WeakMap();
     const roots = document.querySelectorAll('.prose-diff');
     const blocks = [];
     roots.forEach((root) => {
@@ -3999,12 +4042,17 @@
       // source-diff still being shown. We skip invisible roots so the
       // counter never counts changes the user can't see.
       if (!root.offsetParent && root !== document.body) return;
-      // Per-file skip for ADDED / REMOVED files.
+      // Per-file handling for ADDED / REMOVED files.
       const fileContainer = root.closest && root.closest('div[id^="diff-"], [data-tagsearch-path], .file[data-path]');
       const path = fileContainer ? (function() { try { return getFilePath(fileContainer) || ''; } catch (_) { return ''; } })() : '';
       const changeType = path && pathChangeTypeMap.get(path);
       if (changeType === 'ADDED' || changeType === 'REMOVED') {
-        console.log(`[GRDC] Changes: skipping ${changeType} file ${path}`);
+        // One synthetic block per whole-file change. The block IS the
+        // file's `.prose-diff` root; the tag tells the renderer to use
+        // the whole-file card style. We DON'T also collect per-block
+        // stops for these files — the summary card is the whole story.
+        wholeFileBlocks.set(root, { changeType, path });
+        blocks.push(root);
         return;
       }
       const found = findChangeBlocks(root);
@@ -4087,6 +4135,64 @@
     // (if discoverable), line number (if our line map has it), snippet.
     list.innerHTML = '';
     blocks.forEach((block, idx) => {
+      // Whole-file summary card (1.7.0): for ADDED / REMOVED files we
+      // collected ONE synthetic block per file (the file's `.prose-diff`
+      // root, tagged in `wholeFileBlocks`). Render a different card shape:
+      // big kind glyph + "NEW FILE" / "DELETED" label + file path + first
+      // heading as snippet. Click → scroll to top of the file.
+      const wholeFile = wholeFileBlocks.get(block);
+      if (wholeFile) {
+        const kind = wholeFile.changeType === 'ADDED' ? 'added' : 'removed';
+        const path = wholeFile.path || '';
+        const file = path ? (path.split('/').pop() || path) : '(unnamed file)';
+        const label = wholeFile.changeType === 'ADDED' ? 'NEW FILE' : 'DELETED';
+        // First heading inside the file is the nicest one-line preview.
+        // Fall back to the first paragraph, then to *any* text in the
+        // file (code blocks, lists, tables, blockquotes — all common in
+        // a brand-new Markdown file with no prose headings). Only if
+        // there's truly no text do we show "(empty file)".
+        const firstHeading = block.querySelector && block.querySelector('h1, h2, h3, h4, h5, h6');
+        const firstPara = !firstHeading && block.querySelector && block.querySelector('p');
+        const snippetSrc = firstHeading || firstPara;
+        let rawSnippet = snippetSrc ? (snippetSrc.textContent || '') : '';
+        if (!rawSnippet.trim() && block.textContent) {
+          rawSnippet = block.textContent;
+        }
+        const snippet = rawSnippet.replace(/\s+/g, ' ').trim().slice(0, 80);
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = `grdc-sidebar-card grdc-sidebar-card-change grdc-sidebar-card-change-${kind} grdc-sidebar-card-wholefile`;
+        card.setAttribute('role', 'listitem');
+        if (path) card.dataset.grdcPath = path;
+        const kindGlyph = kind === 'added' ? '+' : '\u2212';
+        card.innerHTML = `
+          <div class="grdc-sidebar-card-head">
+            <span class="grdc-sidebar-card-change-kind" title="${escapeHtml(label)}">${escapeHtml(kindGlyph)}</span>
+            <span class="grdc-sidebar-card-wholefile-label">${escapeHtml(label)}</span>
+            <span class="grdc-sidebar-card-loc">${escapeHtml(file)}</span>
+          </div>
+          <div class="grdc-sidebar-card-body">${escapeHtml(snippet) || '<em>(empty file)</em>'}</div>
+        `;
+        card.addEventListener('click', () => {
+          changesCurrentIdx = idx;
+          // Tell the Outline IO to stand down while the smooth-scroll
+          // animation runs — otherwise it'd race us and yank the
+          // selection back to the previous file (especially bad here
+          // because a brand-new file may have no headings at all and
+          // the previous file's heading would "win" topmost forever).
+          scrollFollowSuppressedUntil = Date.now() + 1500;
+          // Scroll to the top of the file's prose-diff root.
+          if (typeof scrollToWithStickyOffset === 'function') {
+            scrollToWithStickyOffset(block);
+          } else {
+            block.scrollIntoView({ block: 'start', behavior: 'smooth' });
+          }
+          updateChangesCount(sidebar);
+        });
+        list.appendChild(card);
+        return;
+      }
+
       const kind = classifyChangeKind(block) || 'mixed';
       const snippet = buildChangeSnippet(block, 90);
 
@@ -4170,6 +4276,13 @@
 
   function scrollToChange(blockEl) {
     if (!blockEl) return;
+    // Any explicit "jump to a change" — whether from a Changes-card click,
+    // `[` / `]` keyboard nav, or jump-to-first/last — triggers a smooth
+    // scroll. While that scroll animates, the Outline IntersectionObserver
+    // would otherwise see the *previous* file's heading topmost and yank
+    // the sidebar selection back. Suppress scroll-follow for the duration
+    // of the animation. See the comment on `scrollFollowSuppressedUntil`.
+    scrollFollowSuppressedUntil = Date.now() + 1500;
     // Use the same sticky-offset-aware scroll the Outline tab uses so the
     // change doesn't land under GitHub's sticky file header.
     if (typeof scrollToWithStickyOffset === 'function') {

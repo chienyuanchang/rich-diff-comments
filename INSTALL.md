@@ -8,7 +8,7 @@ Adds inline review-comment buttons to GitHub's **rich-diff** (rendered markdown)
 
 **Chrome / Brave / Vivaldi / Arc / any Chromium browser:**
 
-1. Go to: **<https://chromewebstore.google.com/detail/markdown-pr-comments-for/bdkcmcdfnhonfcpdgcmemkpcmnhnhemj>**
+1. Go to: **<https://chromewebstore.google.com/detail/markdown-pr-comments-for/bdkcmcdfnhonfcpdgcmemkpcmnhnhemj>** — short link to share: **<https://aka.ms/md-pr>**
 2. Click **Add to Chrome** → **Add extension**.
 
 **Microsoft Edge:**

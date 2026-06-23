@@ -27,7 +27,7 @@ See [docs/FEATURES.md](docs/FEATURES.md) for the full feature list and roadmap.
 
 ### For end users
 
-- **Chrome / Brave / Vivaldi / Arc / any Chromium browser:** <https://chromewebstore.google.com/detail/markdown-pr-comments-for/bdkcmcdfnhonfcpdgcmemkpcmnhnhemj>
+- **Chrome / Brave / Vivaldi / Arc / any Chromium browser:** <https://chromewebstore.google.com/detail/markdown-pr-comments-for/bdkcmcdfnhonfcpdgcmemkpcmnhnhemj> — short link: <https://aka.ms/md-pr>
 - **Microsoft Edge:** <https://microsoftedge.microsoft.com/addons/detail/agomibenjlnikaldoddminkjbokfocgb>
 
 No login, no setup, no Personal Access Token required. Works on public and private repos. See [INSTALL.md](INSTALL.md) for the user-facing walkthrough.

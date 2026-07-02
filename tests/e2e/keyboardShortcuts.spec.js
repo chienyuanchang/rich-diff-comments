@@ -125,13 +125,18 @@ test.describe('keyboard shortcuts', () => {
   });
 
   test('pressing the same shortcut repeatedly is idempotent (no flicker / state drift)', async ({ page }) => {
-    // 1.5.0: `1` is Changes (the new tab #1).
+    // The point of this test is idempotency of a tab-switch shortcut — the
+    // specific tab doesn't matter. Use `3` (Outline) because the fixture
+    // has headings but no diff markers, so the Changes tab (`1`) is
+    // legitimately hidden on this fixture and `setSidebarTab` correctly
+    // falls back to Threads when asked to switch to Changes. Outline is
+    // available whenever the fixture has ≥ 1 heading, which this one does.
     await expect(page.locator('.grdc-sidebar')).toBeVisible();
-    await page.keyboard.press('1');
-    await page.keyboard.press('1');
-    await page.keyboard.press('1');
+    await page.keyboard.press('3');
+    await page.keyboard.press('3');
+    await page.keyboard.press('3');
     await expect(
-      page.locator('.grdc-sidebar-tab[data-grdc-tab="changes"]')
+      page.locator('.grdc-sidebar-tab[data-grdc-tab="outline"]')
     ).toHaveClass(/grdc-sidebar-tab-active/);
   });
 

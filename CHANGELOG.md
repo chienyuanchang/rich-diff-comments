@@ -4,6 +4,19 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+## [1.8.0] — TBD
+
+### Changed
+
+- **Header icons in the sidebar now jump to the first change / thread in the file you're currently viewing** — instead of blindly advancing the global counter by one. On a multi-file PR this matches what you actually want: "I'm reading file X, take me to the first item in file X." If the current file has zero changes / threads (or you've scrolled somewhere with no rendered file in view), the icon falls back to the old "next in the PR" behaviour so it's never a dead click. The `[` / `]` and `j` / `k` keyboard shortcuts still walk globally — the icons just got a smarter default.
+- **The sidebar now hides itself when you leave the Files-changed tab.** Clicking Conversation, Commits, or Checks (or navigating away from the PR entirely) makes the sidebar disappear immediately, so it no longer covers the PR title strip on Conversation. Coming back to Files-changed brings the sidebar back exactly where you left it — same position, same size, same collapsed state.
+- **The Outline pane now follows your scrolling continuously and clearly highlights the current heading.** Previously the highlight was a faint tint that was easy to miss, and it could blink off entirely between two widely-spaced headings — you'd lose your place in a long document. Now the active row has a strong accent tint, a coloured rail on the left, bold text, stays on the last heading you scrolled past, and keeps itself centred inside the Outline list so it's visible even on long files.
+- **Changes and Threads counters are now file-scoped, with a hint of the PR-wide total.** The number now reads as `3/8 (45)` — meaning "3rd of 8 changes in this file, 45 in the PR overall". Previously the same counter showed only `3/45`, which conflated "position in this file" with "position in the PR" and left you guessing how much of the current file was still to review. When you scroll into a file with no changes / threads of its own, the counter greys out to `0/0 (45)` so you immediately see "nothing to walk here". `[` / `]` and `j` / `k` still walk the whole PR — only the display changed.
+
+### Added
+
+- **Clicking a file in GitHub's own left-side file tree (or the "Jump to file" dropdown) now updates the sidebar's Changes, Threads, and Outline all at once — immediately, in step with GitHub's smooth-scroll.** Previously the sidebar only caught up after you started scrolling within the file, and for files without headings (a code-only `.md`, a whole-file NEW FILE card) it might not catch up at all. Any GitHub navigation surface that points at a specific file — the tree panel, the dropdown, the file-list overview — is covered.
+
 ## [1.7.0] — 2026-06-22
 
 ### Added

@@ -2960,7 +2960,7 @@
   // We clamp persisted sizes on both read and write so a transient narrow
   // render (e.g. during initial paint before content settles) can't poison
   // localStorage with a tiny size that the next page load would honor.
-  const SIDEBAR_MIN_WIDTH = 420;
+  const SIDEBAR_MIN_WIDTH = 480;
   const SIDEBAR_MIN_HEIGHT = 120;
   const SIDEBAR_TAB_KEY = 'grdc_sidebar_tab';
   let sidebarCurrentIdx = 0;
@@ -2982,6 +2982,28 @@
   // contest. 1500ms covers the typical smooth-scroll duration on a long
   // page; after that, IO is back in charge.
   let scrollFollowSuppressedUntil = 0;
+
+  // Same idea for the Outline pane's active-section highlight. After an
+  // explicit user click on a file (in GitHub's file tree, our own file
+  // labels, etc.) we manually pin the highlight to that file's first
+  // heading — even if that heading is technically BELOW the sticky line
+  // (which is common right after a smooth-scroll lands on a file: its
+  // first heading is at ~y=200 or ~y=400, with the previous file's last
+  // heading still above the sticky line at ~y=100). Without this pin the
+  // scroll listener's "last heading whose top is above the sticky line"
+  // rule would pick the previous file's heading and the user would see
+  // a highlight from the wrong file after their click. The pin holds
+  // for 1500ms — long enough for the smooth-scroll to complete and the
+  // user's chosen file's heading to become the true topmost — then the
+  // scroll listener takes over normally.
+  let outlineHighlightPinUntil = 0;
+  // Module-scope so `jumpSidebarListsToFile` can update it when it
+  // pin-highlights a heading, and the Outline scroll listener sees the
+  // updated value on the next tick — otherwise the scroll listener's
+  // internal "skip if same as last" guard would ignore its own first
+  // real update after the pin expires (because its cached
+  // `lastActiveId` would still hold the previous file's id).
+  let outlineLastActiveHeadingId = null;
 
   // Drag-to-move on the header. Position persists in `localStorage` as
   // `{left, top}` in viewport coordinates. We clamp to keep at least 80px
@@ -3310,7 +3332,7 @@
           </button>
           <span class="grdc-sidebar-separator" aria-hidden="true"></span>
           <span class="grdc-sidebar-changes-nav">
-            <button class="grdc-sidebar-diff-icon" title="Next change ( ] ) — or first if none visible" aria-label="Go to next change">
+            <button class="grdc-sidebar-diff-icon" title="First change in this file — or next change globally if the file has none" aria-label="First change in this file">
               <!-- Custom diff icon: document with green (added) + yellow (removed) stripe markers and dim grey text lines, matching the user-provided mockup. -->
               <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
                 <!-- Document outline (white, inherits currentColor) with folded corner. NOTE: the path uses v-12.5 (not v-13) so the closing arc lands exactly at the start point (3, 1.5) — using v-13 leaves a stray 0.5 px vertical segment at x=3 that appears as extra pixels on the left side of the icon. -->
@@ -3338,7 +3360,7 @@
           </span>
           <span class="grdc-sidebar-separator" aria-hidden="true"></span>
           <span class="grdc-sidebar-nav">
-            <button class="grdc-sidebar-thread-icon" title="Next thread ( j ) — or first if none visible" aria-label="Go to next thread">
+            <button class="grdc-sidebar-thread-icon" title="First thread in this file — or next thread globally if the file has none" aria-label="First thread in this file">
               <!-- Custom thread icon: two SOLID-FILLED overlapping speech bubbles. Each bubble is a rounded rectangle PLUS a sharp triangular tail spike at its bottom-outer corner (front: down-left, back: down-right). The back bubble (drawn first) uses an SVG mask that strokes the front bubble's outline in black, cutting a thin gap where the front overlaps so the two solid shapes read as separate. The viewBox is "1 1 14 14" (not 0 0 16 16) so the bubbles render ~14% larger inside the same 16×16 button — gives the icon better visual weight without changing the path coordinates. Both bubbles still fit fully inside the new tighter viewport. -->
               <svg viewBox="1 1 14 14" width="16" height="16" aria-hidden="true">
                 <defs>
@@ -3423,10 +3445,23 @@
       // `changesJump`/`sidebarJump` already start at index 0 (and `nextChangeIndex`
       // wraps), the first click naturally lands on item 1 — the "first if
       // none in view" behaviour is implicit.
+      //
+      // 1.8.0: the header icons are now **file-scoped, not global**. The
+      // reviewer's mental model on a multi-file PR is "I'm in file X,
+      // take me to the first item in file X", not "advance the global
+      // counter by one". `jumpToFirstInCurrentFile` finds the topmost
+      // `.prose-diff` root in the viewport, resolves it to a path, and
+      // jumps the counter to that file's first change / thread. If the
+      // current file has zero items (e.g. a whole-file NEW FILE with no
+      // per-block stops), we fall back to the old global-advance
+      // behaviour so the icon is never a dead click. The `[` / `]` and
+      // `j` / `k` shortcuts keep the global-walk semantics they always
+      // had — nothing is lost; the header icon is repurposed for the
+      // more common "get me into this file's list" affordance.
       const diffIconBtn = sidebar.querySelector('.grdc-sidebar-diff-icon');
-      if (diffIconBtn) diffIconBtn.addEventListener('click', () => changesJump(+1));
+      if (diffIconBtn) diffIconBtn.addEventListener('click', () => jumpToFirstInCurrentFile(sidebar, 'changes'));
       const threadIconBtn = sidebar.querySelector('.grdc-sidebar-thread-icon');
-      if (threadIconBtn) threadIconBtn.addEventListener('click', () => sidebarJump(+1));
+      if (threadIconBtn) threadIconBtn.addEventListener('click', () => jumpToFirstInCurrentFile(sidebar, 'threads'));
       sidebar.querySelector('.grdc-sidebar-filter-cb').addEventListener('change', (e) => {
         try { localStorage.setItem(SIDEBAR_FILTER_KEY, e.target.checked ? '1' : '0'); } catch (_) {}
         // Sync the header icon's pressed state.
@@ -3685,7 +3720,28 @@
 
     // Build the nested tree and render it as a flat indented list (simpler
     // than nested ULs — we own the visual indentation via padding).
-    const tree = buildOutlineTree(headings);
+    //
+    // Multi-file scoping: `buildOutlineTree` groups by heading LEVEL only
+    // — it doesn't know about file boundaries. So if file B opens with an
+    // H3 and the previous heading in file A was an H2, file B's first
+    // heading becomes a CHILD of file A's H2. That nested heading is then
+    // rendered with `indent > 0`, which skips the per-file header emit
+    // (the check below is `indent === 0`), so file B loses its file
+    // label. Fix: group headings by file first and build one subtree per
+    // file. Every file's first heading now sits at indent 0, so the file
+    // header always emits. (Filenames stay in DOM order — the outer
+    // `Array.from(new Set(...))` preserves first-seen order over the
+    // already-DOM-order-sorted `headings`.)
+    const fileGroups = new Map();
+    for (const h of headings) {
+      const key = h.file || '__nofile__';
+      if (!fileGroups.has(key)) fileGroups.set(key, []);
+      fileGroups.get(key).push(h);
+    }
+    const tree = [];
+    for (const [, group] of fileGroups) {
+      for (const top of buildOutlineTree(group)) tree.push(top);
+    }
     const treeEl = sidebar.querySelector('.grdc-sidebar-outline-tree');
     treeEl.innerHTML = '';
 
@@ -3787,64 +3843,123 @@
     updateFoldButtonLabels(sidebar, headings);
 
     // Active-section highlight: which heading is currently nearest the top
-    // of the visible area. Use IntersectionObserver with a margin that
-    // mirrors the sticky offset, so the section "becomes active" when its
-    // heading scrolls under the sticky bar.
-    if (outlineActiveObserver) outlineActiveObserver.disconnect();
-    if (typeof IntersectionObserver !== 'undefined') {
-      const visibleHeadings = new Set();
-      // Track the last file the user was reading so we only re-jump the
-      // Changes/Threads counters when the user crosses a file boundary
-      // (not on every intra-file heading change). Starts as `null` so
-      // the first observed file definitely fires.
-      let lastFollowedFile = null;
-      outlineActiveObserver = new IntersectionObserver((entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting) visibleHeadings.add(e.target);
-          else visibleHeadings.delete(e.target);
-        }
-        // Pick the topmost currently-intersecting heading.
-        let topmost = null;
-        let topY = Infinity;
-        for (const el of visibleHeadings) {
-          const y = el.getBoundingClientRect().top;
-          if (y < topY) { topY = y; topmost = el; }
-        }
-        sidebar.querySelectorAll('.grdc-sidebar-outline-row.grdc-sidebar-outline-active')
-          .forEach(r => r.classList.remove('grdc-sidebar-outline-active'));
-        if (topmost) {
-          const match = headings.find(h => h.el === topmost);
-          if (match) {
-            const row = sidebar.querySelector(`.grdc-sidebar-outline-row[data-grdc-heading-id="${match.id}"]`);
-            if (row) row.classList.add('grdc-sidebar-outline-active');
-            // Scroll-follow for Changes & Threads: if the user has
-            // crossed into a different file (compared to the last
-            // tracked file), jump the sidebar lists to that file's
-            // first card. Within the same file we don't move — the
-            // intent is "land me on this file's items" not "track me
-            // per heading". `jumpSidebarListsToFile` is a silent no-op
-            // for files with 0 changes & 0 threads.
-            //
-            // The `scrollFollowSuppressedUntil` guard is critical: if
-            // we just yielded to an explicit user click (Changes card,
-            // NEW FILE card, etc.) the page is still smooth-scrolling
-            // toward the clicked file, and the topmost heading right
-            // now is the *previous* file's. Letting the jump fire here
-            // would yank the sidebar selection back, undoing the click
-            // the user just made. We still update `lastFollowedFile`
-            // so that once suppression lifts, we don't mistakenly re-
-            // fire for the previously-tracked file.
-            if (match.file && match.file !== lastFollowedFile) {
-              lastFollowedFile = match.file;
-              if (Date.now() >= scrollFollowSuppressedUntil) {
-                jumpSidebarListsToFile(sidebar, match.file);
-              }
-            }
-          }
-        }
-      }, { rootMargin: '-120px 0px -70% 0px' });
-      headings.forEach(h => outlineActiveObserver.observe(h.el));
+    // of the visible area (i.e. the section the user is reading).
+    //
+    // 1.8.0 rewrite from IntersectionObserver → scroll listener:
+    // The IO approach only tracked headings currently INSIDE a narrow
+    // observation zone (between the sticky-header line and 40% down
+    // the viewport). When the user scrolled past a heading and the next
+    // heading hadn't yet entered the zone, `visibleHeadings` was empty
+    // → `topmost` was null → the highlight was REMOVED with nothing to
+    // replace it. On documents with widely-spaced H2/H3 sections that
+    // gap could span most of the viewport, making the follow-highlight
+    // blink off and never return until the next heading crossed in.
+    //
+    // Scroll-based scan gives a continuous, always-correct answer:
+    // among ALL headings, pick the last one whose top edge has scrolled
+    // past the sticky-header line (i.e. the heading immediately above
+    // where the user is reading). If no heading has crossed yet (user
+    // is above the first heading), fall back to the first heading in
+    // the document so something is always highlighted. Passive listener
+    // + rAF throttle keeps it cheap even on scroll-heavy pages.
+    if (outlineActiveObserver) {
+      // Old IO-based observer teardown (kept for the disconnect symmetry
+      // in case any other code path still references it). The variable
+      // is now used to hold the scroll listener removal handle instead
+      // of an IntersectionObserver instance.
+      if (typeof outlineActiveObserver.disconnect === 'function') {
+        outlineActiveObserver.disconnect();
+      } else if (typeof outlineActiveObserver === 'function') {
+        outlineActiveObserver(); // removal handle
+      }
     }
+    const STICKY_OFFSET_FOR_ACTIVE = 140; // slightly below the sticky bar so a heading "activates" as its top clears the bar
+    let rafPending = false;
+    let lastFollowedFile = null;
+    function pickActiveHeading() {
+      let best = null;
+      let bestY = -Infinity;
+      for (const h of headings) {
+        const y = h.el.getBoundingClientRect().top;
+        // We want the LAST heading whose top has passed the sticky line
+        // (largest y that's still ≤ the sticky line). Among the many
+        // headings that have scrolled off the top, the one closest to
+        // the sticky line is the section the user is currently in.
+        if (y <= STICKY_OFFSET_FOR_ACTIVE && y > bestY) {
+          bestY = y;
+          best = h;
+        }
+      }
+      // Fallback: user is above the first heading — highlight the first
+      // heading so something is always active. (Better than "nothing
+      // highlighted at all" which is what the old IO version did during
+      // the gap between the top of the page and the first heading.)
+      if (!best && headings.length > 0) best = headings[0];
+      return best;
+    }
+    function updateActive() {
+      rafPending = false;
+      // Respect the outline-highlight pin: after an explicit file-tree /
+      // file-label click, `jumpSidebarListsToFile` sets a short pin so
+      // the highlight stays on the clicked file's first heading even
+      // while the smooth-scroll animation is still in progress and the
+      // previous file's last heading is technically the topmost above
+      // the sticky line. Without this the highlight would visibly snap
+      // back to the previous file mid-animation.
+      if (Date.now() < outlineHighlightPinUntil) return;
+      const active = pickActiveHeading();
+      if (!active) return;
+      if (active.id === outlineLastActiveHeadingId) return; // no change; skip DOM churn
+      outlineLastActiveHeadingId = active.id;
+      sidebar.querySelectorAll('.grdc-sidebar-outline-row.grdc-sidebar-outline-active')
+        .forEach(r => r.classList.remove('grdc-sidebar-outline-active'));
+      const row = sidebar.querySelector(`.grdc-sidebar-outline-row[data-grdc-heading-id="${active.id}"]`);
+      if (row) {
+        row.classList.add('grdc-sidebar-outline-active');
+        // Center the active row inside the Outline pane's own scroll
+        // container so the user has plenty of context above AND below
+        // the highlighted heading. Using `scrollIntoView({ block:
+        // 'center' })` would also scroll the PAGE (the outermost
+        // scrolling ancestor), yanking the reader out of the file
+        // they're reading. Instead we compute the offset inside the
+        // `.grdc-sidebar-outline-tree` container and set `scrollTop`
+        // directly — same visual effect, but no page scroll.
+        centerRowInOutlineTree(sidebar, row);
+      }
+      // Scroll-follow for Changes & Threads (unchanged from the IO era):
+      // fire only on file-boundary crossings, respect the
+      // `scrollFollowSuppressedUntil` guard so a just-clicked jump isn't
+      // yanked back by the scroll animation.
+      if (active.file && active.file !== lastFollowedFile) {
+        lastFollowedFile = active.file;
+        if (Date.now() >= scrollFollowSuppressedUntil) {
+          jumpSidebarListsToFile(sidebar, active.file);
+          // Even when `jumpSidebarListsToFile` is a no-op (file has 0
+          // threads AND 0 changes), the counters still need to re-render
+          // because the file-scoped display (1.8.0 Option 3a) shows N/M
+          // relative to the CURRENTLY-VIEWED file — walking into a
+          // card-less file must update the counters to `0/0 (T)` even
+          // though `currentIdx` doesn't move. `jumpSidebarListsToFile`
+          // only updates counters inside its `if (idx >= 0)` branches,
+          // so we explicitly re-render here to catch the 0-card case.
+          updateChangesCount(sidebar);
+          updateSidebarCount();
+        }
+      }
+    }
+    function onScroll() {
+      if (rafPending) return;
+      rafPending = true;
+      requestAnimationFrame(updateActive);
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    // Fire once now so the initial state is correct without waiting for
+    // the first scroll event.
+    updateActive();
+    // Store the removal function so a re-init's teardown can undo the
+    // listener. Reuses the `outlineActiveObserver` slot for symmetry
+    // with the disconnect flow above.
+    outlineActiveObserver = () => window.removeEventListener('scroll', onScroll);
   }
 
   function setSidebarTab(sidebar, target) {
@@ -3917,7 +4032,109 @@
     });
   }
 
-  function updateSidebarCount() {
+  // Shared counter renderer for both Threads and Changes (1.8.0 Option 3a).
+  //
+  // Display format:
+  //   `N/M (T)` — normal case, multi-file PR:
+  //       N = position of `currentIdx` within the currently-viewed file
+  //           (0 if `currentIdx`'s card isn't in the viewed file — e.g.
+  //           user scrolled into a card-less file after their last click)
+  //       M = card count in the currently-viewed file
+  //       T = card count in the whole PR (dim, wrapped in a
+  //           `.grdc-sidebar-count-total` span for styling)
+  //   `N/M`     — same but when the PR is single-file (M == T), the
+  //               parenthetical total is dropped as redundant.
+  //   `0/0 (T)` — viewport file has 0 cards of this kind. Counter row
+  //               greys out via the `.grdc-sidebar-count-empty` class so
+  //               the user sees at a glance "this file has none of these".
+  //   `0/0`     — PR itself has 0 cards of this kind (rare — normally the
+  //               whole cluster is hidden in this case; keeping the
+  //               fallback text so the counter renders sensibly if it
+  //               ever slips through).
+  //
+  // Why file-scoped: users think in files ("done with THIS file?") more
+  // than in PR totals. The `(T)` hint carries the "how heavy is this PR?"
+  // signal so we don't lose it entirely. Behaviour of `[`/`]`/`j`/`k`
+  // stays global-walk — the change here is display only, not navigation.
+  //
+  // Tooltip on the counter span carries the full sentence so users hovering
+  // for clarification get an explicit reading of both numbers.
+  function renderScopedCounter(countEl, cards, currentIdx, kindLabel, viewFileOverride) {
+    if (!countEl) return;
+    const globalTotal = cards.length;
+    // Prefer the explicit override when a caller knows the target file
+    // (e.g. `jumpSidebarListsToFile` is answering "I just clicked X" and
+    // shouldn't be second-guessed by the viewport heuristic — GitHub's
+    // smooth-scroll may not have moved the viewport yet, so
+    // `getCurrentViewFilePath()` still returns the previous file for a
+    // moment). Scroll-driven callers pass no override and get the
+    // viewport-based answer.
+    let viewFile = viewFileOverride;
+    if (viewFile === undefined || viewFile === null) {
+      viewFile = typeof getCurrentViewFilePath === 'function' ? getCurrentViewFilePath() : '';
+    }
+    // Fallback: if the viewport heuristic couldn't identify a file (user
+    // scrolled between diff containers, or all containers were filtered
+    // by the ancestor-hidden check), use the currently-selected card's
+    // file so we don't collapse to the confusing `0/T` no-view-file
+    // render. The selected card's file is the reviewer's most recent
+    // "you are here" signal — better than nothing.
+    if (!viewFile && currentIdx >= 0 && currentIdx < cards.length) {
+      const currentCard = cards[currentIdx];
+      if (currentCard && currentCard.dataset && currentCard.dataset.grdcPath) {
+        viewFile = currentCard.dataset.grdcPath;
+      }
+    }
+    // Cards in the currently-viewed file — the M we'll display.
+    const inFileCards = viewFile
+      ? cards.filter(c => c.dataset && c.dataset.grdcPath === viewFile)
+      : [];
+    const fileTotal = inFileCards.length;
+    // Position of the current card within its file. If the current card
+    // is in the viewed file, N is its 1-based index; otherwise N=0 (we
+    // haven't landed on a card in this file yet).
+    let n = 0;
+    if (fileTotal > 0 && currentIdx >= 0 && currentIdx < cards.length) {
+      const currentCard = cards[currentIdx];
+      if (currentCard && currentCard.dataset && currentCard.dataset.grdcPath === viewFile) {
+        n = inFileCards.indexOf(currentCard) + 1;
+      }
+    }
+    // Single-file PR — drop the redundant `(T)` tail. Also fire when
+    // viewFile is empty (no diff container visible AND no selected card
+    // to fall back to) because then `M` wouldn't be meaningful and the
+    // total is all we can honestly show.
+    const isSingleFile = fileTotal === globalTotal;
+    const noViewFile = !viewFile;
+    countEl.classList.toggle('grdc-sidebar-count-empty', fileTotal === 0 && globalTotal > 0);
+    if (noViewFile || globalTotal === 0) {
+      // Absolute fallback — show the flat-array position so the counter
+      // is still meaningful even when everything above failed. `N` here
+      // is 1-based position of the currently-selected card in the whole
+      // PR (matches the pre-1.8.0 global-counter behaviour). Never render
+      // `0/T` unless nothing is truly selected.
+      const flatN = (currentIdx >= 0 && currentIdx < globalTotal) ? currentIdx + 1 : 0;
+      countEl.textContent = `${flatN}/${globalTotal}`;
+      countEl.title = kindLabel === 'threads'
+        ? `${flatN} of ${globalTotal} threads in this PR`
+        : `${flatN} of ${globalTotal} changes in this PR`;
+      return;
+    }
+    // Multi-file PR: `N/M` primary, ` (T)` dim total tail.
+    // Use innerHTML so the `(T)` can be a styled span. Values are integers
+    // — no injection surface — but escapeHtml is trivially safe if we
+    // ever change that.
+    if (isSingleFile) {
+      countEl.textContent = `${n}/${fileTotal}`;
+    } else {
+      countEl.innerHTML = `${n}/${fileTotal} <span class="grdc-sidebar-count-total">(${globalTotal})</span>`;
+    }
+    countEl.title = kindLabel === 'threads'
+      ? `${n} of ${fileTotal} threads in this file · ${globalTotal} threads in this PR`
+      : `${n} of ${fileTotal} changes in this file · ${globalTotal} changes in this PR`;
+  }
+
+  function updateSidebarCount(viewFileOverride) {
     const sidebar = document.querySelector('.grdc-sidebar');
     if (!sidebar) return;
     // Scope to the threads list — `.grdc-sidebar-card` is also used by
@@ -3930,11 +4147,8 @@
     // scroll to a change. See the 2026-06 fix in the changelog.
     const cards = sidebar.querySelectorAll('.grdc-sidebar-list .grdc-sidebar-card');
     const countEl = sidebar.querySelector('.grdc-sidebar-count');
-    // `N/M` format (no spaces) matches the Changes counter so the two
-    // header clusters read symmetric.
-    countEl.textContent = cards.length === 0
-      ? '0/0'
-      : `${sidebarCurrentIdx + 1}/${cards.length}`;
+    if (!countEl) return;
+    renderScopedCounter(countEl, Array.from(cards), sidebarCurrentIdx, 'threads', viewFileOverride);
     cards.forEach((c, i) => c.classList.toggle('grdc-sidebar-card-active', i === sidebarCurrentIdx));
   }
 
@@ -3978,8 +4192,17 @@
     const threadIdx = threadCards.findIndex(c => c.dataset.grdcPath === filePath);
     if (threadIdx >= 0) {
       sidebarCurrentIdx = threadIdx;
-      updateSidebarCount();
+      // Pass `filePath` as the view-file override — GitHub's smooth-
+      // scroll hasn't moved the viewport yet, so `getCurrentViewFilePath()`
+      // would still return the previous file and the counter would render
+      // relative to that. The caller knows the intended file; use it.
+      updateSidebarCount(filePath);
       threadCards[threadIdx].scrollIntoView({ block: 'nearest' });
+    } else {
+      // File has no threads, but the user's intent is still "I'm now on
+      // this file" — re-render the counter as `0/0 (T)` (or greyed) so
+      // it doesn't lie about being on the previous file.
+      updateSidebarCount(filePath);
     }
 
     // Changes list — same shape.
@@ -3999,9 +4222,142 @@
     });
     if (changeIdx >= 0) {
       changesCurrentIdx = changeIdx;
-      updateChangesCount(sidebar);
+      updateChangesCount(sidebar, filePath);
       changeCards[changeIdx].scrollIntoView({ block: 'nearest' });
+    } else {
+      updateChangesCount(sidebar, filePath);
     }
+
+    // Outline pane — highlight this file's first heading, so the user's
+    // click lands on a row belonging to THIS file even before the
+    // smooth-scroll has finished positioning the file's own heading past
+    // the sticky line. Without this override, the scroll listener would
+    // keep the highlight on the previous file's last heading (which is
+    // still the topmost above the sticky line during the animation) —
+    // making the Outline pane appear to lag behind the click.
+    //
+    // We pin the highlight via `outlineHighlightPinUntil` so subsequent
+    // scroll events don't override it for 1500ms; after that, the scroll
+    // listener resumes normal "last heading above sticky line" tracking
+    // once the smooth-scroll has settled and the file's own heading has
+    // moved above the sticky line naturally.
+    const outlineRows = Array.from(sidebar.querySelectorAll('.grdc-sidebar-outline-row'));
+    if (outlineRows.length > 0) {
+      // The Outline row carries no `data-grdc-path`; instead each row's
+      // `data-grdc-heading-id` maps back to a heading collected via
+      // `collectHeadings()`, which knows the file. Rebuild that map on
+      // demand rather than cache it — cheap, and always in sync with
+      // the current DOM.
+      const headings = typeof collectHeadings === 'function' ? collectHeadings() : [];
+      const firstInFile = headings.find(h => h.file === filePath);
+      if (firstInFile) {
+        outlineRows.forEach(r => r.classList.remove('grdc-sidebar-outline-active'));
+        const row = sidebar.querySelector(`.grdc-sidebar-outline-row[data-grdc-heading-id="${firstInFile.id}"]`);
+        if (row) {
+          row.classList.add('grdc-sidebar-outline-active');
+          centerRowInOutlineTree(sidebar, row);
+          outlineHighlightPinUntil = Date.now() + 1500;
+          outlineLastActiveHeadingId = firstInFile.id;
+        }
+      }
+    }
+  }
+
+  // Return the file path of the `.prose-diff` root that's currently topmost
+  // in the viewport (accounting for GitHub's sticky top header). Used by
+  // the header change / thread icons in 1.8.0 to answer "which file is the
+  // user reading right now?" — so the icon can jump to that file's first
+  // item instead of blindly advancing the global counter. Returns '' when
+  // no `.prose-diff` intersects the viewport (e.g. user is scrolled to a
+  // section of the page with no rendered Markdown files) — callers fall
+  // back to the global-advance behaviour in that case.
+  //
+  // "Topmost" here means: of every `.prose-diff` that intersects the
+  // viewport, the one whose top edge is closest to the sticky-header line
+  // (STICKY_OFFSET below the top of the viewport, matching where
+  // `scrollToWithStickyOffset` lands scrolled elements). Cheap synchronous
+  // walk — no MutationObserver / IntersectionObserver needed at call time.
+  function getCurrentViewFilePath() {
+    const STICKY_OFFSET = 120; // matches scrollToWithStickyOffset
+    // Use file CONTAINERS instead of `.prose-diff` roots so this helper
+    // works whether the file is currently in rich-diff or source-diff
+    // mode. In source-diff mode `.prose-diff` is `display: none` and
+    // would be filtered out here, causing us to fall back to some other
+    // file's `.prose-diff` — most confusingly, the previously-viewed
+    // file whose rendered content still lives elsewhere on the page.
+    // Containers exist regardless of view mode and always carry the
+    // path we need. Selector matches the same set used everywhere else
+    // (`getFilePath`, `attachCommentButtons`, etc.).
+    const containers = document.querySelectorAll(
+      'div[id^="diff-"], [data-tagsearch-path], .file[data-path]'
+    );
+    if (containers.length === 0) return '';
+    let bestContainer = null;
+    let bestScore = Infinity;
+    for (const container of containers) {
+      // Skip containers not currently in the DOM flow (rare — user
+      // probably filtered them out via GitHub's file filter).
+      if (!container.offsetParent && container !== document.body) continue;
+      const rect = container.getBoundingClientRect();
+      // Only consider containers that (a) start above the bottom of the
+      // viewport AND (b) end below the sticky-header line — otherwise
+      // the user isn't "reading" them.
+      if (rect.bottom < STICKY_OFFSET) continue;
+      if (rect.top > window.innerHeight) continue;
+      // Score = distance of the container's top from the sticky line.
+      // Absolute value so a container just below the sticky (positive
+      // small distance) ties with one just above (negative small
+      // distance) — good enough tie-break for a "current file" hint.
+      const score = Math.abs(rect.top - STICKY_OFFSET);
+      if (score < bestScore) {
+        bestScore = score;
+        bestContainer = container;
+      }
+    }
+    if (!bestContainer) return '';
+    try { return getFilePath(bestContainer) || ''; } catch (_) { return ''; }
+  }
+
+  // Header change / thread icon click handler (1.8.0). Behaviour:
+  //   1. Find the file the user is currently viewing via `getCurrentViewFilePath`.
+  //   2. Look up that file's first card in the requested list (`changes` or
+  //      `threads`). Set the counter to that index and simulate a click on
+  //      the card (which scrolls + flashes).
+  //   3. If the current file has no cards in that list — or no `.prose-diff`
+  //      intersects the viewport at all — fall back to the global-advance
+  //      behaviour (`changesJump(+1)` / `sidebarJump(+1)`) so the icon is
+  //      never a dead click.
+  //
+  // This is the "file-scoped" repurpose of the header icons from 1.6.0's
+  // global-next semantics. The `[` / `]` and `j` / `k` keyboard shortcuts
+  // still walk globally — nothing was taken away; the icons just got a
+  // more useful default action.
+  function jumpToFirstInCurrentFile(sidebar, listKind) {
+    if (!sidebar) return;
+    const path = getCurrentViewFilePath();
+    const listSelector = listKind === 'threads'
+      ? '.grdc-sidebar-list .grdc-sidebar-card'
+      : '.grdc-sidebar-changes-list .grdc-sidebar-card';
+    if (path) {
+      const cards = Array.from(sidebar.querySelectorAll(listSelector));
+      const idx = cards.findIndex(c => c.dataset.grdcPath === path);
+      if (idx >= 0) {
+        console.log(`[GRDC] Header icon → first ${listKind} in ${path} (idx ${idx})`);
+        if (listKind === 'threads') {
+          sidebarCurrentIdx = idx;
+        } else {
+          changesCurrentIdx = idx;
+        }
+        cards[idx].click();
+        cards[idx].scrollIntoView({ block: 'nearest' });
+        return;
+      }
+      console.log(`[GRDC] Header icon → ${listKind}: current file ${path} has no items, falling back to global next`);
+    } else {
+      console.log(`[GRDC] Header icon → ${listKind}: no current file detected, falling back to global next`);
+    }
+    // Fallback: preserve the pre-1.8.0 behaviour so the icon isn't a dead click.
+    if (listKind === 'threads') sidebarJump(+1); else changesJump(+1);
   }
 
   // ── Changes navigation ────────────────────────────────────────────────────
@@ -4247,15 +4603,12 @@
     updateChangesCount(sidebar);
   }
 
-  function updateChangesCount(sidebar) {
+  function updateChangesCount(sidebar, viewFileOverride) {
     if (!sidebar) return;
     const countEl = sidebar.querySelector('.grdc-sidebar-changes-count');
-    const blocks = sidebar._grdcChangeBlocks || [];
     if (!countEl) return;
-    countEl.textContent = blocks.length === 0
-      ? '0/0'
-      : `${changesCurrentIdx + 1}/${blocks.length}`;
-    const cards = sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card');
+    const cards = Array.from(sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card'));
+    renderScopedCounter(countEl, cards, changesCurrentIdx, 'changes', viewFileOverride);
     cards.forEach((c, i) => c.classList.toggle('grdc-sidebar-card-active', i === changesCurrentIdx));
   }
 
@@ -4469,6 +4822,33 @@
     window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
   }
 
+  // Center a row inside the Outline pane's own scroll container. Manual
+  // math instead of `row.scrollIntoView({ block: 'center' })` because the
+  // built-in also scrolls every scrolling ancestor — including the page
+  // — which would yank the reader out of the file they're reading. We
+  // only ever want the outline list to scroll, never the page.
+  function centerRowInOutlineTree(sidebar, row) {
+    if (!sidebar || !row) return;
+    const tree = sidebar.querySelector('.grdc-sidebar-outline-tree');
+    if (!tree) return;
+    // `offsetTop` on the row is relative to its offsetParent chain. In
+    // our outline layout the tree container is the row's scrolling
+    // ancestor but not necessarily its offsetParent (rows sit inside a
+    // per-file button block). Use `getBoundingClientRect` deltas instead
+    // — always correct regardless of intermediate layout wrappers.
+    const treeRect = tree.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    // Where the row sits inside the tree's scroll coord system.
+    const rowTopInTree = rowRect.top - treeRect.top + tree.scrollTop;
+    // Target scrollTop that puts the row's center at the tree's center.
+    const target = rowTopInTree - (tree.clientHeight / 2) + (rowRect.height / 2);
+    // Clamp so we don't try to scroll past the tree's bounds (would jerk
+    // to 0 or max-scroll instead of leaving the row wherever it already
+    // is, which for edge rows is more natural than centering).
+    const maxScroll = tree.scrollHeight - tree.clientHeight;
+    tree.scrollTop = Math.max(0, Math.min(target, maxScroll));
+  }
+
   function tryScrollToHashAnchor() {
     const hash = (window.location.hash || '').replace(/^#/, '');
     if (!hash) return;
@@ -4633,6 +5013,75 @@
       }
     });
     observer.observe(document.body, { childList: true, subtree: true });
+
+    // File-tree click sync (1.8.0). GitHub's Files-changed page has several
+    // navigation surfaces that scroll to a specific file: the left-side
+    // file tree panel, the "Jump to file" dropdown, the file-list overview,
+    // and even in-page "N files changed" links. All of them ultimately
+    // point at `#diff-<hash>` anchors — the hash matches a
+    // `div[id="diff-<hash>"]` container that wraps each file.
+    //
+    // Rather than target one specific tree component (which GitHub redesigns
+    // periodically), we listen for ANY click on such an anchor and use its
+    // href to find the destination file's diff container. Then we call
+    // `jumpSidebarListsToFile` so our sidebar's Changes / Threads counters
+    // jump to that file's first item — leading the smooth-scroll rather
+    // than trailing it via the IntersectionObserver.
+    //
+    // Uses the capture phase so we run before GitHub's own scroll handler
+    // takes over. We DON'T prevent the default — GitHub still gets to do
+    // its scroll animation; we just piggy-back on the click to align the
+    // sidebar. Delegated on document so a single listener covers every
+    // navigation surface, present and future.
+    //
+    // Anchor recognition: `a[href*="#diff-"]` covers the classic
+    // file-list overview anchors. Newer GitHub file trees (e.g. the
+    // "Groups by Copilot" panel) may render as `<a>` elements without a
+    // `#diff-` href — instead using React-router pushState or click
+    // handlers with no href at all. Fallback: any `<a>` with a `title`
+    // attribute matching a known PR file path (looked up via
+    // `pathChangeTypeMap`), since GitHub consistently uses `title` for
+    // the file's full path on file-tree entries.
+    document.addEventListener('click', (ev) => {
+      // Ignore clicks inside our own sidebar — those have their own
+      // handlers that already call `jumpSidebarListsToFile` correctly.
+      const inSidebar = ev.target && ev.target.closest && ev.target.closest('.grdc-sidebar');
+      if (inSidebar) return;
+      const anchor = ev.target.closest && ev.target.closest('a, [role="treeitem"], [role="link"]');
+      if (!anchor) return;
+      const sidebar = document.querySelector('.grdc-sidebar');
+      if (!sidebar) return;
+
+      // Path resolution — try three strategies in order of specificity:
+      //   1. `href` contains `#diff-<hash>` → find that container, read path
+      //   2. `title` attribute matches a known PR file path
+      //   3. `textContent` matches a known PR file path (last-resort — some
+      //      tree items only carry the path as visible text)
+      let path = '';
+      const href = anchor.getAttribute && anchor.getAttribute('href');
+      if (href) {
+        const hashIdx = href.indexOf('#diff-');
+        if (hashIdx >= 0) {
+          const hash = href.slice(hashIdx + 1);
+          const container = document.getElementById(hash);
+          if (container) {
+            try { path = getFilePath(container) || ''; } catch (_) { /* keep empty */ }
+          }
+        }
+      }
+      if (!path) {
+        const title = anchor.getAttribute && anchor.getAttribute('title');
+        if (title && pathChangeTypeMap.has(title)) path = title;
+      }
+      if (!path) {
+        const text = (anchor.textContent || '').trim();
+        if (text && pathChangeTypeMap.has(text)) path = text;
+      }
+      if (!path) return;
+
+      console.log(`[GRDC] File-tree click → ${path}`);
+      jumpSidebarListsToFile(sidebar, path);
+    }, { capture: true });
   }
 
   // ── Entry Point ────────────────────────────────────────────────────────────
@@ -4660,11 +5109,29 @@
     const path = window.location.pathname;
     if (path === lastInitPath) return;
     lastInitPath = path;
-    // parsePRUrl returns null on non-Files paths; init() short-circuits.
-    if (parsePRUrl()) {
-      console.log(`[GRDC] URL changed → ${path}, running init()`);
-      init();
+    // If the user navigated away from Files-changed (e.g. clicked
+    // Conversation / Commits / Checks, or left the PR entirely), the
+    // sidebar has nothing to do: existing threads are rendered inline
+    // by GitHub's Conversation view, there is no rich-diff to walk,
+    // and Outline has no `.prose-diff` content to outline. Remove it
+    // so it doesn't sit on top of the destination page (the 1.7.0
+    // top-centre default made this especially visible on Conversation,
+    // where the sidebar would cover the PR title strip).
+    //
+    // We also drop any injected `+` buttons / thread badges via
+    // `clearInjectedDom` for the same reason — they're anchored to
+    // rich-diff blocks that no longer exist.
+    if (!parsePRUrl()) {
+      const stale = document.querySelector('.grdc-sidebar');
+      if (stale) {
+        console.log(`[GRDC] URL changed → ${path}, removing sidebar (not on Files-changed)`);
+        stale.remove();
+      }
+      clearInjectedDom();
+      return;
     }
+    console.log(`[GRDC] URL changed → ${path}, running init()`);
+    init();
   }
   window.addEventListener('popstate', maybeInit);
   setInterval(maybeInit, 400);

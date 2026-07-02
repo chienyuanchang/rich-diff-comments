@@ -908,14 +908,16 @@ li.grdc-hoverable .grdc-comment-btn {
   top: 16px;
   left: 50%;
   transform: translateX(-50%);
-  width: 420px;
+  width: 480px;
   height: auto;
-  min-width: 420px;
+  min-width: 480px;
   min-height: 120px;
   /* Cap height but NOT width — narrow viewports should still let the
-     sidebar be 400px (users will scroll the page horizontally if needed,
+     sidebar be 480px (users will scroll the page horizontally if needed,
      and the alternative is the funnel + nav clusters getting clipped
-     because `max-width: 90vw` would cap the sidebar below its content). */
+     because `max-width: 90vw` would cap the sidebar below its content).
+     Width bumped from 420 → 480 in 1.8.0 to fit the file-scoped
+     counter format `3/8 (45)`. See `.grdc-sidebar-collapsed` comment. */
   max-height: calc(100vh - 40px);
   display: flex;
   flex-direction: column;
@@ -957,16 +959,18 @@ li.grdc-hoverable .grdc-comment-btn {
   resize: none;
   height: auto !important;
   min-height: 0 !important;
-  /* Collapsed always snaps to the locked min-width (420px) regardless
-     of any user-resized expanded width. Earlier versions inherited the
-     expanded width which left a wide empty strip when the user had
-     resized the sidebar large; now the collapsed strip is always the
-     same compact size matching the locked width.
-     420 (not 400) so the funnel button + 12px margin-right doesn't
-     overflow when counts get wide (e.g. `29/39 9/9`). With 400 the
-     funnel was extending ~9px past the sidebar's rounded right corner
-     and getting visually clipped. */
-  width: 420px !important;
+  /* Collapsed always snaps to the locked min-width regardless of any
+     user-resized expanded width. Earlier versions inherited the expanded
+     width which left a wide empty strip when the user had resized the
+     sidebar large; now the collapsed strip is always the same compact
+     size matching the locked width.
+     480 (1.8.0 bump from 420): with the file-scoped counter format
+     `3/8 (45)` added in Option 3a, each counter is ~28px wider than the
+     old `3/8` format. Two counters + separators + filter margin pushed
+     past 420 and the funnel got visually clipped off the right edge in
+     collapsed mode. 480 restores comfortable spacing for `NN/NN (NNN)`
+     on both counters. */
+  width: 480px !important;
 }
 /* Force the collapsed header to stay on ONE row. The expanded header uses
    `flex-wrap: wrap` so a user-shrunk sidebar degrades gracefully, but the
@@ -1073,16 +1077,36 @@ li.grdc-hoverable .grdc-comment-btn {
    so an `margin-left: auto` would create an awkward gap between the
    thread separator and the funnel. */
 /* Counts (informational, 60% white, 12px Medium for the compact bar).
-   `min-width: 28px` keeps the chevrons from jittering between 9/47 and
-   10/47. Tabular nums = monospace digits for the same reason. */
+   `min-width` sized to fit the file-scoped format (e.g. `3/8 (45)`)
+   with a bit of slack for 3-digit totals. Tabular nums = monospace
+   digits so the width doesn't jitter as digits change. */
 .grdc-sidebar-changes-count,
 .grdc-sidebar-count {
-  min-width: 28px;
+  min-width: 56px;
   text-align: center;
   font-size: 12px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: rgba(255, 255, 255, 0.6);
+}
+/* File-scoped counter format (1.8.0 Option 3a): "3/8 (45)" where the
+   parenthetical is the PR-wide total, dimmer than the primary N/M. Ships
+   inside a `<span class="grdc-sidebar-count-total">(45)</span>` next to
+   the primary text — see `renderScopedCounter` in content.js. Reducing
+   opacity + slightly smaller size gives it hint-level presence without
+   dropping it entirely (we still want the "how heavy is this PR?"
+   signal at first glance). */
+.grdc-sidebar-count-total {
+  opacity: 0.7;
+  font-size: 11px;
+  margin-left: 2px;
+}
+/* When the currently-viewed file has 0 items of this kind (no threads /
+   no changes here), grey the whole counter row so the user sees at a
+   glance "nothing to walk here". The dim total tail stays visible so
+   the PR-wide count is still readable. */
+.grdc-sidebar-count-empty {
+  opacity: 0.5;
 }
 .grdc-sidebar-header .grdc-sidebar-collapse,
 .grdc-sidebar-header .grdc-sidebar-prev,
@@ -1418,8 +1442,17 @@ li.grdc-hoverable .grdc-comment-btn {
   text-align: left;
 }
 .grdc-sidebar-outline-active {
-  background: var(--bgColor-accent-muted, rgba(9, 105, 218, 0.12));
-  border-left: 2px solid var(--bgColor-accent-emphasis, var(--color-accent-emphasis, #0969da));
+  /* Bumped in 1.8.0 for visibility. The 1.5.0 tint (12% opacity blue +
+     2px rail) was so faint against Primer's neutral background that users
+     didn't notice the follow-highlight moving as they scrolled. Now:
+     stronger accent tint, a 3px solid rail flush with the row's left
+     edge, and bold text on the active heading so it reads at a glance. */
+  background: var(--bgColor-accent-muted, var(--color-accent-subtle, rgba(9, 105, 218, 0.22)));
+  border-left: 3px solid var(--bgColor-accent-emphasis, var(--color-accent-emphasis, #0969da));
+}
+.grdc-sidebar-outline-active .grdc-sidebar-outline-text {
+  font-weight: 600;
+  color: var(--fgColor-accent, var(--color-accent-fg, #0969da));
 }
 .grdc-sidebar-outline-text {
   display: inline-block;

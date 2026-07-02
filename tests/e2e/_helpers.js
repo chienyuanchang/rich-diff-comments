@@ -117,6 +117,22 @@ async function gotoPRPage(page) {
   // in our test setup we inject it explicitly so CSS-driven layout
   // (button position, hover visibility) is measurable.
   await page.addStyleTag({ path: path.join(REPO_ROOT, 'styles.css') });
+  // Move the sidebar off the fixture's content strip before init. Since
+  // 1.7.0 the sidebar's default position is top-centre (top:16px,
+  // left:50%, translateX(-50%)) which — on real github.com — sits above
+  // a tall page header that pushes the diff content below it. Our
+  // stripped fixtures have no such header, so the sidebar directly
+  // overlaps `<h1>` / `<h2>` / `<li>` and intercepts pointer events for
+  // `.hover()` tests. Pinning it to the top-right corner via
+  // `grdc_sidebar_pos` before init makes `applySidebarPersistedPos()`
+  // restore to that position instead of the top-centre default. Chosen
+  // to sit within Playwright's default 1280×720 viewport so the sidebar
+  // is still visible and interactive (needed by keyboard-shortcut tests
+  // that toggle its state) but out of the way of typical fixture
+  // content at x=0..~600.
+  await page.evaluate(() => {
+    localStorage.setItem('grdc_sidebar_pos', JSON.stringify({ left: 840, top: 8 }));
+  });
 }
 
 /**

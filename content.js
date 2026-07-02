@@ -3824,6 +3824,23 @@
         sidebar.querySelectorAll('.grdc-sidebar-outline-row.grdc-sidebar-outline-active')
           .forEach(r => r.classList.remove('grdc-sidebar-outline-active'));
         row.classList.add('grdc-sidebar-outline-active');
+        // Pin the Outline highlight through the smooth-scroll animation
+        // so the scroll listener's mid-flight `pickActiveHeading()` (which
+        // sees the PREVIOUS heading still above the sticky line while we
+        // scroll toward the clicked one) can't override it. Also update
+        // the module-level cache so the scroll listener doesn't skip the
+        // eventual real update as "same as last". Mirrors the pin set by
+        // `jumpSidebarListsToFile` for file-label clicks.
+        outlineHighlightPinUntil = Date.now() + 1500;
+        outlineLastActiveHeadingId = node.id;
+        centerRowInOutlineTree(sidebar, row);
+        // Mirror the "current file" cue to GitHub's own file tree so the
+        // left-side highlight moves in step with the click, without
+        // waiting for the scroll listener to catch up. `node.file` is
+        // set by `collectHeadings()` for every heading, so this is safe.
+        if (node.file && typeof highlightFileTreeRows === 'function') {
+          highlightFileTreeRows(node.file);
+        }
         scrollToWithStickyOffset(node.el);
       });
       row.appendChild(label);
@@ -4168,6 +4185,15 @@
   }
 
   function scrollToThread(threadEl) {
+    // Same "explicit user click" contract as `scrollToChange` and the
+    // Outline section-label click: pin the Outline highlight through
+    // the smooth-scroll animation so the scroll listener's mid-flight
+    // `pickActiveHeading()` (which sees the previous file's last
+    // heading still above the sticky line) can't override the click.
+    // Also suppresses the counter-follow on file-boundary crossings so
+    // the just-clicked counter selection isn't yanked back.
+    scrollFollowSuppressedUntil = Date.now() + 1500;
+    outlineHighlightPinUntil = Date.now() + 1500;
     threadEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
     // Flash the badge so the user sees where they landed.
     const badge = threadEl.querySelector('.grdc-thread-badge') || threadEl;
@@ -4260,6 +4286,79 @@
           outlineLastActiveHeadingId = firstInFile.id;
         }
       }
+    }
+
+    // Mirror the "current file" cue back onto GitHub's own file tree
+    // (v1.8.0 finishing touch, 2026-07). Adds a subtle rail + tint to
+    // the tree row for the file the user is reading. Purely visual — we
+    // don't fire a synthetic click on GitHub's tree (which would race
+    // GitHub's own smooth-scroll and could feed back into our scroll
+    // listener). See `highlightFileTreeRows` for the resolution logic.
+    highlightFileTreeRows(filePath);
+  }
+
+  // Mark every anchor in GitHub's file navigation surfaces (left-side
+  // file tree, "Jump to file" dropdown, file-list overview, in-page
+  // anchor links) that points at `filePath` with the `grdc-file-tree-
+  // active` class, and unmark anchors that no longer point at it.
+  // Runs on every file-boundary crossing (from the scroll listener) AND
+  // on every explicit click through `jumpSidebarListsToFile`, so the
+  // highlight tracks the current file continuously without ever having
+  // to fire a synthetic click at GitHub's own tree.
+  //
+  // Resolution strategy mirrors the click delegate (three fallbacks):
+  //   1. Anchor `href` contains `#diff-<hash>` — resolve hash to a file
+  //      container via `getElementById`, extract path via `getFilePath`.
+  //   2. Anchor `title` attribute matches a known PR file path.
+  //   3. Anchor `textContent` matches a known PR file path.
+  //
+  // `pathChangeTypeMap` is our authoritative list of PR files (populated
+  // in `fetchRouteData`), so the title / text fallbacks won't false-
+  // match on unrelated links elsewhere on the page.
+  //
+  // Cheap enough to run on every file crossing (small DOM walk, class
+  // toggles only). We don't debounce — the caller already fires only on
+  // crossings, and even a 200-file PR is a sub-millisecond scan.
+  function highlightFileTreeRows(filePath) {
+    if (typeof pathChangeTypeMap === 'undefined') return;
+    // Only mark LEAF anchors, never row wrappers. The click delegate
+    // uses `resolveFileTreePath` (which does a descendant search so
+    // clicking a row's padding still resolves), but if we ran that
+    // same fallback here we'd end up marking BOTH the inner `<a>` AND
+    // its `[role="treeitem"]` wrapper — producing nested backgrounds
+    // / doubled borders that look like the whole tree section is
+    // highlighted. Restricting to anchors keeps the highlight to a
+    // single row visually. GitHub's row wrapper usually inherits the
+    // anchor's background via CSS anyway, so we don't lose coverage.
+    //
+    // Scope OUT of our own sidebar so we never mark cards or file
+    // labels inside `.grdc-sidebar`.
+    const candidates = document.querySelectorAll('a[href*="#diff-"], a[title]');
+    for (const el of candidates) {
+      if (el.closest('.grdc-sidebar')) continue;
+      let path = '';
+      // Strategy 1: href with `#diff-<hash>` — resolve to container path.
+      const href = el.getAttribute('href');
+      if (href) {
+        const hashIdx = href.indexOf('#diff-');
+        if (hashIdx >= 0) {
+          const hash = href.slice(hashIdx + 1);
+          const container = document.getElementById(hash);
+          if (container) {
+            try { path = getFilePath(container) || ''; } catch (_) { /* keep empty */ }
+          }
+        }
+      }
+      // Strategy 2: title matches a known PR file path.
+      if (!path) {
+        const title = el.getAttribute('title');
+        if (title && pathChangeTypeMap.has(title)) path = title;
+      }
+      if (!path) continue; // not a file-tree anchor we can resolve
+      const active = path === filePath;
+      const has = el.classList.contains('grdc-file-tree-active');
+      if (active && !has) el.classList.add('grdc-file-tree-active');
+      else if (!active && has) el.classList.remove('grdc-file-tree-active');
     }
   }
 
@@ -4636,6 +4735,9 @@
     // the sidebar selection back. Suppress scroll-follow for the duration
     // of the animation. See the comment on `scrollFollowSuppressedUntil`.
     scrollFollowSuppressedUntil = Date.now() + 1500;
+    // Also pin the Outline highlight so it doesn't snap back to the
+    // previous heading mid-animation. See `outlineHighlightPinUntil`.
+    outlineHighlightPinUntil = Date.now() + 1500;
     // Use the same sticky-offset-aware scroll the Outline tab uses so the
     // change doesn't land under GitHub's sticky file header.
     if (typeof scrollToWithStickyOffset === 'function') {
@@ -5052,36 +5154,74 @@
       const sidebar = document.querySelector('.grdc-sidebar');
       if (!sidebar) return;
 
-      // Path resolution — try three strategies in order of specificity:
-      //   1. `href` contains `#diff-<hash>` → find that container, read path
-      //   2. `title` attribute matches a known PR file path
-      //   3. `textContent` matches a known PR file path (last-resort — some
-      //      tree items only carry the path as visible text)
-      let path = '';
-      const href = anchor.getAttribute && anchor.getAttribute('href');
-      if (href) {
-        const hashIdx = href.indexOf('#diff-');
-        if (hashIdx >= 0) {
-          const hash = href.slice(hashIdx + 1);
-          const container = document.getElementById(hash);
-          if (container) {
-            try { path = getFilePath(container) || ''; } catch (_) { /* keep empty */ }
-          }
-        }
-      }
-      if (!path) {
-        const title = anchor.getAttribute && anchor.getAttribute('title');
-        if (title && pathChangeTypeMap.has(title)) path = title;
-      }
-      if (!path) {
-        const text = (anchor.textContent || '').trim();
-        if (text && pathChangeTypeMap.has(text)) path = text;
-      }
+      // Path resolution: try the matched element itself first, then look
+      // INSIDE it (for row-wrapper matches like `[role="treeitem"]` where
+      // the `<a>` with the actual `href` / `title` is a descendant, not
+      // the click target). Fixes the "click on the row background does
+      // nothing" case: on GitHub's file tree the whole row is clickable
+      // (via GitHub's own delegated handler), but the `<a>` we can
+      // resolve a path from is a child of the row wrapper, so
+      // `closest('a')` only finds it when the user clicks the anchor's
+      // own text — not the padding around it. Falling back to a
+      // descendant search inside the matched wrapper covers both cases.
+      let path = resolveFileTreePath(anchor);
       if (!path) return;
 
       console.log(`[GRDC] File-tree click → ${path}`);
       jumpSidebarListsToFile(sidebar, path);
     }, { capture: true });
+  }
+
+  // Extract a PR file path from a clicked file-tree anchor / row wrapper.
+  // Same three-strategy resolution as before (href#diff, title, text),
+  // now with an inner-descendant fallback so clicking a row's padding
+  // (which lands on the `[role="treeitem"]` wrapper, not the `<a>`
+  // inside it) still resolves. Shared by the click delegate AND
+  // `highlightFileTreeRows` so the two stay symmetric.
+  function resolveFileTreePath(el) {
+    if (!el || typeof pathChangeTypeMap === 'undefined') return '';
+    // Strategy 1: href with `#diff-<hash>` on the element itself.
+    const tryHrefResolve = (node) => {
+      const href = node.getAttribute && node.getAttribute('href');
+      if (!href) return '';
+      const hashIdx = href.indexOf('#diff-');
+      if (hashIdx < 0) return '';
+      const hash = href.slice(hashIdx + 1);
+      const container = document.getElementById(hash);
+      if (!container) return '';
+      try { return getFilePath(container) || ''; } catch (_) { return ''; }
+    };
+    let path = tryHrefResolve(el);
+    // If the click target is a row wrapper without an href itself, look
+    // INSIDE for an anchor that carries the href. GitHub's file tree
+    // typically renders each row as a `<div role="treeitem">` containing
+    // a single `<a href="#diff-...">` — clicking the wrapper's padding
+    // hits the treeitem, not the anchor. Descendant search fixes that.
+    if (!path) {
+      const inner = el.querySelector && el.querySelector('a[href*="#diff-"]');
+      if (inner) path = tryHrefResolve(inner);
+    }
+    // Strategy 2: title attribute matches a known PR file path. Check
+    // the element itself first, then descendants.
+    if (!path) {
+      const title = el.getAttribute && el.getAttribute('title');
+      if (title && pathChangeTypeMap.has(title)) path = title;
+    }
+    if (!path) {
+      const inner = el.querySelector && el.querySelector('[title]');
+      if (inner) {
+        const title = inner.getAttribute('title');
+        if (title && pathChangeTypeMap.has(title)) path = title;
+      }
+    }
+    // Strategy 3: visible text matches a known path. Last resort —
+    // works for tree implementations that carry the path as raw text
+    // rather than in an attribute.
+    if (!path) {
+      const text = (el.textContent || '').trim();
+      if (text && pathChangeTypeMap.has(text)) path = text;
+    }
+    return path;
   }
 
   // ── Entry Point ────────────────────────────────────────────────────────────

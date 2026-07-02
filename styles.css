@@ -1454,6 +1454,25 @@ li.grdc-hoverable .grdc-comment-btn {
   font-weight: 600;
   color: var(--fgColor-accent, var(--color-accent-fg, #0969da));
 }
+
+/* GitHub file-tree "current file" highlight (v1.8.0 finishing touch,
+   2026-07). Applied by `highlightFileTreeRows()` to any anchor in
+   GitHub's own left-side file tree, "Jump to file" dropdown, or
+   file-list overview that points at the file currently in the middle
+   view. Purely visual — we don't touch GitHub's own active-state
+   indicator, so this can coexist with whatever GitHub renders as its
+   own "you clicked this" cue. Uses `!important` on the background
+   because some tree implementations set an inline `background` on the
+   anchor's parent row that would otherwise win the cascade.
+   Applied at the ANCHOR level (not the row) because we can't reliably
+   traverse to the row wrapper — different tree UIs use different
+   ancestor structures (li vs div vs [role=treeitem]). The anchor
+   typically fills its row so the visual effect is the same. */
+.grdc-file-tree-active {
+  background: var(--bgColor-accent-muted, var(--color-accent-subtle, rgba(9, 105, 218, 0.18))) !important;
+  box-shadow: inset 3px 0 0 0 var(--bgColor-accent-emphasis, var(--color-accent-emphasis, #0969da));
+  font-weight: 600;
+}
 .grdc-sidebar-outline-text {
   display: inline-block;
   white-space: nowrap;

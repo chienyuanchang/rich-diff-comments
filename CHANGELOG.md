@@ -4,7 +4,7 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
-## [1.8.0] — TBD
+## [1.8.0] — 2026-07-01
 
 ### Changed
 

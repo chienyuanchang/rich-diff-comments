@@ -4,11 +4,11 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
-## [1.9.0] — TBD
+## [1.9.0] — 2026-07-02
 
 ### Added
 
-- **GitHub's own file tree is now a live "you are here" indicator, in sync with the middle review area and the sidebar.** As you scroll between files, the matching row in GitHub's left-side file tree (and the "Jump to file" dropdown, and the file-list overview) picks up a subtle blue rail + background tint — matching how the sidebar's Outline pane already highlights the current heading. The highlight also updates instantly when you click a section in the Outline, a thread card, or a change card — no more waiting for the smooth-scroll to finish. Clicking anywhere on a tree row (the filename **or** its padding) now counts as a valid click, matching GitHub's own hit zone, so the sidebar counters and highlights react regardless of which pixel you hit.
+- **GitHub's own file tree is now a live "you are here" indicator, in sync with the middle review area and the sidebar.** As you scroll between files, the matching row in GitHub's left-side file tree (and the "Jump to file" dropdown) picks up a subtle blue rail and background tint — matching how the sidebar's Outline pane already highlights the current heading. The highlight also updates instantly when you click a section in the Outline, a thread, or a change. Clicking anywhere on a tree row — the filename or its padding — now counts as a valid click, matching GitHub's own hit zone, so the sidebar reacts regardless of which pixel you hit.
 
 ## [1.8.0] — 2026-07-01
 

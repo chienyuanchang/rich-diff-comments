@@ -40,7 +40,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const CSS_PATH = path.join(__dirname, '..', 'styles.css');
+const CSS_PATH = path.join(__dirname, '..', 'extensions', 'github', 'styles.css');
 const css = fs.readFileSync(CSS_PATH, 'utf8');
 
 // ───────────────────────────────────────────────────────────────────────────

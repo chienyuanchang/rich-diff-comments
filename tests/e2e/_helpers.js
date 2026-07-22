@@ -28,11 +28,25 @@ const fs = require('fs');
 const path = require('path');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
+const EXT_ROOT = path.join(REPO_ROOT, 'extensions', 'github');
 
 const MANIFEST = JSON.parse(
-  fs.readFileSync(path.join(REPO_ROOT, 'manifest.json'), 'utf8')
+  fs.readFileSync(path.join(EXT_ROOT, 'manifest.json'), 'utf8')
 );
 const CONTENT_SCRIPTS = MANIFEST.content_scripts[0].js; // in manifest order
+
+// Resolve a manifest-listed script path to a real file on disk. Shared
+// `src/lib/*.js` files live at the repo root as the single source of truth;
+// extension-specific files (content.js, styles.css, icons) live under
+// extensions/github/. This mirrors what Chrome sees at runtime because
+// scripts/dev-sync.ps1 copies the shared files into extensions/github/
+// before the extension is loaded — but reading them from the source lets
+// the e2e suite run without dev-sync having been executed first.
+function resolveScriptPath(scriptPath) {
+  const normalized = scriptPath.replace(/\\/g, '/');
+  const base = normalized.startsWith('src/') ? REPO_ROOT : EXT_ROOT;
+  return path.join(base, scriptPath);
+}
 
 // A fake-but-syntactically-valid PR URL. The extension parses `owner`,
 // `repo`, `pullNumber` from the pathname; the values themselves don't
@@ -116,7 +130,7 @@ async function gotoPRPage(page) {
   // styles.css would normally be loaded by the extension via manifest;
   // in our test setup we inject it explicitly so CSS-driven layout
   // (button position, hover visibility) is measurable.
-  await page.addStyleTag({ path: path.join(REPO_ROOT, 'styles.css') });
+  await page.addStyleTag({ path: path.join(EXT_ROOT, 'styles.css') });
   // Move the sidebar off the fixture's content strip before init. Since
   // 1.7.0 the sidebar's default position is top-centre (top:16px,
   // left:50%, translateX(-50%)) which — on real github.com — sits above
@@ -142,7 +156,7 @@ async function gotoPRPage(page) {
  */
 async function injectExtension(page) {
   for (const scriptPath of CONTENT_SCRIPTS) {
-    await page.addScriptTag({ path: path.join(REPO_ROOT, scriptPath) });
+    await page.addScriptTag({ path: resolveScriptPath(scriptPath) });
   }
 }
 

@@ -1,6 +1,12 @@
 # Local-only docs and test fixtures — not part of the published extension.
 local-only/
 
+# Extension build output — src/lib/ and PRIVACY.md are mirrored into each
+# extensions/<target>/ folder by scripts/dev-sync.ps1 so Chrome can load
+# the folder directly. Source of truth stays at the repo root.
+extensions/*/src/
+extensions/*/PRIVACY.md
+
 # Node test artifacts (none yet, but in case we add deps later)
 node_modules/
 

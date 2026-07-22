@@ -1,4 +1,4 @@
-# Pre-publish audit for Markdown PR Comments for GitHub.
+﻿# Pre-publish audit for Markdown PR Comments for GitHub.
 #
 # Run from the repository root.
 #
@@ -11,6 +11,8 @@
 
 [CmdletBinding()]
 param(
+  [ValidateSet('github', 'ado')]
+  [string]$Target = 'github',
   [string]$VerifyZip
 )
 
@@ -19,6 +21,19 @@ $ErrorActionPreference = "Stop"
 # Locate the extension root (two parents up from this script).
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = (Resolve-Path (Join-Path $scriptDir "..\..\..\..")).Path
+$extPrefix = "extensions\$Target"
+$extDir = Join-Path $root $extPrefix
+if (-not (Test-Path $extDir)) {
+  throw "Target folder does not exist: $extDir"
+}
+
+# Ensure the shared src/lib mirror and PRIVACY.md are up to date so
+# path checks below find them.
+& (Join-Path $root 'scripts\dev-sync.ps1') -Target $Target | Out-Null
+if (-not $?) {
+  throw "dev-sync.ps1 failed - can't audit an out-of-sync extension folder"
+}
+
 Push-Location $root
 
 $issues = @()
@@ -32,12 +47,13 @@ function Section($title) { Write-Host ""; Write-Host "== $title ==" -ForegroundC
 try {
   Section "Manifest"
 
-  if (-not (Test-Path "manifest.json")) {
-    Fail "manifest.json not found at $root"
+  $manifestPath = Join-Path $extPrefix 'manifest.json'
+  if (-not (Test-Path $manifestPath)) {
+    Fail "$manifestPath not found"
     throw "Missing manifest"
   }
 
-  $manifest = Get-Content "manifest.json" -Raw | ConvertFrom-Json
+  $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
   $version = $manifest.version
   Pass "version: $version"
   Pass "name: $($manifest.name)"
@@ -58,7 +74,10 @@ try {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $VerifyZip).Path)
     try {
-      $entries = $zip.Entries | ForEach-Object { $_.FullName }
+      # Normalize path separators to forward slashes for cross-platform
+      # comparison. Compress-Archive on Windows stores entries with
+      # backslashes; manifest paths use forward slashes.
+      $entries = $zip.Entries | ForEach-Object { $_.FullName -replace '\\', '/' }
       Write-Verbose ("zip entries:`n" + ($entries -join "`n"))
 
       if ($entries -notcontains "manifest.json") {
@@ -129,7 +148,7 @@ try {
         default          { "chrome\.${p}\." }
       }
 
-      $hit = Select-String -Path "content.js","src\lib\*.js" -Pattern $patterns 2>$null `
+      $hit = Select-String -Path "$extPrefix\content.js","$extPrefix\src\lib\*.js" -Pattern $patterns 2>$null `
         | Where-Object { $_.Line -notmatch '^\s*//' -and $_.Line -notmatch '^\s*\*' }
 
       if ($hit) {
@@ -150,7 +169,7 @@ try {
       # Strip the URL pattern to a host substring (e.g. https://github.com/* -> github.com)
       $hpHost = $hp -replace '^https?://', '' -replace '/.*$', '' -replace '\*\.?', ''
       if (-not $hpHost) { continue }
-      $hit = Select-String -Path "content.js","src\lib\*.js" -Pattern "fetch\([^)]*${hpHost}|fetch\([^)]*['""]/" 2>$null `
+      $hit = Select-String -Path "$extPrefix\content.js","$extPrefix\src\lib\*.js" -Pattern "fetch\([^)]*${hpHost}|fetch\([^)]*['""]/" 2>$null `
         | Where-Object { $_.Line -notmatch '^\s*//' -and $_.Line -notmatch '^\s*\*' }
       if ($hit) {
         Pass "host_permission '$hp' is used by fetch() ($($hit.Count) call$(if ($hit.Count -ne 1) { 's' }))"
@@ -165,20 +184,22 @@ try {
 
   $required = @("manifest.json", "content.js", "styles.css", "PRIVACY.md")
   foreach ($r in $required) {
-    if (Test-Path $r) { Pass "$r exists" } else { Fail "$r missing" }
+    $p = Join-Path $extPrefix $r
+    if (Test-Path $p) { Pass "$p exists" } else { Fail "$p missing" }
   }
 
-  # All content_scripts.js entries must exist
+  # All content_scripts.js entries must exist under the target folder
   foreach ($cs in $manifest.content_scripts) {
     foreach ($js in $cs.js) {
-      if (Test-Path $js) { Pass "content_scripts entry: $js" } else { Fail "content_scripts entry missing: $js" }
+      $p = Join-Path $extPrefix $js
+      if (Test-Path $p) { Pass "content_scripts entry: $p" } else { Fail "content_scripts entry missing: $p" }
     }
   }
 
-  # All declared icons must exist
+  # All declared icons must exist under the target folder
   if ($manifest.icons) {
     foreach ($size in $manifest.icons.PSObject.Properties.Name) {
-      $iconPath = $manifest.icons.$size
+      $iconPath = Join-Path $extPrefix $manifest.icons.$size
       if (Test-Path $iconPath) { Pass "icon $size : $iconPath" } else { Fail "icon $size missing: $iconPath" }
     }
   }

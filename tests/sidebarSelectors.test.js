@@ -35,7 +35,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const CONTENT_PATH = path.join(__dirname, '..', 'content.js');
+const CONTENT_PATH = path.join(__dirname, '..', 'extensions', 'github', 'content.js');
 const content = fs.readFileSync(CONTENT_PATH, 'utf8');
 
 // ───────────────────────────────────────────────────────────────────────────

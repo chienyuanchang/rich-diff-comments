@@ -84,7 +84,7 @@ When the feature is working, before declaring done:
 
 1. **Identify pure logic** that was inlined in `content.js`. If it has clear inputs/outputs and no DOM/fetch, lift it to `src/lib/<area>.js`.
 2. **Add unit tests** in `tests/<area>.test.js` using Node's built-in `node:test`. Cover happy paths, boundaries, defensive null/invalid input. Aim for 5–15 tests per helper.
-3. **Register new lib files** in `manifest.json` `content_scripts.js` array so the browser loads them.
+3. **Register new lib files** in `extensions/github/manifest.json` `content_scripts.js` array so the browser loads them. Then run `.\scripts\dev-sync.ps1` so the new file gets mirrored into `extensions/github/src/lib/` for the browser's dev-load pass. (`package.ps1` and `preflight.ps1` run dev-sync automatically; only the browser dev-load needs a manual sync.)
 4. **Re-run all tests:** `node --test (Get-ChildItem tests/*.test.js)` should be 100% green.
 5. **Re-run manual tests** against the manual checklist in DEV_NOTES.md.
 

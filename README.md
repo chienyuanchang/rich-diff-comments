@@ -39,10 +39,10 @@ No login, no setup, no Personal Access Token required. Works on public and priva
 1. `git clone https://github.com/chienyuanchang/rich-diff-comments`
 2. Open Chrome → `chrome://extensions/` (or Edge → `edge://extensions/`)
 3. Enable **Developer mode**
-4. Click **Load unpacked** and select the cloned folder
+4. Click **Load unpacked** and select the **`extensions/github/`** folder inside the clone
 5. Open any GitHub PR → **Files changed** → toggle rich diff on a `.md` file
 
-After editing `content.js`, click the reload icon on the extension card and hard-refresh the PR (Ctrl+Shift+R).
+After editing `extensions/github/content.js`, click the reload icon on the extension card and hard-refresh the PR (Ctrl+Shift+R). If you edit anything under `src/lib/` (shared pure helpers), run `.\scripts\dev-sync.ps1` first to mirror your changes into `extensions/github/`, then reload the extension.
 
 ## Usage
 
@@ -54,21 +54,28 @@ After editing `content.js`, click the reload icon on the extension card and hard
 ## Files
 
 ```
-manifest.json        Extension manifest (Manifest V3)
-src/lib/             Pure helpers shared between extension + tests
-  textMatch.js         block text → source-line matching
-  responses.js         GitHub API response parsing, path validation, escapeHtml, formatTimeAgo
-  tableRows.js         table row → source-line arithmetic
-  markdownPreview.js   offline markdown → HTML for the Preview tab
-  codeBlocks.js        fence detection + thread-head sorting
-content.js           Main content script (DOM + fetch glue)
-styles.css           Comment button and box styles
-icons/               Extension icons
-tests/               Node test runner specs (`npm test`)
-test_md_files/       Synthetic Markdown fixture for manual rich-diff testing
-docs/APPROACH.md     Strategy and design choices (start here)
-docs/DEV_NOTES.md    Implementation notes & GitHub internal data shapes
-docs/PUBLISHING.md   Store submission and release workflow
+extensions/github/     Chrome / Edge load unpacked from here
+  manifest.json           Extension manifest (Manifest V3)
+  content.js              Main content script (DOM + fetch glue)
+  styles.css              Comment button and box styles
+  icons/                  Extension icons
+  src/lib/                Mirrored from repo-root src/lib (git-ignored)
+  PRIVACY.md              Mirrored from repo-root PRIVACY.md (git-ignored)
+src/lib/               Shared pure helpers — source of truth
+  textMatch.js            block text → source-line matching
+  responses.js            GitHub API response parsing, path validation, escapeHtml, formatTimeAgo
+  tableRows.js            table row → source-line arithmetic
+  markdownPreview.js      offline markdown → HTML for the Preview tab
+  codeBlocks.js           fence detection + thread-head sorting
+scripts/
+  package.ps1             Build the publish zip (-Target github|ado)
+  dev-sync.ps1            Mirror src/lib + PRIVACY.md into extensions/<target>/
+tests/                 Node test runner specs (`npm test`)
+test_md_files/         Synthetic Markdown fixture for manual rich-diff testing
+docs/APPROACH.md       Strategy and design choices (start here)
+docs/DEV_NOTES.md      Implementation notes & GitHub internal data shapes
+docs/ADO_ADAPTER_PLAN.md   Plan for the Azure DevOps port (in progress)
+docs/PUBLISHING.md     Store submission and release workflow
 ```
 
 ## Tests
@@ -79,8 +86,8 @@ Two suites, both local — no live github.com calls.
 npm install         # one-time: fetches jsdom + @playwright/test (devDeps only)
 npx playwright install chromium    # one-time: ~150 MB Chromium for e2e tests
 
-npm test            # 268 fast unit tests (Node:test + jsdom), ~2s
-npm run test:e2e    # 20 Playwright e2e tests in headless Chromium, ~35s
+npm test            # 284 fast unit tests (Node:test + jsdom), ~2s
+npm run test:e2e    # 20 Playwright e2e tests in headless Chromium, ~12s
 npm run test:all    # both
 ```
 

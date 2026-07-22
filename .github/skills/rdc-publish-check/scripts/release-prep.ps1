@@ -1,4 +1,4 @@
-# Prepare a release folder under releases/<version>/ containing the
+﻿# Prepare a release folder under releases/<version>/ containing the
 # packaged zip for Chrome / Edge submission.
 #
 # Submission copy (titles, descriptions, justifications, reviewer notes,
@@ -37,10 +37,11 @@ Push-Location $root
 
 try {
   # ── Read version ──────────────────────────────────────────────────────
-  if (-not (Test-Path "manifest.json")) {
-    throw "manifest.json not found at $root"
+  $manifestPath = Join-Path $root 'extensions\github\manifest.json'
+  if (-not (Test-Path $manifestPath)) {
+    throw "manifest.json not found at $manifestPath"
   }
-  $manifest = Get-Content "manifest.json" -Raw | ConvertFrom-Json
+  $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
   $version = $manifest.version
   Write-Host "Preparing release artifacts for v$version" -ForegroundColor Cyan
 

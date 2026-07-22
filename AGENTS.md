@@ -24,16 +24,32 @@ Every entry in `CHANGELOG.md` (and the equivalent blocks in the store submission
 | Stable architecture decisions (why we forward-scan match, LEFT vs RIGHT side, edge-case strategy) | [docs/APPROACH.md](docs/APPROACH.md) |
 | Feature roadmap, status, priority (P0–P3) | [docs/FEATURES.md](docs/FEATURES.md) |
 
+### Repo layout
+
+The repository is a monorepo with per-target extension folders sharing a single source of truth for pure logic.
+
+- **`src/lib/`** — DOM-agnostic pure helpers (source of truth). Shared across every extension target. Tests import from here.
+- **`extensions/github/`** — the GitHub extension: `manifest.json`, `content.js`, `styles.css`, `icons/`, plus `src/lib/*.js` and `PRIVACY.md` mirrored in by `scripts/dev-sync.ps1`. **Chrome / Edge load unpacked from this folder.**
+- **`extensions/<target>/`** — future targets (planned: `ado/`). See [docs/ADO_ADAPTER_PLAN.md](docs/ADO_ADAPTER_PLAN.md).
+- **`scripts/dev-sync.ps1 -Target github`** — copies shared files from repo root into a target folder. Runs automatically before `package.ps1` and `preflight.ps1`. Re-run manually after editing anything under `src/lib/` if Chrome has the extension dev-loaded, then reload the extension.
+- **`scripts/package.ps1 -Target github|ado`** — builds a publish-ready zip from `extensions/<target>/`. Default target is `github`.
+- **`extensions/*/src/`** and **`extensions/*/PRIVACY.md`** are git-ignored — they're build output.
+
 ### Tests
 
-- `npm test` — 268 Node:test unit tests (~2s, no browser). Run before every commit touching JS.
-- `npm run test:e2e` — 20 Playwright tests in headless Chromium (~35s). Run when touching DOM-coupled code (`content.js`, `src/lib/lineMap.js`, `styles.css`).
+- `npm test` — 284 Node:test unit tests (~2s, no browser). Run before every commit touching JS.
+- `npm run test:e2e` — 20 Playwright tests in headless Chromium (~12s). Run when touching DOM-coupled code (`content.js`, `src/lib/lineMap.js`, `styles.css`).
 - `npm run test:all` — both suites.
 - Preflight (`.github/skills/rdc-publish-check/scripts/preflight.ps1`) runs `npm test` only — add `test:e2e` to your manual flow when DOM behavior changed.
 
 ### What ships vs. what stays local
 
-The published zip is built by [scripts/package.ps1](scripts/package.ps1) via an **allowlist**: `manifest.json`, `content.js`, `styles.css`, `src/`, `icons/`, `PRIVACY.md`. Everything else (`node_modules/`, `package.json`, `tests/`, `docs/`, `playwright.config.js`, `.github/`, `local-only/`) is naturally excluded; preflight's `-VerifyZip` mode also has a forbidden-paths denylist as a safety net. The extension ships **zero runtime npm dependencies** — `jsdom` and `@playwright/test` are dev-only.
+The published zip is built by [scripts/package.ps1](scripts/package.ps1) (`-Target github` by default) from `extensions/github/`. That folder contains:
+
+- **Physical files** (moved here from repo root during the refactor): `manifest.json`, `content.js`, `styles.css`, `icons/`.
+- **Mirrored files** (copied in by `scripts/dev-sync.ps1` from repo-root source-of-truth): `src/lib/*.js`, `PRIVACY.md`.
+
+`package.ps1` runs dev-sync automatically before zipping, so the shipped bundle is always in sync with the source. Everything else (`node_modules/`, `package.json`, `tests/`, `docs/`, `playwright.config.js`, `.github/`, `local-only/`, the repo-root `src/`) is naturally excluded because it lives outside `extensions/github/`; preflight's `-VerifyZip` mode also has a forbidden-paths denylist as a safety net. The extension ships **zero runtime npm dependencies** — `jsdom` and `@playwright/test` are dev-only.
 
 ### Skills
 

@@ -80,13 +80,14 @@ If everything passes, the script reports `READY TO PACKAGE` and exits 0. If any 
 
 ### 2. Build the publish zip
 
-If preflight passes, run the existing packager:
+If preflight passes, run the packager:
 
 ```powershell
-.\scripts\package.ps1
+.\scripts\package.ps1                # defaults to -Target github
+.\scripts\package.ps1 -Target github  # explicit
 ```
 
-This produces `grdc-<version>.zip` at the extension root.
+The packager runs `scripts/dev-sync.ps1` first (mirrors `src/lib/*.js` and `PRIVACY.md` into `extensions/<target>/`), then zips the target folder. Output is `rdc-<version>.zip` at the repo root.
 
 ### 3. Prepare the release folder (zip only)
 

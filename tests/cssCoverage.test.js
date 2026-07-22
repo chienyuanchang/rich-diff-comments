@@ -15,7 +15,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+const css = fs.readFileSync(path.join(__dirname, '..', 'extensions', 'github', 'styles.css'), 'utf8');
 
 /**
  * The tags that `buttonAnchor()` (src/lib/lineMap.js) can return as the

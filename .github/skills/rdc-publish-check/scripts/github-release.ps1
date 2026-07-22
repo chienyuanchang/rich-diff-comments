@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Tag the current commit and create a GitHub Release with the packaged zip,
   a SHA256 checksum, and release notes auto-extracted from CHANGELOG.md.
@@ -58,7 +58,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')
 Set-Location $repoRoot
 
-$manifestPath = Join-Path $repoRoot 'manifest.json'
+$manifestPath = Join-Path $repoRoot 'extensions\github\manifest.json'
 if (-not (Test-Path $manifestPath)) {
   throw "manifest.json not found at $manifestPath"
 }

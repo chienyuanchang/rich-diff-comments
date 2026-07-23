@@ -23,7 +23,8 @@
         "https://*.visualstudio.com/*/_git/*/pullrequest/*"
       ],
       "js": ["src/adapters/ado.js", "content.js"],
-      "css": ["styles.css"]
+      "css": ["styles.css"],
+      "world": "MAIN"
     }
   ]
 }

@@ -96,7 +96,7 @@
     }
   };
 
-  console.log(`${LOG} DevTools probe available: window.ADORC_probe (try 'await ADORC_probe.list()')`);
+  console.log(`${LOG} DevTools probe available: ADORC_probe (try 'await ADORC_probe.list()')`);
 
   // ── DOM smoke test ─────────────────────────────────────────────────────
   //

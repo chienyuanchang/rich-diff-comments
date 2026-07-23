@@ -22,7 +22,13 @@
         "https://dev.azure.com/*/_git/*/pullrequest/*",
         "https://*.visualstudio.com/*/_git/*/pullrequest/*"
       ],
-      "js": ["src/adapters/ado.js", "content.js"],
+      "js": [
+        "src/lib/textMatch.js",
+        "src/lib/tableRows.js",
+        "src/lib/lineMap.js",
+        "src/adapters/ado.js",
+        "content.js"
+      ],
       "css": ["styles.css"],
       "world": "MAIN"
     }

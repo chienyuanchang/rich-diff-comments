@@ -106,6 +106,7 @@ test('isSystemThread - returns false for null / undefined / empty', () => {
 // ─── URL builders ──────────────────────────────────────────────────────
 
 const CTX = { org: 'myorg', repoId: 'REPO-GUID', prId: 42 };
+const CTX_WITH_PROJECT = { org: 'myorg', projectId: 'PROJ-GUID', repoId: 'REPO-GUID', prId: 42 };
 
 test('threadsUrl - builds the collection endpoint with the api-version query', () => {
   assert.equal(
@@ -133,6 +134,39 @@ test('commentUrl - builds a single-comment endpoint', () => {
     ado.commentUrl(CTX, 7, 3),
     `/myorg/_apis/git/repositories/REPO-GUID/pullRequests/42/threads/7/comments/3?api-version=${ado.API_VERSION}`
   );
+});
+
+test('pullRequestUrl - builds the single-PR metadata endpoint', () => {
+  assert.equal(
+    ado.pullRequestUrl(CTX),
+    `/myorg/_apis/git/repositories/REPO-GUID/pullRequests/42?api-version=${ado.API_VERSION}`
+  );
+});
+
+test('itemUrl - builds the file-content endpoint with project scope + branch version', () => {
+  const url = ado.itemUrl(CTX_WITH_PROJECT, '/README.md', { version: 'test_pr', versionType: 'branch' });
+  assert.match(url, /^\/myorg\/PROJ-GUID\/_apis\/git\/repositories\/REPO-GUID\/items\?/);
+  assert.match(url, /path=%2FREADME.md/);
+  assert.match(url, /includeContent=true/);
+  assert.match(url, /versionDescriptor.version=test_pr/);
+  assert.match(url, /versionDescriptor.versionType=branch/);
+  assert.match(url, /api-version=/);
+});
+
+test('itemUrl - omits versionDescriptor when no version is passed (default branch)', () => {
+  const url = ado.itemUrl(CTX_WITH_PROJECT, '/README.md', {});
+  assert.doesNotMatch(url, /versionDescriptor/);
+});
+
+test('itemUrl - falls back to project-less URL when projectId missing (edge case)', () => {
+  const url = ado.itemUrl({ org: 'myorg', repoId: 'REPO-GUID' }, '/foo.md', {});
+  assert.match(url, /^\/myorg\/_apis\/git\/repositories\/REPO-GUID\/items\?/);
+});
+
+test('itemUrl - normalizes filePath so callers can pass with or without leading slash', () => {
+  const withSlash = ado.itemUrl(CTX_WITH_PROJECT, '/README.md', {});
+  const noSlash = ado.itemUrl(CTX_WITH_PROJECT, 'README.md', {});
+  assert.equal(withSlash, noSlash);
 });
 
 // ─── API_VERSION constant ──────────────────────────────────────────────

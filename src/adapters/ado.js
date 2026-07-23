@@ -104,6 +104,35 @@
     return `/${ctx.org}/_apis/git/repositories/${ctx.repoId}/pullRequests/${ctx.prId}/threads/${threadId}/comments/${commentId}?api-version=${API_VERSION}`;
   }
 
+  function pullRequestUrl(ctx) {
+    return `/${ctx.org}/_apis/git/repositories/${ctx.repoId}/pullRequests/${ctx.prId}?api-version=${API_VERSION}`;
+  }
+
+  /**
+   * Build a URL to fetch the contents of a file at a specific version.
+   * Uses the project-scoped items endpoint because that's the shape ADO's
+   * own web UI issues (as observed in the sandbox network log).
+   *
+   * @param {object} ctx    Must include org, projectId, repoId.
+   * @param {string} path   File path (with or without leading /).
+   * @param {object} opts   { version, versionType } — versionType is
+   *                        'branch' | 'commit' | 'tag'. If omitted, ADO
+   *                        returns the default branch's content.
+   */
+  function itemUrl(ctx, path, opts) {
+    const params = new URLSearchParams();
+    params.set('path', normalizeFilePath(path));
+    params.set('includeContent', 'true');
+    params.set('api-version', API_VERSION);
+    if (opts && opts.version) {
+      params.set('versionDescriptor.version', opts.version);
+      params.set('versionDescriptor.versionType', opts.versionType || 'branch');
+    }
+    const project = ctx.projectId || ctx.projectName || '';
+    const projectSegment = project ? `/${project}` : '';
+    return `/${ctx.org}${projectSegment}/_apis/git/repositories/${ctx.repoId}/items?${params.toString()}`;
+  }
+
   // ── Path normalization ─────────────────────────────────────────────────
 
   /**
@@ -155,6 +184,47 @@
     fetchImpl = fetchImpl || fetch;
     const resp = await fetchImpl(threadsUrl(ctx), { credentials: 'same-origin' });
     return _json(resp);
+  }
+
+  /**
+   * Fetch the PR's metadata — sourceRefName, targetRefName, iteration
+   * count, lastMergeSourceCommit, etc. Used to figure out which commit /
+   * branch to fetch file source from.
+   */
+  async function getPullRequest(ctx, fetchImpl) {
+    fetchImpl = fetchImpl || fetch;
+    const resp = await fetchImpl(pullRequestUrl(ctx), { credentials: 'same-origin' });
+    return _json(resp);
+  }
+
+  /**
+   * Fetch a file's raw source text at a given branch/commit. ADO's items
+   * endpoint returns JSON with a `content` field (when `includeContent=true`).
+   * `opts` mirrors itemUrl: { version, versionType }.
+   */
+  async function getFileSource(ctx, path, opts, fetchImpl) {
+    fetchImpl = fetchImpl || fetch;
+    const url = itemUrl(ctx, path, opts);
+    const resp = await fetchImpl(url, { credentials: 'same-origin' });
+    if (!resp.ok) {
+      const body = await resp.text();
+      const err = new Error(`getFileSource ${resp.status}: ${body.slice(0, 300)}`);
+      err.status = resp.status;
+      throw err;
+    }
+    // Response may be JSON (with includeContent=true) or raw text. Try
+    // JSON first; on parse failure, treat as raw.
+    const text = await resp.text();
+    try {
+      const data = JSON.parse(text);
+      // The JSON path: item metadata with a `content` string.
+      if (data && typeof data.content === 'string') return data.content;
+      // Otherwise, the parsed JSON isn't a single-item response — return
+      // the raw text so the caller can inspect.
+      return text;
+    } catch {
+      return text;
+    }
   }
 
   /**
@@ -281,12 +351,16 @@
     threadUrl,
     commentsUrl,
     commentUrl,
+    pullRequestUrl,
+    itemUrl,
 
     // Predicates / normalizers
     isSystemThread,
 
     // Endpoint wrappers (all cookie-authenticated)
     listThreads,
+    getPullRequest,
+    getFileSource,
     createThread,
     reply,
     setThreadStatus,

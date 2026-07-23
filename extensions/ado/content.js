@@ -93,10 +93,75 @@
     async delete(threadId, commentId) {
       await adapter.resolveIds(ctx);
       return adapter.deleteComment(ctx, threadId, commentId);
+    },
+
+    // ── Line-mapping probes (§12 step 3) ─────────────────────────────────
+
+    async pr() {
+      await adapter.resolveIds(ctx);
+      const pr = await adapter.getPullRequest(ctx);
+      console.log(`${LOG} PR sourceRefName=${pr.sourceRefName} targetRefName=${pr.targetRefName} lastMergeSourceCommit=${pr.lastMergeSourceCommit && pr.lastMergeSourceCommit.commitId}`);
+      return pr;
+    },
+
+    /**
+     * Fetch the raw source of a file at the PR's source branch tip.
+     * Convenience wrapper — chains getPullRequest() → getFileSource().
+     */
+    async source(filePath) {
+      await adapter.resolveIds(ctx);
+      const pr = await adapter.getPullRequest(ctx);
+      // sourceRefName is like "refs/heads/test_pr" — strip the refs/heads/ prefix.
+      const branch = (pr.sourceRefName || '').replace(/^refs\/heads\//, '');
+      if (!branch) throw new Error('probe.source: could not derive source branch from PR');
+      const text = await adapter.getFileSource(ctx, filePath, { version: branch, versionType: 'branch' });
+      console.log(`${LOG} source(${filePath}) at branch=${branch}: ${text.length} chars, ${text.split('\n').length} lines`);
+      return text;
+    },
+
+    /**
+     * End-to-end line-mapping probe: fetch source, locate the
+     * .markdown-preview-container currently on the page, run
+     * mapBlocksToSourceLines, and return a serializable summary.
+     *
+     * Assumes exactly one Preview container is visible (the current file).
+     * The caller passes the file path so we know what raw source to fetch.
+     */
+    async detectLines(filePath) {
+      const container = document.querySelector('.markdown-preview-container');
+      if (!container) {
+        throw new Error('probe.detectLines: no .markdown-preview-container in the DOM — switch the file to "Preview" mode');
+      }
+      const source = await this.source(filePath);
+      const sourceLines = source.split('\n');
+
+      const GRDC = window.GRDC || {};
+      const { mapBlocksToSourceLines, buildSourceIndex, findTextInSource, findFrontmatterRange, computeTableRowLine } = GRDC;
+      if (typeof mapBlocksToSourceLines !== 'function') {
+        throw new Error('probe.detectLines: window.GRDC.mapBlocksToSourceLines missing — check manifest content_scripts.js order');
+      }
+
+      const map = mapBlocksToSourceLines(
+        container,
+        sourceLines,
+        filePath,
+        { buildSourceIndex, findTextInSource, findFrontmatterRange, computeTableRowLine },
+        console.log.bind(console)
+      );
+
+      // Serialize for readable console output.
+      const summary = [];
+      map.forEach((info, el) => {
+        const text = (el.textContent || '').trim().slice(0, 60);
+        summary.push({ tag: el.tagName, line: info.line, snippet: text });
+      });
+      console.log(`${LOG} detectLines(${filePath}): ${summary.length} blocks mapped`);
+      console.table(summary);
+      return summary;
     }
   };
 
-  console.log(`${LOG} DevTools probe available: ADORC_probe (try 'await ADORC_probe.list()')`);
+  console.log(`${LOG} DevTools probe available: ADORC_probe (try 'await ADORC_probe.list()' or 'await ADORC_probe.detectLines(\"/README.md\")')`);
 
   // ── DOM smoke test ─────────────────────────────────────────────────────
   //

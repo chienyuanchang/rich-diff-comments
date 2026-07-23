@@ -27,14 +27,23 @@
 
 /* Give the Preview container enough left padding for the `+` button to
    sit outside each block without being clipped by the container edge.
-   GitHub's .markdown-body already has left space; ADO's does not, so we
-   reserve it here. 32px = 22px button + a hair of breathing room. */
+   `!important` because ADO's own CSS specifies padding on this class.
+   `overflow: visible` because even a small clip would eat the button. */
 .markdown-preview-container {
-  padding-left: 40px;
+  padding-left: 40px !important;
+  overflow: visible !important;
 }
 
+/* Defensive fallback: on each hoverable block, reserve a `padding-left`
+   with a matching negative `margin-left`. The block box grows 32px to the
+   left but the text stays in the same visual position. The `+` button
+   (positioned at `left: 4px`) then sits inside the reserved area,
+   visually to the left of the text — independent of whatever the ancestor
+   container does with its own padding. */
 .adrc-hoverable {
   position: relative;
+  padding-left: 32px;
+  margin-left: -32px;
 }
 
 .adrc-hoverable:hover {
@@ -44,7 +53,7 @@
 
 .adrc-comment-btn {
   position: absolute;
-  left: -30px;
+  left: 4px;
   top: 50%;
   transform: translateY(-50%);
   width: 22px;
@@ -84,10 +93,13 @@
   opacity: 0;
 }
 
-/* Table cells anchor differently — inside the cell, not to its left. */
+/* Table cells anchor differently — inside the cell, not to its left.
+   Reset the negative-margin trick so cells don't overflow the table. */
 td.adrc-hoverable,
 th.adrc-hoverable {
   position: relative;
+  padding-left: 0;
+  margin-left: 0;
 }
 td.adrc-hoverable .adrc-comment-btn,
 th.adrc-hoverable .adrc-comment-btn {
@@ -96,16 +108,26 @@ th.adrc-hoverable .adrc-comment-btn {
   transform: none;
 }
 
-/* Wide code blocks — keep the button reachable at the left edge. */
+/* Wide code blocks — keep the button reachable at the left edge.
+   Reset the negative-margin trick so the block doesn't shift. */
+pre.adrc-hoverable {
+  padding-left: 0;
+  margin-left: 0;
+}
 pre.adrc-hoverable .adrc-comment-btn {
   left: 4px;
   top: 4px;
   transform: none;
 }
 
-/* List items — anchor to the first line, not the vertical middle
-   (a nested list would push the middle down inside a sub-list). */
+/* List items — the negative-margin trick collides with the bullet /
+   ordered-list indent. Anchor the `+` inside the item instead. */
+li.adrc-hoverable {
+  padding-left: 0;
+  margin-left: 0;
+}
 li.adrc-hoverable .adrc-comment-btn {
+  left: -26px;
   top: 4px;
   transform: none;
 }

@@ -1,7 +1,309 @@
 /*
- * Markdown PR Comments for Azure DevOps — v0.0.1 skeleton.
+ * Markdown PR Comments for Azure DevOps — v0.1.x
  *
- * No UI yet. Styles will land alongside the + button work in v0.1.x.
- * Kept as a real (empty) file so the manifest's `css: ["styles.css"]`
- * declaration validates and package.ps1 doesn't fail its allowlist check.
+ * Overlay styles for the `+` comment button, the inline comment box, and
+ * their hover / focus states. Deliberately namespaced under `.adrc-*` so
+ * nothing here can collide with ADO's own class names.
+ *
+ * Colors track Microsoft's Fluent palette (#0078d4 = Communication Blue).
+ * Kept a single source of truth for tokens at the top so the color scheme
+ * is easy to shift when we add a dark-mode pass later.
  */
+
+:root {
+  --adrc-accent: #0078d4;
+  --adrc-accent-hover: #106ebe;
+  --adrc-accent-tint: rgba(0, 120, 212, 0.08);
+  --adrc-danger: #d13438;
+  --adrc-success: #107c10;
+  --adrc-border: #d1d1d1;
+  --adrc-text: #201f1e;
+  --adrc-text-muted: #605e5c;
+  --adrc-bg: #ffffff;
+  --adrc-bg-subtle: #faf9f8;
+}
+
+/* ── The `+` comment button ─────────────────────────────────────────── */
+
+/* Give the Preview container enough left padding for the `+` button to
+   sit outside each block without being clipped by the container edge.
+   GitHub's .markdown-body already has left space; ADO's does not, so we
+   reserve it here. 32px = 22px button + a hair of breathing room. */
+.markdown-preview-container {
+  padding-left: 40px;
+}
+
+.adrc-hoverable {
+  position: relative;
+}
+
+.adrc-hoverable:hover {
+  background: var(--adrc-accent-tint);
+  border-radius: 4px;
+}
+
+.adrc-comment-btn {
+  position: absolute;
+  left: -30px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--adrc-accent);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 100;
+}
+
+.adrc-comment-btn:hover {
+  background: var(--adrc-accent-hover);
+}
+
+.adrc-comment-btn svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.adrc-hoverable:hover > .adrc-comment-btn {
+  opacity: 1;
+}
+
+/* Only show the `+` on the deepest hovered block — see the equivalent
+   comment in extensions/github/styles.css. `:has()` avoids two buttons
+   appearing on nested list items. */
+.adrc-hoverable:has(.adrc-hoverable:hover) > .adrc-comment-btn {
+  opacity: 0;
+}
+
+/* Table cells anchor differently — inside the cell, not to its left. */
+td.adrc-hoverable,
+th.adrc-hoverable {
+  position: relative;
+}
+td.adrc-hoverable .adrc-comment-btn,
+th.adrc-hoverable .adrc-comment-btn {
+  left: 2px;
+  top: 4px;
+  transform: none;
+}
+
+/* Wide code blocks — keep the button reachable at the left edge. */
+pre.adrc-hoverable .adrc-comment-btn {
+  left: 4px;
+  top: 4px;
+  transform: none;
+}
+
+/* List items — anchor to the first line, not the vertical middle
+   (a nested list would push the middle down inside a sub-list). */
+li.adrc-hoverable .adrc-comment-btn {
+  top: 4px;
+  transform: none;
+}
+
+/* ── The inline comment box ─────────────────────────────────────────── */
+
+.adrc-comment-box {
+  margin: 8px 0 16px;
+  padding: 12px;
+  background: var(--adrc-bg-subtle);
+  border: 1px solid var(--adrc-border);
+  border-left: 3px solid var(--adrc-accent);
+  border-radius: 4px;
+  font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  color: var(--adrc-text);
+  max-width: 720px;
+}
+
+.adrc-comment-box-header {
+  margin-bottom: 8px;
+  color: var(--adrc-text-muted);
+  font-size: 12px;
+}
+
+.adrc-comment-input {
+  width: 100%;
+  min-height: 72px;
+  max-height: 400px;
+  padding: 8px;
+  border: 1px solid var(--adrc-border);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  box-sizing: border-box;
+  resize: vertical;
+  background: var(--adrc-bg);
+  color: var(--adrc-text);
+}
+
+.adrc-comment-input:focus {
+  outline: none;
+  border-color: var(--adrc-accent);
+  box-shadow: 0 0 0 1px var(--adrc-accent);
+}
+
+.adrc-comment-box-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+.adrc-comment-cancel,
+.adrc-comment-submit {
+  padding: 6px 14px;
+  border-radius: 2px;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.adrc-comment-cancel {
+  background: transparent;
+  border-color: var(--adrc-border);
+  color: var(--adrc-text);
+}
+
+.adrc-comment-cancel:hover {
+  background: var(--adrc-accent-tint);
+}
+
+.adrc-comment-submit {
+  background: var(--adrc-accent);
+  color: white;
+}
+
+.adrc-comment-submit:hover:not(:disabled) {
+  background: var(--adrc-accent-hover);
+}
+
+.adrc-comment-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.adrc-comment-posted {
+  color: var(--adrc-success);
+  font-size: 14px;
+  padding: 8px 0;
+}
+
+.adrc-comment-error {
+  color: var(--adrc-danger);
+  font-size: 12px;
+  margin-right: auto;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  max-width: 60%;
+}
+
+/* ── Existing thread badges (rendered inline near their anchor block) ── */
+
+.adrc-thread-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 12px;
+  padding: 4px 10px;
+  background: var(--adrc-bg-subtle);
+  border: 1px solid var(--adrc-border);
+  border-radius: 12px;
+  font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 12px;
+  color: var(--adrc-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.adrc-thread-badge:hover {
+  background: var(--adrc-accent-tint);
+  border-color: var(--adrc-accent);
+}
+
+.adrc-thread-badge[data-status="fixed"] {
+  opacity: 0.6;
+}
+
+.adrc-thread-badge .adrc-thread-status {
+  color: var(--adrc-success);
+  font-weight: 600;
+}
+
+/* Expanded thread panel (below the badge when opened). */
+
+.adrc-thread-panel {
+  margin: 6px 0 14px;
+  padding: 12px;
+  background: var(--adrc-bg-subtle);
+  border: 1px solid var(--adrc-border);
+  border-left: 3px solid var(--adrc-accent);
+  border-radius: 4px;
+  font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  color: var(--adrc-text);
+  max-width: 720px;
+}
+
+.adrc-thread-panel[data-status="fixed"] {
+  opacity: 0.75;
+}
+
+.adrc-thread-panel-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--adrc-text-muted);
+}
+
+.adrc-thread-panel-header .adrc-thread-status {
+  color: var(--adrc-success);
+  font-weight: 600;
+}
+
+.adrc-thread-comment {
+  padding: 8px 0;
+  border-top: 1px solid var(--adrc-border);
+}
+
+.adrc-thread-comment:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.adrc-thread-comment-meta {
+  font-size: 12px;
+  color: var(--adrc-text-muted);
+  margin-bottom: 4px;
+}
+
+.adrc-thread-comment-author {
+  color: var(--adrc-text);
+  font-weight: 600;
+}
+
+.adrc-thread-comment-body {
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.adrc-thread-comment-deleted {
+  font-style: italic;
+  color: var(--adrc-text-muted);
+}

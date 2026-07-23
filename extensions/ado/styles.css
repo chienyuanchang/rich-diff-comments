@@ -1,0 +1,7 @@
+/*
+ * Markdown PR Comments for Azure DevOps — v0.0.1 skeleton.
+ *
+ * No UI yet. Styles will land alongside the + button work in v0.1.x.
+ * Kept as a real (empty) file so the manifest's `css: ["styles.css"]`
+ * declaration validates and package.ps1 doesn't fail its allowlist check.
+ */

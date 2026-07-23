@@ -57,6 +57,19 @@ try {
   $relDst = $dstLib.Replace($root, '.')
   Write-Host "[dev-sync] $Target : $($libFiles.Count) src/lib file$suffix copied -> $relDst"
 
+  # src/adapters mirror (only the current target's adapter, if it exists)
+  $srcAdapter = Join-Path $root "src\adapters\$Target.js"
+  if (Test-Path $srcAdapter) {
+    $dstAdapters = Join-Path $targetDir 'src\adapters'
+    if (Test-Path $dstAdapters) {
+      Remove-Item -Recurse -Force $dstAdapters
+    }
+    New-Item -ItemType Directory -Path $dstAdapters -Force | Out-Null
+    Copy-Item -Path $srcAdapter -Destination $dstAdapters -Force
+    $relAdapter = (Join-Path $dstAdapters "$Target.js").Replace($root, '.')
+    Write-Host "[dev-sync] $Target : src/adapters/$Target.js copied -> $relAdapter"
+  }
+
   # PRIVACY.md mirror
   $srcPrivacy = Join-Path $root 'PRIVACY.md'
   if (Test-Path $srcPrivacy) {

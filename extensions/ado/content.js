@@ -242,8 +242,120 @@
       : '';
     const header = `<div class="adrc-thread-panel-header">Thread ${thread.id}${statusSuffix}</div>`;
     const comments = (thread.comments || []).map(renderCommentHtml).join('');
-    panel.innerHTML = header + comments;
+    const resolveLabel = thread.status === 'fixed' ? 'Unresolve' : 'Resolve';
+    const actions = [
+      '<div class="adrc-thread-actions">',
+      '  <button type="button" class="adrc-thread-action-btn adrc-thread-reply">Reply</button>',
+      `  <button type="button" class="adrc-thread-action-btn adrc-thread-toggle-status">${resolveLabel}</button>`,
+      '</div>'
+    ].join('\n');
+
+    panel.innerHTML = header + comments + actions;
+
+    // Wire the action buttons.
+    const replyBtn = panel.querySelector('.adrc-thread-reply');
+    const statusBtn = panel.querySelector('.adrc-thread-toggle-status');
+
+    replyBtn.addEventListener('click', () => openReplyBox(panel, thread));
+    statusBtn.addEventListener('click', () => toggleThreadStatus(thread, statusBtn));
+
     return panel;
+  }
+
+  /**
+   * Open a reply textarea inside the given expanded thread panel.
+   * Submits via `adapter.reply()` and refreshes badges on success so
+   * the new reply shows up immediately.
+   */
+  function openReplyBox(panel, thread) {
+    const existing = panel.querySelector('.adrc-reply-box');
+    if (existing) {
+      existing.querySelector('textarea').focus();
+      return;
+    }
+
+    const box = document.createElement('div');
+    box.className = 'adrc-reply-box';
+    box.innerHTML = [
+      '<textarea class="adrc-comment-input" rows="2" placeholder="Reply (Markdown supported). Ctrl+Enter to submit."></textarea>',
+      '<div class="adrc-comment-box-actions">',
+      '  <button type="button" class="adrc-comment-cancel">Cancel</button>',
+      '  <button type="button" class="adrc-comment-submit">Reply</button>',
+      '</div>'
+    ].join('\n');
+
+    // Insert above the action bar so it stays grouped with the comment thread.
+    const actions = panel.querySelector('.adrc-thread-actions');
+    panel.insertBefore(box, actions);
+
+    const textarea = box.querySelector('.adrc-comment-input');
+    const submitBtn = box.querySelector('.adrc-comment-submit');
+    const cancelBtn = box.querySelector('.adrc-comment-cancel');
+
+    textarea.focus();
+
+    cancelBtn.addEventListener('click', () => box.remove());
+
+    textarea.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        submitBtn.click();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        box.remove();
+      }
+    });
+
+    submitBtn.addEventListener('click', async () => {
+      const content = textarea.value.trim();
+      if (!content) {
+        textarea.focus();
+        return;
+      }
+      const oldError = box.querySelector('.adrc-comment-error');
+      if (oldError) oldError.remove();
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Posting…';
+      try {
+        await adapter.resolveIds(ctx);
+        await adapter.reply(ctx, thread.id, content);
+        console.log(`${LOG} reply posted on thread ${thread.id}`);
+        // Refresh so the reply appears in the panel immediately.
+        await refreshThreadBadges();
+      } catch (err) {
+        console.error(`${LOG} reply failed:`, err);
+        const actionsRow = box.querySelector('.adrc-comment-box-actions');
+        const errNode = document.createElement('span');
+        errNode.className = 'adrc-comment-error';
+        errNode.textContent = String(err.message || err).slice(0, 200);
+        actionsRow.insertBefore(errNode, actionsRow.firstChild);
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Reply';
+      }
+    });
+  }
+
+  /**
+   * Flip a thread between active (1) and fixed (2). Re-renders badges
+   * on success so the collapsed/expanded state and status text update.
+   */
+  async function toggleThreadStatus(thread, btn) {
+    const wasFixed = thread.status === 'fixed';
+    const newStatus = wasFixed ? 1 : 2;
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = wasFixed ? 'Unresolving…' : 'Resolving…';
+    try {
+      await adapter.resolveIds(ctx);
+      await adapter.setThreadStatus(ctx, thread.id, newStatus);
+      console.log(`${LOG} thread ${thread.id} -> ${wasFixed ? 'active' : 'fixed'}`);
+      await refreshThreadBadges();
+    } catch (err) {
+      console.error(`${LOG} setThreadStatus failed:`, err);
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
   }
 
   function renderThreadBadge(block, thread) {
@@ -268,7 +380,17 @@
     badge.dataset.status = thread.status;
     badge.innerHTML = `💬 ${visibleCount} comment${visibleCount !== 1 ? 's' : ''}${statusSuffix}`;
 
+    parent.parentNode.insertBefore(badge, parent.nextSibling);
+
+    // Unresolved threads auto-expand so reviewers immediately see what
+    // needs attention. Resolved threads stay collapsed as a compact
+    // badge; clicking expands them on demand.
     let panel = null;
+    if (thread.status !== 'fixed') {
+      panel = buildThreadPanel(thread);
+      badge.parentNode.insertBefore(panel, badge.nextSibling);
+    }
+
     badge.addEventListener('click', () => {
       if (panel && panel.parentNode) {
         panel.remove();
@@ -278,8 +400,6 @@
       panel = buildThreadPanel(thread);
       badge.parentNode.insertBefore(panel, badge.nextSibling);
     });
-
-    parent.parentNode.insertBefore(badge, parent.nextSibling);
   }
 
   /**

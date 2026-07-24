@@ -329,3 +329,48 @@ li.adrc-hoverable .adrc-comment-btn {
   font-style: italic;
   color: var(--adrc-text-muted);
 }
+
+/* Action bar at the bottom of an expanded thread panel — Reply + Resolve. */
+
+.adrc-thread-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid var(--adrc-border);
+}
+
+.adrc-thread-action-btn {
+  padding: 4px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  background: transparent;
+  border: 1px solid var(--adrc-border);
+  border-radius: 2px;
+  color: var(--adrc-text);
+  cursor: pointer;
+}
+
+.adrc-thread-action-btn:hover:not(:disabled) {
+  background: var(--adrc-accent-tint);
+  border-color: var(--adrc-accent);
+}
+
+.adrc-thread-action-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Reply box (opens inside an expanded panel when Reply is clicked). */
+
+.adrc-reply-box {
+  margin: 10px 0;
+  padding: 10px;
+  background: var(--adrc-bg);
+  border: 1px solid var(--adrc-border);
+  border-radius: 4px;
+}
+
+.adrc-reply-box .adrc-comment-input {
+  min-height: 56px;
+}

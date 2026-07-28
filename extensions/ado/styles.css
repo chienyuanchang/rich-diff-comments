@@ -132,9 +132,9 @@ li.adrc-hoverable .adrc-comment-btn {
   transform: none;
 }
 
-/* ── The inline comment box ─────────────────────────────────────────── */
+/* ── The inline editor (compose new thread + reply + edit) ──────────── */
 
-.adrc-comment-box {
+.adrc-editor {
   margin: 8px 0 16px;
   padding: 12px;
   background: var(--adrc-bg-subtle);
@@ -145,21 +145,88 @@ li.adrc-hoverable .adrc-comment-btn {
   font-size: 14px;
   color: var(--adrc-text);
   max-width: 720px;
+  box-sizing: border-box;
 }
 
-.adrc-comment-box-header {
+.adrc-editor-header {
   margin-bottom: 8px;
   color: var(--adrc-text-muted);
   font-size: 12px;
 }
 
-.adrc-comment-input {
+.adrc-editor-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--adrc-border);
+  margin-bottom: 8px;
+}
+
+.adrc-editor-tab {
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--adrc-text-muted);
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+  position: relative;
+  bottom: -1px;
+}
+
+.adrc-editor-tab:hover {
+  color: var(--adrc-text);
+}
+
+.adrc-editor-tab.active {
+  background: var(--adrc-bg);
+  border-color: var(--adrc-border);
+  color: var(--adrc-text);
+  font-weight: 600;
+}
+
+.adrc-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-bottom: 6px;
+  padding: 4px;
+  background: var(--adrc-bg);
+  border: 1px solid var(--adrc-border);
+  border-radius: 4px 4px 0 0;
+  border-bottom: none;
+}
+
+.adrc-editor-toolbar-btn {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--adrc-text);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.adrc-editor-toolbar-btn:hover {
+  background: var(--adrc-accent-tint);
+  border-color: var(--adrc-border);
+}
+
+.adrc-editor-textarea {
   width: 100%;
   min-height: 72px;
   max-height: 400px;
   padding: 8px;
   border: 1px solid var(--adrc-border);
-  border-radius: 4px;
+  border-radius: 0 0 4px 4px;
+  border-top: none;
   font-family: inherit;
   font-size: 14px;
   line-height: 1.5;
@@ -167,15 +234,36 @@ li.adrc-hoverable .adrc-comment-btn {
   resize: vertical;
   background: var(--adrc-bg);
   color: var(--adrc-text);
+  overflow-y: auto;
 }
 
-.adrc-comment-input:focus {
+.adrc-editor-textarea:focus {
   outline: none;
   border-color: var(--adrc-accent);
   box-shadow: 0 0 0 1px var(--adrc-accent);
 }
 
-.adrc-comment-box-actions {
+.adrc-editor-preview {
+  width: 100%;
+  min-height: 72px;
+  padding: 12px;
+  border: 1px solid var(--adrc-border);
+  border-radius: 4px;
+  background: var(--adrc-bg);
+  color: var(--adrc-text);
+  font-size: 14px;
+  line-height: 1.5;
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+}
+
+.adrc-editor-preview .grdc-preview-empty {
+  color: var(--adrc-text-muted);
+  font-style: italic;
+  margin: 0;
+}
+
+.adrc-editor-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
@@ -183,8 +271,8 @@ li.adrc-hoverable .adrc-comment-btn {
   align-items: center;
 }
 
-.adrc-comment-cancel,
-.adrc-comment-submit {
+.adrc-editor-cancel,
+.adrc-editor-submit {
   padding: 6px 14px;
   border-radius: 2px;
   font-family: inherit;
@@ -193,43 +281,50 @@ li.adrc-hoverable .adrc-comment-btn {
   border: 1px solid transparent;
 }
 
-.adrc-comment-cancel {
+.adrc-editor-cancel {
   background: transparent;
   border-color: var(--adrc-border);
   color: var(--adrc-text);
 }
 
-.adrc-comment-cancel:hover {
+.adrc-editor-cancel:hover {
   background: var(--adrc-accent-tint);
 }
 
-.adrc-comment-submit {
+.adrc-editor-submit {
   background: var(--adrc-accent);
   color: white;
 }
 
-.adrc-comment-submit:hover:not(:disabled) {
+.adrc-editor-submit:hover:not(:disabled) {
   background: var(--adrc-accent-hover);
 }
 
-.adrc-comment-submit:disabled {
+.adrc-editor-submit:disabled {
   opacity: 0.6;
   cursor: default;
 }
 
-.adrc-comment-posted {
-  color: var(--adrc-success);
-  font-size: 14px;
-  padding: 8px 0;
-}
-
-.adrc-comment-error {
+.adrc-editor-error {
   color: var(--adrc-danger);
   font-size: 12px;
   margin-right: auto;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   max-width: 60%;
+}
+
+/* Variants (used to distinguish which one is which for CSS overrides). */
+
+.adrc-reply-editor,
+.adrc-inline-edit-editor {
+  margin: 10px 0;
+  padding: 10px;
+  max-width: none;
+}
+
+.adrc-inline-edit-editor {
+  background: var(--adrc-bg);
 }
 
 /* ── Existing thread badges (rendered inline near their anchor block) ── */
@@ -321,13 +416,149 @@ li.adrc-hoverable .adrc-comment-btn {
 .adrc-thread-comment-body {
   font-size: 14px;
   line-height: 1.5;
-  white-space: pre-wrap;
   overflow-wrap: break-word;
+}
+
+/* Rendered-markdown typography inside a comment body. Kept small and
+   compact so a thread with several comments stays skimmable. */
+.adrc-thread-comment-body p {
+  margin: 0 0 8px;
+}
+
+.adrc-thread-comment-body p:last-child {
+  margin-bottom: 0;
+}
+
+.adrc-thread-comment-body h1,
+.adrc-thread-comment-body h2,
+.adrc-thread-comment-body h3,
+.adrc-thread-comment-body h4,
+.adrc-thread-comment-body h5,
+.adrc-thread-comment-body h6 {
+  margin: 8px 0 6px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.adrc-thread-comment-body h1 { font-size: 18px; }
+.adrc-thread-comment-body h2 { font-size: 16px; }
+.adrc-thread-comment-body h3,
+.adrc-thread-comment-body h4,
+.adrc-thread-comment-body h5,
+.adrc-thread-comment-body h6 { font-size: 14px; }
+
+.adrc-thread-comment-body ul,
+.adrc-thread-comment-body ol {
+  margin: 4px 0 8px;
+  padding-left: 24px;
+}
+
+.adrc-thread-comment-body li {
+  margin: 2px 0;
+}
+
+.adrc-thread-comment-body code {
+  padding: 1px 5px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 13px;
+}
+
+.adrc-thread-comment-body pre {
+  margin: 6px 0 8px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--adrc-border);
+  border-radius: 4px;
+  overflow-x: auto;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.adrc-thread-comment-body pre code {
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+.adrc-thread-comment-body blockquote {
+  margin: 6px 0;
+  padding: 2px 12px;
+  border-left: 3px solid var(--adrc-border);
+  color: var(--adrc-text-muted);
+}
+
+.adrc-thread-comment-body a {
+  color: var(--adrc-accent);
+  text-decoration: none;
+}
+
+.adrc-thread-comment-body a:hover {
+  text-decoration: underline;
+}
+
+.adrc-thread-comment-body img {
+  max-width: 100%;
+  height: auto;
+}
+
+.adrc-thread-comment-body hr {
+  border: none;
+  border-top: 1px solid var(--adrc-border);
+  margin: 10px 0;
+}
+
+.adrc-thread-comment-edited {
+  color: var(--adrc-text-muted);
+  font-style: italic;
+  font-size: 11px;
+  margin-left: 4px;
 }
 
 .adrc-thread-comment-deleted {
   font-style: italic;
   color: var(--adrc-text-muted);
+}
+
+/* Edit / Delete affordances on the current user's own comments. Kept
+   small and unobtrusive — they appear below the body, right-aligned. */
+
+.adrc-comment-inline-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.adrc-comment-inline-btn {
+  padding: 2px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  color: var(--adrc-text-muted);
+  cursor: pointer;
+}
+
+.adrc-comment-inline-btn:hover:not(:disabled) {
+  background: var(--adrc-accent-tint);
+  border-color: var(--adrc-border);
+  color: var(--adrc-text);
+}
+
+.adrc-comment-inline-btn.adrc-delete-comment:hover:not(:disabled) {
+  background: rgba(209, 52, 56, 0.08);
+  border-color: var(--adrc-danger);
+  color: var(--adrc-danger);
+}
+
+.adrc-comment-inline-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* Action bar at the bottom of an expanded thread panel — Reply + Resolve. */
@@ -359,18 +590,4 @@ li.adrc-hoverable .adrc-comment-btn {
 .adrc-thread-action-btn:disabled {
   opacity: 0.6;
   cursor: default;
-}
-
-/* Reply box (opens inside an expanded panel when Reply is clicked). */
-
-.adrc-reply-box {
-  margin: 10px 0;
-  padding: 10px;
-  background: var(--adrc-bg);
-  border: 1px solid var(--adrc-border);
-  border-radius: 4px;
-}
-
-.adrc-reply-box .adrc-comment-input {
-  min-height: 56px;
 }

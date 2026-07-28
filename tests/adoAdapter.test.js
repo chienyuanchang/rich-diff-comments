@@ -143,6 +143,13 @@ test('pullRequestUrl - builds the single-PR metadata endpoint', () => {
   );
 });
 
+test('connectionDataUrl - builds the org-scoped connection-data endpoint', () => {
+  const url = ado.connectionDataUrl(CTX);
+  assert.match(url, /^\/myorg\/_apis\/connectionData\?/);
+  assert.match(url, /connectOptions=IncludeServices/);
+  assert.match(url, /api-version=/);
+});
+
 test('itemUrl - builds the file-content endpoint with project scope + branch version', () => {
   const url = ado.itemUrl(CTX_WITH_PROJECT, '/README.md', { version: 'test_pr', versionType: 'branch' });
   assert.match(url, /^\/myorg\/PROJ-GUID\/_apis\/git\/repositories\/REPO-GUID\/items\?/);

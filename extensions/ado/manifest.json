@@ -25,6 +25,7 @@
       "js": [
         "src/lib/textMatch.js",
         "src/lib/tableRows.js",
+        "src/lib/markdownPreview.js",
         "src/lib/lineMap.js",
         "src/adapters/ado.js",
         "content.js"

@@ -44,6 +44,25 @@
   }
   console.log(`${LOG} parsed PR context:`, ctx);
 
+  // Fire-and-forget: fetch the current user's identity so Edit / Delete
+  // affordances can be shown only on their own comments. If this fails
+  // (offline, auth cookie missing), we just skip the buttons — the rest
+  // of the UI still works.
+  (async () => {
+    try {
+      const data = await adapter.getConnectionData(ctx);
+      if (data && data.authenticatedUser && data.authenticatedUser.id) {
+        currentUserId = data.authenticatedUser.id;
+        console.log(`${LOG} authenticated as ${data.authenticatedUser.displayName || data.authenticatedUser.uniqueName || currentUserId}`);
+        // Re-render any badges that were built before we knew the user id
+        // so Edit / Delete affordances appear on their own comments.
+        if (currentFilePathCached) refreshThreadBadges();
+      }
+    } catch (err) {
+      console.warn(`${LOG} getConnectionData failed (edit/delete will be hidden):`, err);
+    }
+  })();
+
   // ── Helpers ──────────────────────────────────────────────────────────
 
   /**
@@ -124,63 +143,17 @@
     host.appendChild(btn);
   }
 
-  // ── Comment box ──────────────────────────────────────────────────────
+  // ── Comment box (compose new thread) ─────────────────────────────────
 
   function openCommentBox(block, info) {
-    // Only one box open at a time.
-    document.querySelectorAll('.adrc-comment-box').forEach(el => el.remove());
+    // Only one compose editor open at a time.
+    document.querySelectorAll('.adrc-editor.adrc-compose-editor').forEach(el => el.remove());
 
-    const box = document.createElement('div');
-    box.className = 'adrc-comment-box';
-    box.innerHTML = [
-      '<div class="adrc-comment-box-header">',
-      '  Comment on <strong></strong>',
-      '</div>',
-      '<textarea class="adrc-comment-input" rows="3" placeholder="Write your comment (Markdown supported). Ctrl+Enter to submit."></textarea>',
-      '<div class="adrc-comment-box-actions">',
-      '  <button type="button" class="adrc-comment-cancel">Cancel</button>',
-      '  <button type="button" class="adrc-comment-submit">Comment</button>',
-      '</div>'
-    ].join('\n');
-    box.querySelector('strong').textContent = `${info.path}:${info.line}`;
-
-    // Insert after the block so the box appears directly below the
-    // context it's commenting on. For <tr> blocks, insert after the
-    // parent <table> instead so the box doesn't break table layout.
-    const parent = block.tagName === 'TR' ? (block.closest('table') || block) : block;
-    parent.parentNode.insertBefore(box, parent.nextSibling);
-
-    const textarea = box.querySelector('.adrc-comment-input');
-    const submitBtn = box.querySelector('.adrc-comment-submit');
-    const cancelBtn = box.querySelector('.adrc-comment-cancel');
-
-    textarea.focus();
-
-    cancelBtn.addEventListener('click', () => box.remove());
-
-    textarea.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        submitBtn.click();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        box.remove();
-      }
-    });
-
-    submitBtn.addEventListener('click', async () => {
-      const content = textarea.value.trim();
-      if (!content) {
-        textarea.focus();
-        return;
-      }
-      const oldError = box.querySelector('.adrc-comment-error');
-      if (oldError) oldError.remove();
-
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Posting…';
-
-      try {
+    const { editor, textarea } = createEditor({
+      submitLabel: 'Comment',
+      placeholder: 'Write your comment (Markdown supported). Ctrl+Enter to submit.',
+      minRows: 3,
+      onSubmit: async (content) => {
         await adapter.resolveIds(ctx);
         const thread = await adapter.createThread(ctx, {
           content,
@@ -188,20 +161,23 @@
           filePath: info.path
         });
         console.log(`${LOG} thread posted: id=${thread.id} on ${info.path}:${info.line}`);
-        box.remove();
-        // Refresh badges so the new thread appears inline right away.
+        editor.remove();
         await refreshThreadBadges();
-      } catch (err) {
-        console.error(`${LOG} createThread failed:`, err);
-        const actions = box.querySelector('.adrc-comment-box-actions');
-        const errNode = document.createElement('span');
-        errNode.className = 'adrc-comment-error';
-        errNode.textContent = String(err.message || err).slice(0, 200);
-        actions.insertBefore(errNode, actions.firstChild);
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Comment';
       }
     });
+    editor.classList.add('adrc-compose-editor');
+
+    const header = document.createElement('div');
+    header.className = 'adrc-editor-header';
+    header.innerHTML = `Comment on <strong>${escapeHtml(info.path + ':' + info.line)}</strong>`;
+    editor.insertBefore(header, editor.firstChild);
+
+    // Insert after the block so the box appears directly below the
+    // context. For <tr> blocks, insert after the parent <table> instead.
+    const parent = block.tagName === 'TR' ? (block.closest('table') || block) : block;
+    parent.parentNode.insertBefore(editor, parent.nextSibling);
+
+    textarea.focus();
   }
 
   // ── Existing-thread rendering (💬 badge + expandable panel) ──────────
@@ -210,10 +186,19 @@
   let currentLineToBlock = new Map();
   let currentFilePathCached = null;
 
+  // Populated on init from GET /_apis/connectionData so we know which
+  // comments are the current user's own — used to show Edit / Delete
+  // affordances only on their own posts.
+  let currentUserId = null;
+
   function escapeHtml(s) {
     const d = document.createElement('div');
     d.textContent = s == null ? '' : String(s);
     return d.innerHTML;
+  }
+
+  function escapeAttr(s) {
+    return escapeHtml(s).replace(/"/g, '&quot;');
   }
 
   function formatTime(iso) {
@@ -221,15 +206,246 @@
     try { return new Date(iso).toLocaleString(); } catch (_) { return iso; }
   }
 
+  function isOwnComment(c) {
+    return !!currentUserId && c && c.author && c.author.id === currentUserId;
+  }
+
+  function renderMarkdown(src) {
+    const GRDC = window.GRDC || {};
+    if (typeof GRDC.renderMarkdownPreview === 'function') {
+      return GRDC.renderMarkdownPreview(src || '');
+    }
+    // Fallback if markdownPreview.js didn't load: at least don't inject
+    // raw HTML — escape and preserve line breaks.
+    return escapeHtml(src || '').replace(/\n/g, '<br>');
+  }
+
   function renderCommentHtml(c) {
     const author = escapeHtml((c.author && c.author.displayName) || 'Unknown');
     const time = escapeHtml(formatTime(c.publishedDate));
-    const edited = c.lastContentUpdatedDate && c.lastContentUpdatedDate !== c.publishedDate ? ' (edited)' : '';
+    const edited = c.lastContentUpdatedDate && c.lastContentUpdatedDate !== c.publishedDate
+      ? ' <span class="adrc-thread-comment-edited">(edited)</span>'
+      : '';
     const meta = `<div class="adrc-thread-comment-meta"><span class="adrc-thread-comment-author">${author}</span> · ${time}${edited}</div>`;
+
     if (c.isDeleted) {
-      return `<div class="adrc-thread-comment">${meta}<div class="adrc-thread-comment-body adrc-thread-comment-deleted">(This comment was deleted.)</div></div>`;
+      return `<div class="adrc-thread-comment" data-comment-id="${c.id}">${meta}<div class="adrc-thread-comment-body adrc-thread-comment-deleted">(This comment was deleted.)</div></div>`;
     }
-    return `<div class="adrc-thread-comment">${meta}<div class="adrc-thread-comment-body">${escapeHtml(c.content || '')}</div></div>`;
+
+    // Render comment content as markdown so **bold**, code, lists, links
+    // render like they do in the actual review.
+    const bodyHtml = renderMarkdown(c.content || '');
+
+    // Edit / Delete affordances appear only on the current user's own
+    // undeleted comments.
+    const ownActions = isOwnComment(c)
+      ? `<div class="adrc-comment-inline-actions">
+           <button type="button" class="adrc-comment-inline-btn adrc-edit-comment" data-comment-id="${c.id}">Edit</button>
+           <button type="button" class="adrc-comment-inline-btn adrc-delete-comment" data-comment-id="${c.id}">Delete</button>
+         </div>`
+      : '';
+
+    return `<div class="adrc-thread-comment" data-comment-id="${c.id}">${meta}<div class="adrc-thread-comment-body">${bodyHtml}</div>${ownActions}</div>`;
+  }
+
+  // ── Shared editor (Write / Preview tabs, toolbar, auto-grow) ─────────
+  //
+  // Same UX pattern as the GitHub extension's comment editor. Used by
+  // three callsites: compose (new thread), reply (in an expanded panel),
+  // and edit (inline replacement of a comment body).
+
+  function autoGrow(textarea, cap) {
+    cap = cap || 400;
+    const grow = () => {
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, cap) + 'px';
+    };
+    textarea.addEventListener('input', grow);
+    // Also grow on next frame after value is set programmatically.
+    requestAnimationFrame(grow);
+  }
+
+  const TOOLBAR_BUTTONS = [
+    { md: 'heading', title: 'Heading', label: 'H' },
+    { md: 'bold',    title: 'Bold (Ctrl+B)',   label: '<b>B</b>' },
+    { md: 'italic',  title: 'Italic (Ctrl+I)', label: '<i>I</i>' },
+    { md: 'code',    title: 'Inline code',     label: '&lt;&gt;' },
+    { md: 'link',    title: 'Link',            label: '🔗' },
+    { md: 'quote',   title: 'Blockquote',      label: '❝' },
+    { md: 'ul',      title: 'Unordered list',  label: '•' },
+    { md: 'ol',      title: 'Ordered list',    label: '1.' },
+    { md: 'task',    title: 'Task list',       label: '☑' }
+  ];
+
+  function buildToolbarHtml() {
+    return '<div class="adrc-editor-toolbar">' +
+      TOOLBAR_BUTTONS.map(b =>
+        `<button type="button" class="adrc-editor-toolbar-btn" data-md="${b.md}" title="${escapeAttr(b.title)}">${b.label}</button>`
+      ).join('') +
+      '</div>';
+  }
+
+  function applyMarkdownAction(textarea, action) {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const value = textarea.value;
+    const selected = value.slice(start, end);
+
+    // Inline wraps around the selection.
+    const wraps = {
+      bold:   ['**', '**', 'text'],
+      italic: ['*',  '*',  'text'],
+      code:   ['`',  '`',  'code'],
+      link:   ['[',  '](url)', 'text']
+    };
+    // Line-prefix operations apply to every line in the (possibly empty)
+    // selection, expanding the selection to full lines first.
+    const linePrefix = {
+      heading: '## ',
+      quote:   '> ',
+      ul:      '- ',
+      ol:      '1. ',
+      task:    '- [ ] '
+    };
+
+    if (wraps[action]) {
+      const [before, after, placeholder] = wraps[action];
+      const filler = selected || placeholder;
+      const insert = before + filler + after;
+      textarea.value = value.slice(0, start) + insert + value.slice(end);
+      const newStart = start + before.length;
+      textarea.setSelectionRange(newStart, newStart + filler.length);
+    } else if (linePrefix[action]) {
+      const beforeSel = value.slice(0, start);
+      const lineStart = beforeSel.lastIndexOf('\n') + 1;
+      const afterSel = value.slice(end);
+      const nextNewline = afterSel.indexOf('\n');
+      const lineEnd = nextNewline < 0 ? value.length : end + nextNewline;
+
+      const lines = value.slice(lineStart, lineEnd).split('\n');
+      const prefixed = lines.map(l => linePrefix[action] + l).join('\n');
+      textarea.value = value.slice(0, lineStart) + prefixed + value.slice(lineEnd);
+      textarea.setSelectionRange(lineStart, lineStart + prefixed.length);
+    }
+    textarea.dispatchEvent(new Event('input')); // trigger auto-grow
+  }
+
+  function wireEditor(editor) {
+    const textarea = editor.querySelector('.adrc-editor-textarea');
+    const previewPane = editor.querySelector('.adrc-editor-preview');
+    const toolbar = editor.querySelector('.adrc-editor-toolbar');
+    const tabs = editor.querySelectorAll('.adrc-editor-tab');
+
+    // Toolbar buttons wrap the selection with markdown syntax.
+    editor.querySelectorAll('.adrc-editor-toolbar-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        applyMarkdownAction(textarea, btn.dataset.md);
+        textarea.focus();
+      });
+    });
+
+    // Write ↔ Preview toggle.
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const mode = tab.dataset.tab;
+        tabs.forEach(t => t.classList.toggle('active', t === tab));
+        if (mode === 'write') {
+          textarea.style.display = '';
+          toolbar.style.display = '';
+          previewPane.style.display = 'none';
+          textarea.focus();
+        } else {
+          previewPane.innerHTML = renderMarkdown(textarea.value);
+          textarea.style.display = 'none';
+          toolbar.style.display = 'none';
+          previewPane.style.display = '';
+        }
+      });
+    });
+
+    autoGrow(textarea);
+  }
+
+  /**
+   * Build a fully-wired editor element. Returned object exposes the
+   * editor root plus the textarea and buttons so callers can programmatically
+   * set values, focus, or reset state on error.
+   *
+   * @param {object} opts
+   * @param {string} opts.submitLabel  Text shown on the submit button.
+   * @param {string} [opts.initialValue]  Pre-fill for the textarea.
+   * @param {string} [opts.placeholder]
+   * @param {number} [opts.minRows=3]
+   * @param {(content: string) => Promise<void>} opts.onSubmit
+   *     Called with the trimmed textarea content when submit is clicked.
+   *     Throw to surface an error next to the actions row.
+   * @param {(editor: HTMLElement) => void} [opts.onCancel]
+   *     Defaults to `editor.remove()`.
+   */
+  function createEditor(opts) {
+    const editor = document.createElement('div');
+    editor.className = 'adrc-editor';
+    editor.innerHTML = [
+      '<div class="adrc-editor-tabs">',
+      '  <button type="button" class="adrc-editor-tab active" data-tab="write">Write</button>',
+      '  <button type="button" class="adrc-editor-tab" data-tab="preview">Preview</button>',
+      '</div>',
+      buildToolbarHtml(),
+      `<textarea class="adrc-editor-textarea" rows="${opts.minRows || 3}" placeholder="${escapeAttr(opts.placeholder || '')}"></textarea>`,
+      '<div class="adrc-editor-preview" style="display:none"></div>',
+      '<div class="adrc-editor-actions">',
+      '  <button type="button" class="adrc-editor-cancel">Cancel</button>',
+      `  <button type="button" class="adrc-editor-submit">${escapeHtml(opts.submitLabel)}</button>`,
+      '</div>'
+    ].join('\n');
+
+    const textarea = editor.querySelector('.adrc-editor-textarea');
+    if (opts.initialValue) textarea.value = opts.initialValue;
+
+    wireEditor(editor);
+
+    const submitBtn = editor.querySelector('.adrc-editor-submit');
+    const cancelBtn = editor.querySelector('.adrc-editor-cancel');
+
+    cancelBtn.addEventListener('click', () => {
+      if (opts.onCancel) opts.onCancel(editor);
+      else editor.remove();
+    });
+
+    textarea.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        submitBtn.click();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelBtn.click();
+      }
+    });
+
+    submitBtn.addEventListener('click', async () => {
+      const content = textarea.value.trim();
+      if (!content) { textarea.focus(); return; }
+      const oldError = editor.querySelector('.adrc-editor-error');
+      if (oldError) oldError.remove();
+      const originalLabel = submitBtn.textContent;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Posting…';
+      try {
+        await opts.onSubmit(content, editor);
+      } catch (err) {
+        console.error(`${LOG} editor submit failed:`, err);
+        const actions = editor.querySelector('.adrc-editor-actions');
+        const errNode = document.createElement('span');
+        errNode.className = 'adrc-editor-error';
+        errNode.textContent = String(err.message || err).slice(0, 200);
+        actions.insertBefore(errNode, actions.firstChild);
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalLabel;
+      }
+    });
+
+    return { editor, textarea, submitBtn, cancelBtn };
   }
 
   function buildThreadPanel(thread) {
@@ -259,7 +475,83 @@
     replyBtn.addEventListener('click', () => openReplyBox(panel, thread));
     statusBtn.addEventListener('click', () => toggleThreadStatus(thread, statusBtn));
 
+    // Wire per-comment Edit / Delete affordances on any of the current
+    // user's own comments.
+    panel.querySelectorAll('.adrc-edit-comment').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cid = parseInt(btn.dataset.commentId, 10);
+        const comment = (thread.comments || []).find(c => c.id === cid);
+        if (comment) startEditComment(panel, thread, comment);
+      });
+    });
+    panel.querySelectorAll('.adrc-delete-comment').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cid = parseInt(btn.dataset.commentId, 10);
+        const comment = (thread.comments || []).find(c => c.id === cid);
+        if (comment) deleteCommentAction(thread, comment, btn);
+      });
+    });
+
     return panel;
+  }
+
+  /**
+   * Replace a rendered comment body with an inline editor. On save,
+   * calls adapter.editComment() and refreshes badges.
+   */
+  function startEditComment(panel, thread, comment) {
+    const commentEl = panel.querySelector(`.adrc-thread-comment[data-comment-id="${comment.id}"]`);
+    if (!commentEl) return;
+    const bodyEl = commentEl.querySelector('.adrc-thread-comment-body');
+    const inlineActions = commentEl.querySelector('.adrc-comment-inline-actions');
+    if (!bodyEl) return;
+
+    // Hide the existing body + inline actions while editing.
+    bodyEl.style.display = 'none';
+    if (inlineActions) inlineActions.style.display = 'none';
+
+    const { editor, textarea } = createEditor({
+      submitLabel: 'Save changes',
+      initialValue: comment.content || '',
+      placeholder: 'Edit your comment (Markdown supported). Ctrl+Enter to save.',
+      minRows: 2,
+      onSubmit: async (content) => {
+        await adapter.resolveIds(ctx);
+        await adapter.editComment(ctx, thread.id, comment.id, content);
+        console.log(`${LOG} edited comment ${thread.id}/${comment.id}`);
+        await refreshThreadBadges();
+      },
+      onCancel: (ed) => {
+        ed.remove();
+        bodyEl.style.display = '';
+        if (inlineActions) inlineActions.style.display = '';
+      }
+    });
+    editor.classList.add('adrc-inline-edit-editor');
+    commentEl.appendChild(editor);
+    textarea.focus();
+  }
+
+  /**
+   * Delete the given comment after a confirm() prompt. On success,
+   * refreshes badges so the soft-deleted comment renders as such.
+   */
+  async function deleteCommentAction(thread, comment, btn) {
+    if (!confirm('Delete this comment? (The comment will be marked as deleted; the thread stays.)')) return;
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Deleting…';
+    try {
+      await adapter.resolveIds(ctx);
+      await adapter.deleteComment(ctx, thread.id, comment.id);
+      console.log(`${LOG} deleted comment ${thread.id}/${comment.id}`);
+      await refreshThreadBadges();
+    } catch (err) {
+      console.error(`${LOG} deleteComment failed:`, err);
+      btn.disabled = false;
+      btn.textContent = originalText;
+      alert('Delete failed: ' + String(err.message || err).slice(0, 200));
+    }
   }
 
   /**
@@ -268,72 +560,29 @@
    * the new reply shows up immediately.
    */
   function openReplyBox(panel, thread) {
-    const existing = panel.querySelector('.adrc-reply-box');
+    const existing = panel.querySelector('.adrc-reply-editor');
     if (existing) {
-      existing.querySelector('textarea').focus();
+      existing.querySelector('.adrc-editor-textarea').focus();
       return;
     }
 
-    const box = document.createElement('div');
-    box.className = 'adrc-reply-box';
-    box.innerHTML = [
-      '<textarea class="adrc-comment-input" rows="2" placeholder="Reply (Markdown supported). Ctrl+Enter to submit."></textarea>',
-      '<div class="adrc-comment-box-actions">',
-      '  <button type="button" class="adrc-comment-cancel">Cancel</button>',
-      '  <button type="button" class="adrc-comment-submit">Reply</button>',
-      '</div>'
-    ].join('\n');
-
-    // Insert above the action bar so it stays grouped with the comment thread.
-    const actions = panel.querySelector('.adrc-thread-actions');
-    panel.insertBefore(box, actions);
-
-    const textarea = box.querySelector('.adrc-comment-input');
-    const submitBtn = box.querySelector('.adrc-comment-submit');
-    const cancelBtn = box.querySelector('.adrc-comment-cancel');
-
-    textarea.focus();
-
-    cancelBtn.addEventListener('click', () => box.remove());
-
-    textarea.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        submitBtn.click();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        box.remove();
-      }
-    });
-
-    submitBtn.addEventListener('click', async () => {
-      const content = textarea.value.trim();
-      if (!content) {
-        textarea.focus();
-        return;
-      }
-      const oldError = box.querySelector('.adrc-comment-error');
-      if (oldError) oldError.remove();
-
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Posting…';
-      try {
+    const { editor, textarea } = createEditor({
+      submitLabel: 'Reply',
+      placeholder: 'Reply (Markdown supported). Ctrl+Enter to submit.',
+      minRows: 2,
+      onSubmit: async (content) => {
         await adapter.resolveIds(ctx);
         await adapter.reply(ctx, thread.id, content);
         console.log(`${LOG} reply posted on thread ${thread.id}`);
-        // Refresh so the reply appears in the panel immediately.
         await refreshThreadBadges();
-      } catch (err) {
-        console.error(`${LOG} reply failed:`, err);
-        const actionsRow = box.querySelector('.adrc-comment-box-actions');
-        const errNode = document.createElement('span');
-        errNode.className = 'adrc-comment-error';
-        errNode.textContent = String(err.message || err).slice(0, 200);
-        actionsRow.insertBefore(errNode, actionsRow.firstChild);
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Reply';
       }
     });
+    editor.classList.add('adrc-reply-editor');
+
+    // Insert above the action bar so the reply stays grouped with the thread.
+    const actions = panel.querySelector('.adrc-thread-actions');
+    panel.insertBefore(editor, actions);
+    textarea.focus();
   }
 
   /**
@@ -553,6 +802,13 @@
       return pr;
     },
 
+    async me() {
+      const data = await adapter.getConnectionData(ctx);
+      const u = data.authenticatedUser || {};
+      console.log(`${LOG} authenticated user: id=${u.id} displayName=${u.displayName} uniqueName=${u.uniqueName}`);
+      return data;
+    },
+
     async source(filePath) {
       await adapter.resolveIds(ctx);
       const branch = await getSourceBranch();
@@ -584,7 +840,7 @@
     async reinit() {
       const container = document.querySelector('.markdown-preview-container');
       if (container) delete container.dataset.adrcInitialized;
-      document.querySelectorAll('.adrc-comment-btn, .adrc-comment-box, .adrc-thread-badge, .adrc-thread-panel').forEach(el => el.remove());
+      document.querySelectorAll('.adrc-comment-btn, .adrc-editor, .adrc-thread-badge, .adrc-thread-panel').forEach(el => el.remove());
       document.querySelectorAll('[data-adrc-has-button]').forEach(el => {
         delete el.dataset.adrcHasButton;
         el.classList.remove('adrc-hoverable');

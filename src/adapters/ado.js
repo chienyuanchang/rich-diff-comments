@@ -109,6 +109,15 @@
   }
 
   /**
+   * Org-scoped connection-data endpoint. Returns `{ authenticatedUser: {...}, ... }`
+   * with the current user's identity — used to figure out which comments
+   * "belong to me" for edit / delete affordances.
+   */
+  function connectionDataUrl(ctx) {
+    return `/${ctx.org}/_apis/connectionData?connectOptions=IncludeServices&api-version=${API_VERSION}`;
+  }
+
+  /**
    * Build a URL to fetch the contents of a file at a specific version.
    * Uses the project-scoped items endpoint because that's the shape ADO's
    * own web UI issues (as observed in the sandbox network log).
@@ -194,6 +203,18 @@
   async function getPullRequest(ctx, fetchImpl) {
     fetchImpl = fetchImpl || fetch;
     const resp = await fetchImpl(pullRequestUrl(ctx), { credentials: 'same-origin' });
+    return _json(resp);
+  }
+
+  /**
+   * Fetch the current authenticated user's identity (id, displayName,
+   * uniqueName, descriptor). Cookie-authenticated like everything else.
+   * The interesting field is `.authenticatedUser.id` — matches the
+   * `comment.author.id` on threads posted by the current user.
+   */
+  async function getConnectionData(ctx, fetchImpl) {
+    fetchImpl = fetchImpl || fetch;
+    const resp = await fetchImpl(connectionDataUrl(ctx), { credentials: 'same-origin' });
     return _json(resp);
   }
 
@@ -352,6 +373,7 @@
     commentsUrl,
     commentUrl,
     pullRequestUrl,
+    connectionDataUrl,
     itemUrl,
 
     // Predicates / normalizers
@@ -360,6 +382,7 @@
     // Endpoint wrappers (all cookie-authenticated)
     listThreads,
     getPullRequest,
+    getConnectionData,
     getFileSource,
     createThread,
     reply,

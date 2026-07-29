@@ -134,9 +134,19 @@
   const PLUS_SVG = '<svg viewBox="0 0 14 14" fill="none"><path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
   function attachCommentButton(block, info) {
-    if (block.dataset.adrcHasButton) return;
-    block.dataset.adrcHasButton = '1';
-    block.classList.add('adrc-hoverable');
+    // `buttonAnchor` returns the block itself for normal elements
+    // (paragraphs, headings, lists, code blocks) and the first cell for
+    // `<tr>` (rows can't host children directly). Both the dedupe marker
+    // AND the `.adrc-hoverable` class need to live on the HOST — CSS
+    // needs the class on the same element that owns the button so
+    // `.adrc-hoverable:hover > .adrc-comment-btn` matches on hover.
+    // Without this, `+` was invisible over table rows.
+    const GRDC = window.GRDC || {};
+    const host = (typeof GRDC.buttonAnchor === 'function' ? GRDC.buttonAnchor(block) : block) || block;
+
+    if (host.dataset.adrcHasButton) return;
+    host.dataset.adrcHasButton = '1';
+    host.classList.add('adrc-hoverable');
 
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -150,10 +160,6 @@
       openCommentBox(block, info);
     });
 
-    // <tr> can't host a button directly (invalid HTML); anchor to its
-    // first cell instead. Everything else hosts naturally.
-    const GRDC = window.GRDC || {};
-    const host = (typeof GRDC.buttonAnchor === 'function' ? GRDC.buttonAnchor(block) : block) || block;
     host.appendChild(btn);
   }
 

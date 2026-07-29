@@ -112,9 +112,14 @@
    * Org-scoped connection-data endpoint. Returns `{ authenticatedUser: {...}, ... }`
    * with the current user's identity — used to figure out which comments
    * "belong to me" for edit / delete affordances.
+   *
+   * NOTE: connectionData is a preview-only resource — passing plain
+   * `7.1` returns HTTP 400 ("The requested version 7.1 of the resource
+   * is under preview. The -preview flag must be supplied…"), so we
+   * pin this one endpoint to `7.1-preview.1`.
    */
   function connectionDataUrl(ctx) {
-    return `/${ctx.org}/_apis/connectionData?connectOptions=IncludeServices&api-version=${API_VERSION}`;
+    return `/${ctx.org}/_apis/connectionData?connectOptions=IncludeServices&api-version=7.1-preview.1`;
   }
 
   /**

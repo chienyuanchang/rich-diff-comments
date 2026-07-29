@@ -48,15 +48,29 @@
   // affordances can be shown only on their own comments. If this fails
   // (offline, auth cookie missing), we just skip the buttons — the rest
   // of the UI still works.
+  //
+  // ADO returns identity as an IdentityRef with three usable fields —
+  // `id` (legacy TFS GUID), `descriptor` (subject descriptor), and
+  // `uniqueName` (email). The GUIDs on `connectionData.authenticatedUser`
+  // don't always equal the GUIDs on `comment.author` (different identity
+  // systems overlap here), so we cache all three and match on ANY.
   (async () => {
     try {
       const data = await adapter.getConnectionData(ctx);
-      if (data && data.authenticatedUser && data.authenticatedUser.id) {
-        currentUserId = data.authenticatedUser.id;
-        console.log(`${LOG} authenticated as ${data.authenticatedUser.displayName || data.authenticatedUser.uniqueName || currentUserId}`);
+      const u = data && data.authenticatedUser;
+      if (u && (u.id || u.descriptor || u.uniqueName)) {
+        currentUserIdentity = {
+          id: u.id || null,
+          descriptor: u.descriptor || null,
+          uniqueName: u.uniqueName || null,
+          displayName: u.displayName || u.providerDisplayName || null
+        };
+        console.log(`${LOG} authenticated as`, currentUserIdentity);
         // Re-render any badges that were built before we knew the user id
         // so Edit / Delete affordances appear on their own comments.
         if (currentFilePathCached) refreshThreadBadges();
+      } else {
+        console.warn(`${LOG} connectionData returned no authenticatedUser — edit/delete affordances hidden`);
       }
     } catch (err) {
       console.warn(`${LOG} getConnectionData failed (edit/delete will be hidden):`, err);
@@ -188,8 +202,10 @@
 
   // Populated on init from GET /_apis/connectionData so we know which
   // comments are the current user's own — used to show Edit / Delete
-  // affordances only on their own posts.
-  let currentUserId = null;
+  // affordances only on their own posts. Object with { id, descriptor,
+  // uniqueName, displayName } — see isOwnComment() for why we keep three
+  // matchable fields.
+  let currentUserIdentity = null;
 
   function escapeHtml(s) {
     const d = document.createElement('div');
@@ -207,7 +223,16 @@
   }
 
   function isOwnComment(c) {
-    return !!currentUserId && c && c.author && c.author.id === currentUserId;
+    if (!currentUserIdentity || !c || !c.author) return false;
+    const a = c.author;
+    const me = currentUserIdentity;
+    // Match on any identity field — ADO sometimes returns different GUIDs
+    // for the same user across different endpoints, but at least one of
+    // (id, descriptor, uniqueName) is stable.
+    if (me.id && a.id && me.id === a.id) return true;
+    if (me.descriptor && a.descriptor && me.descriptor === a.descriptor) return true;
+    if (me.uniqueName && a.uniqueName && me.uniqueName === a.uniqueName) return true;
+    return false;
   }
 
   function renderMarkdown(src) {
@@ -805,8 +830,32 @@
     async me() {
       const data = await adapter.getConnectionData(ctx);
       const u = data.authenticatedUser || {};
-      console.log(`${LOG} authenticated user: id=${u.id} displayName=${u.displayName} uniqueName=${u.uniqueName}`);
+      console.log(`${LOG} authenticated user: id=${u.id} descriptor=${u.descriptor} uniqueName=${u.uniqueName} displayName=${u.displayName}`);
+      console.log(`${LOG} cached identity (used for own-comment matching):`, currentUserIdentity);
       return data;
+    },
+
+    // Compare the cached identity against the first comment on each
+    // thread — useful for debugging when Edit / Delete don't appear.
+    async matchTest() {
+      await adapter.resolveIds(ctx);
+      const data = await adapter.listThreads(ctx);
+      const user = (data.value || []).filter(t => !adapter.isSystemThread(t));
+      const rows = user.map(t => {
+        const c = (t.comments || [])[0];
+        if (!c || !c.author) return { threadId: t.id, comment: 'no first comment' };
+        return {
+          threadId: t.id,
+          commentId: c.id,
+          author_id: c.author.id,
+          author_descriptor: c.author.descriptor,
+          author_uniqueName: c.author.uniqueName,
+          isOwn: isOwnComment(c)
+        };
+      });
+      console.table(rows);
+      console.log(`${LOG} currentUserIdentity =`, currentUserIdentity);
+      return { currentUserIdentity, rows };
     },
 
     async source(filePath) {

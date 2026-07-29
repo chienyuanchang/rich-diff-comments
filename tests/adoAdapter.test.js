@@ -147,7 +147,9 @@ test('connectionDataUrl - builds the org-scoped connection-data endpoint', () =>
   const url = ado.connectionDataUrl(CTX);
   assert.match(url, /^\/myorg\/_apis\/connectionData\?/);
   assert.match(url, /connectOptions=IncludeServices/);
-  assert.match(url, /api-version=/);
+  // connectionData is a preview-only resource — plain `7.1` returns
+  // HTTP 400, so the URL must pin `7.1-preview.1`.
+  assert.match(url, /api-version=7\.1-preview\.1/);
 });
 
 test('itemUrl - builds the file-content endpoint with project scope + branch version', () => {

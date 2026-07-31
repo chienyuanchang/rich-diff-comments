@@ -154,6 +154,32 @@ li.adrc-hoverable .adrc-comment-btn {
   font-size: 12px;
 }
 
+/* Editable line-number input shown in the compose-editor header when
+   commenting on a code block. Lets reviewers retarget the thread to any
+   line inside the fence. */
+.adrc-line-input {
+  width: 60px;
+  padding: 2px 4px;
+  font-family: inherit;
+  font-size: 12px;
+  border: 1px solid var(--adrc-border);
+  border-radius: 2px;
+  background: var(--adrc-bg);
+  color: var(--adrc-text);
+}
+
+.adrc-line-input:focus {
+  outline: none;
+  border-color: var(--adrc-accent);
+}
+
+.adrc-line-hint {
+  color: var(--adrc-text-muted);
+  font-size: 11px;
+  font-style: italic;
+  margin-left: 4px;
+}
+
 .adrc-editor-tabs {
   display: flex;
   gap: 4px;

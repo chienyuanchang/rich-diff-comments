@@ -105,12 +105,16 @@
 
   /**
    * Fetch + line-map the current file. Returns Map<Element, {path, line}>.
+   * Also caches the raw source string so downstream helpers
+   * (`wireCodeBlockLineTracking`, `refreshThreadBadges`) can look up
+   * fence ranges via `GRDC.findFenceRangeAroundLine`.
    */
   async function buildFileLineMap(container, filePath) {
     await adapter.resolveIds(ctx);
     const branch = await getSourceBranch();
     const source = await adapter.getFileSource(ctx, filePath, { version: branch, versionType: 'branch' });
     const sourceLines = source.split('\n');
+    currentSource = source;
 
     const GRDC = window.GRDC || {};
     const { mapBlocksToSourceLines, buildSourceIndex, findTextInSource, findFrontmatterRange, computeTableRowLine } = GRDC;
@@ -154,20 +158,160 @@
     btn.title = `Comment on ${info.path}:${info.line}`;
     btn.setAttribute('aria-label', btn.title);
     btn.innerHTML = PLUS_SVG;
+    // Track which line the button currently represents. For non-code
+    // blocks this stays === info.line. For <pre>, mousemove keeps it in
+    // sync with the row under the cursor.
+    btn.dataset.adrcLine = String(info.line);
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      openCommentBox(block, info);
+      const trackedLine = parseInt(btn.dataset.adrcLine, 10) || info.line;
+      openCommentBox(block, info, trackedLine);
     });
 
     host.appendChild(btn);
+
+    // Code blocks get per-line targeting via a sliding button. The `<pre>`
+    // isn't wrapped in per-line `<div>`s (ADO's highlighter uses spans),
+    // so we compute the row under the cursor from Y offset + line height.
+    if (block.tagName === 'PRE') {
+      wireCodeBlockLineTracking(block, btn, info);
+    }
+  }
+
+  /**
+   * On mousemove over a code block, slide the `+` button vertically to
+   * track the source line the cursor is over. Same technique the GitHub
+   * extension uses — see extensions/github/content.js.
+   *
+   * Row 0 corresponds to the first content line of the fence. We prefer
+   * the authoritative range from `GRDC.findFenceRangeAroundLine(source)`
+   * because DOM `innerText.split('\n')` over-counts when the highlighter
+   * wraps single source lines across multiple visual rows.
+   *
+   * DOM row count and source range don't always match 1:1 — long lines
+   * can wrap (more DOM rows than source lines), or some source lines may
+   * not render as separate rows (fewer DOM rows than source). We measure
+   * the pre's actual height, then linearly interpolate rowIdx to source
+   * line so the slider covers the full source range no matter how the
+   * highlighter chose to lay things out.
+   */
+  function wireCodeBlockLineTracking(pre, btn, info) {
+    const GRDC = window.GRDC || {};
+    let sourceStart = info.line;
+    let sourceEnd = info.line;
+
+    // Prefer source-based range (authoritative).
+    if (typeof GRDC.findFenceRangeAroundLine === 'function' && currentSource) {
+      const range = GRDC.findFenceRangeAroundLine(currentSource, info.line);
+      if (range) {
+        sourceStart = range.start;
+        sourceEnd = range.end;
+      }
+    } else {
+      // Fallback: count rendered lines (may over-count with wrapping).
+      const text = (pre.innerText || '').replace(/\n+$/, '');
+      const renderedLineCount = Math.max(1, text.split('\n').length);
+      sourceEnd = sourceStart + renderedLineCount - 1;
+    }
+
+    const cs = getComputedStyle(pre);
+    const cssLineHeight = parseFloat(cs.lineHeight);
+    // If `line-height: normal`, parseFloat returns NaN. Fall back to
+    // font-size * 1.5 (a reasonable typographic default), then 18px.
+    const fontSizeGuess = parseFloat(cs.fontSize) || 14;
+    let lineHeight = Number.isFinite(cssLineHeight) && cssLineHeight > 0
+      ? cssLineHeight
+      : fontSizeGuess * 1.5;
+
+    // Try to measure a real rendered line if the highlighter wraps each
+    // source line in an element (span/div). More accurate than trusting
+    // the computed line-height, which can lie when the block is dense.
+    const firstChildLine = pre.querySelector('span, div, code > *');
+    if (firstChildLine) {
+      const rectH = firstChildLine.getBoundingClientRect().height;
+      if (rectH > 0 && rectH < 60) {
+        lineHeight = rectH;
+      }
+    }
+    if (!Number.isFinite(lineHeight) || lineHeight <= 0) lineHeight = 18;
+
+    const preTopPad = parseFloat(cs.paddingTop) || 0;
+    const preBotPad = parseFloat(cs.paddingBottom) || 0;
+
+    // Size the `+` so it fits within a single rendered line (no visual
+    // overlap onto adjacent rows). Clamp so it stays clickable on huge
+    // font-size code blocks and legible on tiny ones.
+    const btnSize = Math.max(14, Math.min(22, Math.round(lineHeight - 2)));
+    btn.style.width = btnSize + 'px';
+    btn.style.height = btnSize + 'px';
+    const svg = btn.querySelector('svg');
+    if (svg) {
+      const glyphSize = Math.max(10, btnSize - 8);
+      svg.style.width = glyphSize + 'px';
+      svg.style.height = glyphSize + 'px';
+    }
+
+    // Stash on the block so openCommentBox + interior-line lookup can
+    // read the range without re-measuring.
+    pre.dataset.adrcRangeStart = String(sourceStart);
+    pre.dataset.adrcRangeEnd = String(sourceEnd);
+    pre.dataset.adrcLineHeight = String(lineHeight);
+
+    pre.addEventListener('mousemove', (e) => {
+      // Re-measure on each move — the DOM may reflow after images load,
+      // the user resizes the window, etc.
+      const rect = pre.getBoundingClientRect();
+      const contentHeight = Math.max(1, rect.height - preTopPad - preBotPad);
+      const domRowCount = Math.max(1, Math.round(contentHeight / lineHeight));
+      const sourceRowCount = Math.max(1, sourceEnd - sourceStart + 1);
+      // Scale factor maps DOM row → source line proportionally so the
+      // slider reaches sourceEnd at the block's visual bottom regardless
+      // of whether the highlighter wrapped or collapsed rows.
+      const scale = sourceRowCount / domRowCount;
+
+      const yInPre = e.clientY - rect.top + pre.scrollTop;
+      const yInText = yInPre - preTopPad;
+      // Sub-row precision: use the *fractional* row position for line
+      // resolution so users can access every source line even when
+      // `scale > 1` (source has more lines than DOM rows). Without this,
+      // adjacent source lines that share a DOM row would be unreachable —
+      // moving one row down would jump 2+ source lines and skip one.
+      const fractionalRow = yInText / lineHeight;
+      const clampedFraction = Math.max(0, Math.min(domRowCount, fractionalRow));
+      // Button snaps to whole DOM rows so it looks anchored to a line.
+      let rowIdx = Math.floor(clampedFraction);
+      if (rowIdx >= domRowCount) rowIdx = domRowCount - 1;
+      const rowCenter = preTopPad + (rowIdx + 0.5) * lineHeight - pre.scrollTop;
+      btn.style.top = rowCenter + 'px';
+      btn.style.transform = 'translateY(-50%)';
+
+      const resolvedLine = Math.min(
+        sourceEnd,
+        sourceStart + Math.round(clampedFraction * scale)
+      );
+      btn.dataset.adrcLine = String(resolvedLine);
+      btn.title = `Comment on ${info.path}:${resolvedLine}`;
+    });
   }
 
   // ── Comment box (compose new thread) ─────────────────────────────────
 
-  function openCommentBox(block, info) {
+  function openCommentBox(block, info, trackedLine) {
     // Only one compose editor open at a time.
     document.querySelectorAll('.adrc-editor.adrc-compose-editor').forEach(el => el.remove());
+
+    // For code blocks, the user can retarget the comment to any line
+    // inside the fenced range via a small numeric input. Everything else
+    // uses the mapper-assigned line as-is.
+    const isCodeBlock = block.tagName === 'PRE';
+    const prefillLine = trackedLine || info.line;
+    let rangeStart = info.line;
+    let rangeEnd = info.line;
+    if (isCodeBlock) {
+      rangeStart = parseInt(block.dataset.adrcRangeStart, 10) || info.line;
+      rangeEnd = parseInt(block.dataset.adrcRangeEnd, 10) || info.line;
+    }
 
     const { editor, textarea } = createEditor({
       submitLabel: 'Comment',
@@ -175,12 +319,22 @@
       minRows: 3,
       onSubmit: async (content) => {
         await adapter.resolveIds(ctx);
+        // Prefer the (possibly edited) line input on code blocks. Falls
+        // back to the tracked/prefill line if the input isn't present.
+        const lineInput = editor.querySelector('.adrc-line-input');
+        let finalLine = prefillLine;
+        if (lineInput) {
+          const v = parseInt(lineInput.value, 10);
+          if (Number.isFinite(v) && v >= rangeStart && v <= rangeEnd) {
+            finalLine = v;
+          }
+        }
         const thread = await adapter.createThread(ctx, {
           content,
-          line: info.line,
+          line: finalLine,
           filePath: info.path
         });
-        console.log(`${LOG} thread posted: id=${thread.id} on ${info.path}:${info.line}`);
+        console.log(`${LOG} thread posted: id=${thread.id} on ${info.path}:${finalLine}`);
         editor.remove();
         await refreshThreadBadges();
       }
@@ -189,7 +343,14 @@
 
     const header = document.createElement('div');
     header.className = 'adrc-editor-header';
-    header.innerHTML = `Comment on <strong>${escapeHtml(info.path + ':' + info.line)}</strong>`;
+    if (isCodeBlock && rangeEnd > rangeStart) {
+      header.innerHTML =
+        `Comment on <strong>${escapeHtml(info.path)}</strong> · line ` +
+        `<input type="number" class="adrc-line-input" min="${rangeStart}" max="${rangeEnd}" value="${prefillLine}" /> ` +
+        `<span class="adrc-line-hint">(code block, lines ${rangeStart}\u2013${rangeEnd})</span>`;
+    } else {
+      header.innerHTML = `Comment on <strong>${escapeHtml(info.path + ':' + prefillLine)}</strong>`;
+    }
     editor.insertBefore(header, editor.firstChild);
 
     // Insert after the block so the box appears directly below the
@@ -205,6 +366,11 @@
   // Cached per-file so we can rebuild badges without re-running lineMap.
   let currentLineToBlock = new Map();
   let currentFilePathCached = null;
+  // Raw source string for the current file. Cached by buildFileLineMap
+  // so `wireCodeBlockLineTracking` can look up fence ranges via
+  // `GRDC.findFenceRangeAroundLine` instead of DOM-counting (which
+  // over-counts on wrapped or multi-line-per-row highlighter output).
+  let currentSource = null;
 
   // Populated on init from GET /_apis/connectionData so we know which
   // comments are the current user's own — used to show Edit / Delete
@@ -747,6 +913,19 @@
         if (!currentLineToBlock.has(info.line)) {
           currentLineToBlock.set(info.line, block);
         }
+        // For code blocks, also map every interior line inside the fence
+        // to the same <pre>. Without this, threads anchored to a line in
+        // the middle of a code block (via the sliding + button) won't
+        // find their block and no badge renders.
+        if (block.tagName === 'PRE') {
+          const rs = parseInt(block.dataset.adrcRangeStart, 10);
+          const re = parseInt(block.dataset.adrcRangeEnd, 10);
+          if (Number.isFinite(rs) && Number.isFinite(re)) {
+            for (let ln = rs; ln <= re; ln++) {
+              if (!currentLineToBlock.has(ln)) currentLineToBlock.set(ln, block);
+            }
+          }
+        }
       });
       console.log(`${LOG} Initialized: ${attached} commentable blocks in ${filePath}`);
       // Fire-and-forget — thread badge rendering shouldn't block the +
@@ -885,6 +1064,56 @@
       console.log(`${LOG} detectLines(${filePath}): ${summary.length} blocks mapped`);
       console.table(summary);
       return summary;
+    },
+
+    // Diagnose a code block: source-range vs DOM-row geometry.
+    // Call `ADORC_probe.codeBlock(N)` where N is a 0-based index of the
+    // <pre> in the current preview (or omit to use the first).
+    codeBlock(index) {
+      const idx = typeof index === 'number' ? index : 0;
+      const pres = Array.from(document.querySelectorAll('.markdown-preview-container pre'));
+      const pre = pres[idx];
+      if (!pre) {
+        console.warn(`${LOG} codeBlock probe: no <pre> at index ${idx} (found ${pres.length})`);
+        return null;
+      }
+      const cs = getComputedStyle(pre);
+      const cssLH = parseFloat(cs.lineHeight);
+      const fontSize = parseFloat(cs.fontSize) || 14;
+      const preTopPad = parseFloat(cs.paddingTop) || 0;
+      const preBotPad = parseFloat(cs.paddingBottom) || 0;
+      const rect = pre.getBoundingClientRect();
+      const contentHeight = rect.height - preTopPad - preBotPad;
+      // What did wireCodeBlockLineTracking actually use?
+      const cachedLH = parseFloat(pre.dataset.adrcLineHeight);
+      const firstChildLine = pre.querySelector('span, div, code > *');
+      const firstChildRectH = firstChildLine ? firstChildLine.getBoundingClientRect().height : null;
+      const lh = Number.isFinite(cachedLH) && cachedLH > 0
+        ? cachedLH
+        : (Number.isFinite(cssLH) && cssLH > 0 ? cssLH : fontSize * 1.5);
+      const domRowCount = Math.max(1, Math.round(contentHeight / lh));
+      const rangeStart = parseInt(pre.dataset.adrcRangeStart, 10);
+      const rangeEnd = parseInt(pre.dataset.adrcRangeEnd, 10);
+      const sourceRowCount = rangeEnd - rangeStart + 1;
+      const scale = sourceRowCount / domRowCount;
+      const innerTextLines = (pre.innerText || '').replace(/\n+$/, '').split('\n').length;
+      const info = {
+        index: idx,
+        sourceRange: `${rangeStart}-${rangeEnd} (${sourceRowCount} lines)`,
+        cachedLineHeight: cachedLH,
+        cssLineHeight: cssLH,
+        fontSize,
+        firstChildTag: firstChildLine ? firstChildLine.tagName : null,
+        firstChildRectHeight: firstChildRectH,
+        preHeightPx: rect.height.toFixed(1),
+        contentHeightPx: contentHeight.toFixed(1),
+        domRows: domRowCount,
+        innerTextLines,
+        scale: scale.toFixed(3),
+        firstLineSnippet: (pre.textContent || '').trim().slice(0, 80),
+      };
+      console.table(info);
+      return info;
     },
 
     /**

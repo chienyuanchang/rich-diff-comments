@@ -385,6 +385,23 @@ li.adrc-hoverable .adrc-comment-btn {
   font-weight: 600;
 }
 
+/* Disclosure chevron on the badge — down (▼) when the panel is expanded,
+   right (▶) when collapsed. Makes the open/closed state legible at a
+   glance without needing to look for the panel. */
+.adrc-thread-badge-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  color: var(--adrc-text);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.adrc-thread-badge:hover .adrc-thread-badge-chevron {
+  color: var(--adrc-accent);
+}
+
 /* Expanded thread panel (below the badge when opened). */
 
 .adrc-thread-panel {
@@ -429,9 +446,33 @@ li.adrc-hoverable .adrc-comment-btn {
 }
 
 .adrc-thread-comment-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 12px;
   color: var(--adrc-text-muted);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+}
+
+.adrc-thread-comment-meta-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Author avatar — rendered when the comment's author has an imageUrl on
+   its IdentityRef (present on most ADO responses). Sized to match the
+   meta row height so it aligns with the author name inline. */
+.adrc-thread-comment-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--adrc-bg-subtle);
 }
 
 .adrc-thread-comment-author {
@@ -549,14 +590,15 @@ li.adrc-hoverable .adrc-comment-btn {
   color: var(--adrc-text-muted);
 }
 
-/* Edit / Delete affordances on the current user's own comments. Kept
-   small and unobtrusive — they appear below the body, right-aligned. */
+/* Edit / Delete affordances shown on the meta row's right side, next
+   to the author identity. Small and subtle so they don't pull focus
+   away from the comment content. Only appear on the current user's own
+   undeleted comments. */
 
 .adrc-comment-inline-actions {
-  display: flex;
+  display: inline-flex;
   gap: 4px;
-  justify-content: flex-end;
-  margin-top: 4px;
+  flex-shrink: 0;
 }
 
 .adrc-comment-inline-btn {

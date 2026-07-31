@@ -423,7 +423,34 @@
     const edited = c.lastContentUpdatedDate && c.lastContentUpdatedDate !== c.publishedDate
       ? ' <span class="adrc-thread-comment-edited">(edited)</span>'
       : '';
-    const meta = `<div class="adrc-thread-comment-meta"><span class="adrc-thread-comment-author">${author}</span> · ${time}${edited}</div>`;
+
+    // Avatar rendered only when the author has an imageUrl — present on
+    // most ADO responses via IdentityRef._links.avatar.href / imageUrl.
+    const imageUrl = c.author && c.author.imageUrl;
+    const avatarHtml = imageUrl
+      ? `<img class="adrc-thread-comment-avatar" src="${escapeAttr(imageUrl)}" alt="" />`
+      : '';
+
+    // Edit / Delete affordances live in the meta row's right side (like
+    // GitHub's comment header) so they're near the author identity and
+    // don't push the body around. Only shown on the current user's own
+    // undeleted comments.
+    const ownActions = isOwnComment(c) && !c.isDeleted
+      ? `<span class="adrc-comment-inline-actions">` +
+          `<button type="button" class="adrc-comment-inline-btn adrc-edit-comment" data-comment-id="${c.id}">Edit</button>` +
+          `<button type="button" class="adrc-comment-inline-btn adrc-delete-comment" data-comment-id="${c.id}">Delete</button>` +
+        `</span>`
+      : '';
+
+    const meta =
+      `<div class="adrc-thread-comment-meta">` +
+        `<span class="adrc-thread-comment-meta-left">` +
+          avatarHtml +
+          `<span class="adrc-thread-comment-author">${author}</span>` +
+          ` · ${time}${edited}` +
+        `</span>` +
+        ownActions +
+      `</div>`;
 
     if (c.isDeleted) {
       return `<div class="adrc-thread-comment" data-comment-id="${c.id}">${meta}<div class="adrc-thread-comment-body adrc-thread-comment-deleted">(This comment was deleted.)</div></div>`;
@@ -433,16 +460,7 @@
     // render like they do in the actual review.
     const bodyHtml = renderMarkdown(c.content || '');
 
-    // Edit / Delete affordances appear only on the current user's own
-    // undeleted comments.
-    const ownActions = isOwnComment(c)
-      ? `<div class="adrc-comment-inline-actions">
-           <button type="button" class="adrc-comment-inline-btn adrc-edit-comment" data-comment-id="${c.id}">Edit</button>
-           <button type="button" class="adrc-comment-inline-btn adrc-delete-comment" data-comment-id="${c.id}">Delete</button>
-         </div>`
-      : '';
-
-    return `<div class="adrc-thread-comment" data-comment-id="${c.id}">${meta}<div class="adrc-thread-comment-body">${bodyHtml}</div>${ownActions}</div>`;
+    return `<div class="adrc-thread-comment" data-comment-id="${c.id}">${meta}<div class="adrc-thread-comment-body">${bodyHtml}</div></div>`;
   }
 
   // ── Shared editor (Write / Preview tabs, toolbar, auto-grow) ─────────
@@ -804,9 +822,20 @@
     }
   }
 
-  function renderThreadBadge(block, thread) {
+  /**
+   * Render one thread as an inline badge (plus auto-expanded panel for
+   * unresolved). Callers can pass `insertAfter` to control DOM order
+   * when stacking multiple badges under the same anchor block — without
+   * it, every new badge lands at `parent.nextSibling` and pushes prior
+   * badges down, giving reverse-of-arrival order.
+   *
+   * Returns the last DOM element it inserted (panel if unresolved,
+   * badge otherwise) so the caller can chain the next insertion after it.
+   */
+  function renderThreadBadge(block, thread, insertAfter) {
     const parent = block.tagName === 'TR' ? (block.closest('table') || block) : block;
-    if (!parent || !parent.parentNode) return;
+    if (!parent || !parent.parentNode) return null;
+    const anchor = insertAfter || parent;
 
     // Prevent duplicates on re-render — remove any prior badge for this thread.
     const existing = document.querySelector(`.adrc-thread-badge[data-thread-id="${thread.id}"]`);
@@ -815,45 +844,67 @@
     if (existingPanel) existingPanel.remove();
 
     const visibleCount = (thread.comments || []).filter(c => !c.isDeleted).length;
+    const line = thread.threadContext && thread.threadContext.rightFileStart
+      ? thread.threadContext.rightFileStart.line
+      : null;
+    const lineSuffix = typeof line === 'number' ? ` · line ${line}` : '';
     const statusSuffix = thread.status === 'fixed'
       ? ' <span class="adrc-thread-status">· ✓ resolved</span>'
       : '';
+    const willAutoExpand = thread.status !== 'fixed';
+    const chevron = willAutoExpand ? '▼' : '▶';
 
     const badge = document.createElement('button');
     badge.type = 'button';
     badge.className = 'adrc-thread-badge';
     badge.dataset.threadId = thread.id;
     badge.dataset.status = thread.status;
-    badge.innerHTML = `💬 ${visibleCount} comment${visibleCount !== 1 ? 's' : ''}${statusSuffix}`;
+    badge.innerHTML =
+      `<span class="adrc-thread-badge-chevron">${chevron}</span>` +
+      `${visibleCount} comment${visibleCount !== 1 ? 's' : ''}${lineSuffix}${statusSuffix}`;
 
-    parent.parentNode.insertBefore(badge, parent.nextSibling);
+    parent.parentNode.insertBefore(badge, anchor.nextSibling);
 
     // Unresolved threads auto-expand so reviewers immediately see what
     // needs attention. Resolved threads stay collapsed as a compact
     // badge; clicking expands them on demand.
     let panel = null;
-    if (thread.status !== 'fixed') {
+    if (willAutoExpand) {
       panel = buildThreadPanel(thread);
       badge.parentNode.insertBefore(panel, badge.nextSibling);
     }
 
     badge.addEventListener('click', () => {
+      const chevronEl = badge.querySelector('.adrc-thread-badge-chevron');
       if (panel && panel.parentNode) {
         panel.remove();
         panel = null;
+        if (chevronEl) chevronEl.textContent = '▶';
         return;
       }
       panel = buildThreadPanel(thread);
       badge.parentNode.insertBefore(panel, badge.nextSibling);
+      if (chevronEl) chevronEl.textContent = '▼';
     });
+
+    return panel || badge;
   }
 
   /**
    * Fetch threads for the current PR + file and render inline badges.
    * Called during init and after posting a new comment.
+   *
+   * Preserves scroll position so mutating a thread (reply, resolve, edit,
+   * delete) doesn't jump the page. Sorts threads by rightFileStart.line
+   * so multiple badges under the same block land in source order rather
+   * than the reverse-of-API-return order that plain insertBefore gives.
    */
   async function refreshThreadBadges() {
     if (!currentFilePathCached) return;
+
+    // Capture scroll before we mutate the DOM so we can put the reader
+    // back where they were reading after re-render.
+    const savedScrollY = window.scrollY;
 
     // Clear any prior badges/panels — safe to re-render from scratch.
     document.querySelectorAll('.adrc-thread-badge, .adrc-thread-panel').forEach(el => el.remove());
@@ -867,20 +918,54 @@
     }
 
     const threads = (data && data.value) || [];
-    let rendered = 0;
+
+    // Filter to threads that (a) aren't system-generated, (b) target the
+    // current file, and (c) have a mapped anchor block. Then sort by
+    // source line ascending (createdAt tiebreaker) via the shared
+    // GRDC.sortThreadHeads so same-block stacks render top-to-bottom.
+    const GRDC = window.GRDC || {};
+    const anchored = [];
     threads.forEach(thread => {
       if (adapter.isSystemThread(thread)) return;
       const tc = thread.threadContext;
       if (!tc || tc.filePath !== currentFilePathCached) return;
       if (!tc.rightFileStart || typeof tc.rightFileStart.line !== 'number') return;
-
       const block = currentLineToBlock.get(tc.rightFileStart.line);
       if (!block) return;
+      anchored.push({
+        thread,
+        block,
+        line: tc.rightFileStart.line,
+        createdAt: (thread.comments && thread.comments[0] && thread.comments[0].publishedDate) || null
+      });
+    });
 
-      renderThreadBadge(block, thread);
-      rendered++;
+    const sorted = typeof GRDC.sortThreadHeads === 'function'
+      ? GRDC.sortThreadHeads(anchored)
+      : anchored.slice().sort((a, b) => a.line - b.line);
+
+    // Track last-inserted DOM node per anchor so multiple badges under
+    // the same block chain in source-line order.
+    const lastInsertedPerParent = new Map();
+    let rendered = 0;
+    sorted.forEach(({ thread, block }) => {
+      const parent = block.tagName === 'TR' ? (block.closest('table') || block) : block;
+      const anchor = lastInsertedPerParent.get(parent) || parent;
+      const lastNode = renderThreadBadge(block, thread, anchor);
+      if (lastNode) {
+        lastInsertedPerParent.set(parent, lastNode);
+        rendered++;
+      }
     });
     console.log(`${LOG} rendered ${rendered} thread badge${rendered !== 1 ? 's' : ''} for ${currentFilePathCached}`);
+
+    // Restore scroll on the next frame so any layout-affecting reflow
+    // (image loads, etc.) has settled first.
+    requestAnimationFrame(() => {
+      if (Math.abs(window.scrollY - savedScrollY) > 1) {
+        window.scrollTo({ top: savedScrollY, behavior: 'instant' });
+      }
+    });
   }
 
   // ── Init flow ────────────────────────────────────────────────────────

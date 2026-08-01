@@ -137,6 +137,18 @@
   // center regardless of the host page's font metrics.
   const PLUS_SVG = '<svg viewBox="0 0 14 14" fill="none"><path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
+  // ── Multi-line range drag state (module-scoped) ───────────────────────
+  //
+  // Users drag the `+` button of one block down to the `+` button of
+  // another block to comment on a range. State lives here so a single
+  // pointer gesture is shared across every attached button.
+  let dragState = null;
+  // Set true briefly after a drag-drop so the button's `click` handler
+  // (which fires after mouseup) can distinguish "was drag, not click"
+  // and skip opening the single-line editor.
+  let dragJustCompleted = false;
+  const DRAG_THRESHOLD_PX = 4;
+
   function attachCommentButton(block, info) {
     // `buttonAnchor` returns the block itself for normal elements
     // (paragraphs, headings, lists, code blocks) and the first cell for
@@ -151,20 +163,58 @@
     if (host.dataset.adrcHasButton) return;
     host.dataset.adrcHasButton = '1';
     host.classList.add('adrc-hoverable');
+    // Stash the mapper-assigned line + path on the host so multi-line
+    // drag can look up the end block's line without walking the map.
+    host.dataset.adrcLine = String(info.line);
+    host.dataset.adrcPath = info.path;
 
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'adrc-comment-btn';
-    btn.title = `Comment on ${info.path}:${info.line}`;
+    btn.title = `Comment on ${info.path}:${info.line}\nDrag down to another + to comment on a range`;
     btn.setAttribute('aria-label', btn.title);
     btn.innerHTML = PLUS_SVG;
     // Track which line the button currently represents. For non-code
     // blocks this stays === info.line. For <pre>, mousemove keeps it in
     // sync with the row under the cursor.
     btn.dataset.adrcLine = String(info.line);
+
+    // Multi-line drag: mousedown records the anchor, mousemove escalates
+    // to a drag once past DRAG_THRESHOLD_PX, mouseup on another `+`
+    // opens the range compose. A plain click (no movement past threshold)
+    // still opens the single-line compose via the click handler below.
+    btn.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return; // left button only
+      e.preventDefault(); // no text-selection during drag
+      // For code blocks, `btn.dataset.adrcLine` is kept in sync with the
+      // hovered row by the sliding-button mousemove; using it here means
+      // the drag anchor is the line the cursor was actually on, not the
+      // fence's first content line.
+      const anchorLine = parseInt(btn.dataset.adrcLine, 10) || info.line;
+      dragState = {
+        anchorBlock: block,
+        anchorHost: host,
+        anchorInfo: info,
+        anchorLine,
+        anchorButton: btn,
+        startX: e.clientX,
+        startY: e.clientY,
+        isDragging: false,
+        lastHighlighted: []
+      };
+      document.addEventListener('mousemove', onDragMove);
+      document.addEventListener('mouseup', onDragEnd);
+    });
+
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
+      // If the mouseup just fired a drag-completion, skip the click so
+      // we don't double-open (once for range, once for single-line).
+      if (dragJustCompleted) {
+        dragJustCompleted = false;
+        return;
+      }
       const trackedLine = parseInt(btn.dataset.adrcLine, 10) || info.line;
       openCommentBox(block, info, trackedLine);
     });
@@ -177,6 +227,95 @@
     if (block.tagName === 'PRE') {
       wireCodeBlockLineTracking(block, btn, info);
     }
+  }
+
+  // ── Drag handlers (multi-line range comments) ────────────────────────
+
+  function onDragMove(e) {
+    if (!dragState) return;
+    const dx = e.clientX - dragState.startX;
+    const dy = e.clientY - dragState.startY;
+    if (!dragState.isDragging) {
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+      dragState.isDragging = true;
+      document.body.classList.add('adrc-dragging');
+    }
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const overHost = el && el.closest('.adrc-hoverable');
+    if (!overHost) return;
+    // Only highlight blocks in the same file (same path stashed on host).
+    if (overHost.dataset.adrcPath !== dragState.anchorInfo.path) return;
+    paintRangeHover(dragState.anchorHost, overHost);
+  }
+
+  function paintRangeHover(startHost, endHost) {
+    if (!dragState) return;
+    // Clear whatever was highlighted last frame.
+    dragState.lastHighlighted.forEach(b => b.classList.remove('adrc-range-hover'));
+    // Walk the current preview's hoverable blocks and mark the inclusive
+    // range between anchor and drop target (in DOM order).
+    const all = Array.from(document.querySelectorAll('.markdown-preview-container .adrc-hoverable'));
+    const si = all.indexOf(startHost);
+    const ei = all.indexOf(endHost);
+    if (si < 0 || ei < 0) return;
+    const [lo, hi] = si < ei ? [si, ei] : [ei, si];
+    const highlighted = all.slice(lo, hi + 1);
+    highlighted.forEach(b => b.classList.add('adrc-range-hover'));
+    dragState.lastHighlighted = highlighted;
+  }
+
+  function onDragEnd(e) {
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup', onDragEnd);
+    document.body.classList.remove('adrc-dragging');
+
+    const state = dragState;
+    dragState = null;
+    if (!state) return;
+
+    // Always clear the highlight even if the drag was cancelled.
+    state.lastHighlighted.forEach(b => b.classList.remove('adrc-range-hover'));
+
+    if (!state.isDragging) return; // plain click — let click handler take over
+
+    // Drop target: a `.adrc-hoverable` block's host. Same-host is normally
+    // rejected (not a real drag) EXCEPT on code blocks, where the whole
+    // fence is one host and the tracked line differs between start and
+    // end — that's how intra-fence range selection works.
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const endHost = el && el.closest('.adrc-hoverable');
+    if (!endHost) return;
+    if (endHost.dataset.adrcPath !== state.anchorInfo.path) return;
+
+    // For code blocks, the button inside the host has its own tracked
+    // line (updated by the sliding-button mousemove). Prefer that over
+    // the host's `data-adrc-line` (which is the fence's first content
+    // line). For non-code blocks, both values are equal.
+    const endBtn = endHost.querySelector('.adrc-comment-btn');
+    const endBtnLine = endBtn ? parseInt(endBtn.dataset.adrcLine, 10) : NaN;
+    const endHostLine = parseInt(endHost.dataset.adrcLine, 10);
+    const endLine = Number.isFinite(endBtnLine) ? endBtnLine : endHostLine;
+    if (!Number.isFinite(endLine)) return;
+
+    // Same-host drop: only meaningful on code blocks with a different
+    // tracked line (dragging across lines inside one fenced block).
+    if (endHost === state.anchorHost) {
+      const isCodeBlock = endHost.tagName === 'PRE';
+      if (!isCodeBlock) return;
+      if (endLine === state.anchorLine) return;
+    }
+
+    // Prevent the subsequent click on the anchor button from opening a
+    // second (single-line) editor.
+    dragJustCompleted = true;
+    setTimeout(() => { dragJustCompleted = false; }, 300);
+
+    openCommentBox(
+      state.anchorBlock,
+      state.anchorInfo,
+      state.anchorLine,
+      endLine
+    );
   }
 
   /**
@@ -297,20 +436,26 @@
 
   // ── Comment box (compose new thread) ─────────────────────────────────
 
-  function openCommentBox(block, info, trackedLine) {
+  function openCommentBox(block, info, trackedLine, endLineParam) {
     // Only one compose editor open at a time.
     document.querySelectorAll('.adrc-editor.adrc-compose-editor').forEach(el => el.remove());
 
-    // For code blocks, the user can retarget the comment to any line
-    // inside the fenced range via a small numeric input. Everything else
-    // uses the mapper-assigned line as-is.
-    const isCodeBlock = block.tagName === 'PRE';
     const prefillLine = trackedLine || info.line;
-    let rangeStart = info.line;
-    let rangeEnd = info.line;
+    // Range mode: drag from one `+` to another. `endLineParam` is the
+    // other block's line (either > or < prefillLine). Normalize so start
+    // is always the smaller line.
+    const isRange = Number.isFinite(endLineParam) && endLineParam !== prefillLine;
+    const rangeStartLine = isRange ? Math.min(prefillLine, endLineParam) : prefillLine;
+    const rangeEndLine   = isRange ? Math.max(prefillLine, endLineParam) : prefillLine;
+
+    // Code-block mode: single line inside a fence. Only applies when
+    // not already in range mode.
+    const isCodeBlock = !isRange && block.tagName === 'PRE';
+    let codeRangeStart = info.line;
+    let codeRangeEnd = info.line;
     if (isCodeBlock) {
-      rangeStart = parseInt(block.dataset.adrcRangeStart, 10) || info.line;
-      rangeEnd = parseInt(block.dataset.adrcRangeEnd, 10) || info.line;
+      codeRangeStart = parseInt(block.dataset.adrcRangeStart, 10) || info.line;
+      codeRangeEnd = parseInt(block.dataset.adrcRangeEnd, 10) || info.line;
     }
 
     const { editor, textarea } = createEditor({
@@ -319,22 +464,35 @@
       minRows: 3,
       onSubmit: async (content) => {
         await adapter.resolveIds(ctx);
-        // Prefer the (possibly edited) line input on code blocks. Falls
-        // back to the tracked/prefill line if the input isn't present.
-        const lineInput = editor.querySelector('.adrc-line-input');
+
         let finalLine = prefillLine;
-        if (lineInput) {
-          const v = parseInt(lineInput.value, 10);
-          if (Number.isFinite(v) && v >= rangeStart && v <= rangeEnd) {
+        let finalEndLine;
+        if (isRange) {
+          const startInput = editor.querySelector('.adrc-line-input-start');
+          const endInput = editor.querySelector('.adrc-line-input-end');
+          const s = parseInt(startInput && startInput.value, 10);
+          const e = parseInt(endInput && endInput.value, 10);
+          finalLine = Number.isFinite(s) ? s : rangeStartLine;
+          finalEndLine = Number.isFinite(e) ? e : rangeEndLine;
+          if (finalLine > finalEndLine) {
+            const swap = finalLine; finalLine = finalEndLine; finalEndLine = swap;
+          }
+        } else if (isCodeBlock) {
+          const lineInput = editor.querySelector('.adrc-line-input');
+          const v = parseInt(lineInput && lineInput.value, 10);
+          if (Number.isFinite(v) && v >= codeRangeStart && v <= codeRangeEnd) {
             finalLine = v;
           }
         }
-        const thread = await adapter.createThread(ctx, {
-          content,
-          line: finalLine,
-          filePath: info.path
-        });
-        console.log(`${LOG} thread posted: id=${thread.id} on ${info.path}:${finalLine}`);
+
+        const opts = { content, line: finalLine, filePath: info.path };
+        if (finalEndLine && finalEndLine !== finalLine) opts.endLine = finalEndLine;
+
+        const thread = await adapter.createThread(ctx, opts);
+        const summary = finalEndLine && finalEndLine !== finalLine
+          ? `${finalLine}\u2013${finalEndLine}`
+          : String(finalLine);
+        console.log(`${LOG} thread posted: id=${thread.id} on ${info.path}:${summary}`);
         editor.remove();
         await refreshThreadBadges();
       }
@@ -343,11 +501,16 @@
 
     const header = document.createElement('div');
     header.className = 'adrc-editor-header';
-    if (isCodeBlock && rangeEnd > rangeStart) {
+    if (isRange) {
       header.innerHTML =
-        `Comment on <strong>${escapeHtml(info.path)}</strong> · line ` +
-        `<input type="number" class="adrc-line-input" min="${rangeStart}" max="${rangeEnd}" value="${prefillLine}" /> ` +
-        `<span class="adrc-line-hint">(code block, lines ${rangeStart}\u2013${rangeEnd})</span>`;
+        `Comment on <strong>${escapeHtml(info.path)}</strong> \u00b7 lines ` +
+        `<input type="number" class="adrc-line-input adrc-line-input-start" min="1" value="${rangeStartLine}" /> \u2013 ` +
+        `<input type="number" class="adrc-line-input adrc-line-input-end" min="1" value="${rangeEndLine}" />`;
+    } else if (isCodeBlock && codeRangeEnd > codeRangeStart) {
+      header.innerHTML =
+        `Comment on <strong>${escapeHtml(info.path)}</strong> \u00b7 line ` +
+        `<input type="number" class="adrc-line-input" min="${codeRangeStart}" max="${codeRangeEnd}" value="${prefillLine}" /> ` +
+        `<span class="adrc-line-hint">(code block, lines ${codeRangeStart}\u2013${codeRangeEnd})</span>`;
     } else {
       header.innerHTML = `Comment on <strong>${escapeHtml(info.path + ':' + prefillLine)}</strong>`;
     }
@@ -844,10 +1007,19 @@
     if (existingPanel) existingPanel.remove();
 
     const visibleCount = (thread.comments || []).filter(c => !c.isDeleted).length;
-    const line = thread.threadContext && thread.threadContext.rightFileStart
-      ? thread.threadContext.rightFileStart.line
+    const tc = thread.threadContext || {};
+    const startLine = tc.rightFileStart && typeof tc.rightFileStart.line === 'number'
+      ? tc.rightFileStart.line
       : null;
-    const lineSuffix = typeof line === 'number' ? ` · line ${line}` : '';
+    const endLine = tc.rightFileEnd && typeof tc.rightFileEnd.line === 'number'
+      ? tc.rightFileEnd.line
+      : startLine;
+    let lineSuffix = '';
+    if (typeof startLine === 'number') {
+      lineSuffix = (endLine != null && endLine > startLine)
+        ? ` · lines ${startLine}–${endLine}`
+        : ` · line ${startLine}`;
+    }
     const statusSuffix = thread.status === 'fixed'
       ? ' <span class="adrc-thread-status">· ✓ resolved</span>'
       : '';
@@ -891,6 +1063,26 @@
   }
 
   /**
+   * Mark every commentable block whose source line falls inside a
+   * multi-line thread's range with `.adrc-range-permanent` so reviewers
+   * can see the extent of the thread at a glance. Uses `currentLineToBlock`
+   * (which already covers interior code-block lines) to find blocks,
+   * then routes the class to the visible `.adrc-hoverable` host (first
+   * cell for `<tr>`) via `GRDC.buttonAnchor`.
+   */
+  function paintPermanentRange(startLine, endLine) {
+    const GRDC = window.GRDC || {};
+    const targets = new Set();
+    for (let ln = startLine; ln <= endLine; ln++) {
+      const b = currentLineToBlock.get(ln);
+      if (!b) continue;
+      const host = (typeof GRDC.buttonAnchor === 'function' ? GRDC.buttonAnchor(b) : b) || b;
+      targets.add(host);
+    }
+    targets.forEach(h => h.classList.add('adrc-range-permanent'));
+  }
+
+  /**
    * Fetch threads for the current PR + file and render inline badges.
    * Called during init and after posting a new comment.
    *
@@ -908,6 +1100,9 @@
 
     // Clear any prior badges/panels — safe to re-render from scratch.
     document.querySelectorAll('.adrc-thread-badge, .adrc-thread-panel').forEach(el => el.remove());
+    // Also clear any persistent multi-line range markers so we can
+    // repaint them from the fresh thread list.
+    document.querySelectorAll('.adrc-range-permanent').forEach(el => el.classList.remove('adrc-range-permanent'));
 
     let data;
     try {
@@ -955,6 +1150,15 @@
       if (lastNode) {
         lastInsertedPerParent.set(parent, lastNode);
         rendered++;
+      }
+
+      // Persistent range marker: for multi-line threads, tint every
+      // block in the range so reviewers see the extent at a glance.
+      const tc = thread.threadContext || {};
+      const s = tc.rightFileStart && tc.rightFileStart.line;
+      const e = tc.rightFileEnd && tc.rightFileEnd.line;
+      if (typeof s === 'number' && typeof e === 'number' && e > s) {
+        paintPermanentRange(s, e);
       }
     });
     console.log(`${LOG} rendered ${rendered} thread badge${rendered !== 1 ? 's' : ''} for ${currentFilePathCached}`);

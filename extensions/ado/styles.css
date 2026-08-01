@@ -24,7 +24,6 @@
 }
 
 /* ── The `+` comment button ─────────────────────────────────────────── */
-
 /* Give the Preview container enough left padding for the `+` button to
    sit outside each block without being clipped by the container edge.
    `!important` because ADO's own CSS specifies padding on this class.
@@ -130,6 +129,31 @@ li.adrc-hoverable .adrc-comment-btn {
   left: -26px;
   top: 4px;
   transform: none;
+}
+
+/* ── Multi-line range drag highlight ─────────────────────────────────
+   While the user drags the `+` button from one commentable block to
+   another, every block between them in DOM order is tinted so the
+   in-progress range is visible. Yellow matches how GitHub renders this
+   gesture and doesn't collide with our accent-blue selection color. */
+
+body.adrc-dragging {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.adrc-range-hover {
+  background-color: rgba(255, 191, 0, 0.14) !important;
+  box-shadow: inset 3px 0 0 0 rgba(230, 175, 20, 0.7) !important;
+}
+
+/* Persistent left-bar marker on blocks inside an existing multi-line
+   thread's range. Softer than the drag-hover so the two don't fight
+   each other visually while dragging. */
+.adrc-range-permanent {
+  box-shadow: inset 3px 0 0 0 rgba(230, 175, 20, 0.45);
+  background-color: rgba(255, 191, 0, 0.05);
 }
 
 /* ── The inline editor (compose new thread + reply + edit) ──────────── */

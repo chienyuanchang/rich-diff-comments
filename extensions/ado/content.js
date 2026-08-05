@@ -911,14 +911,39 @@
   }
 
   /**
-   * Delete the given comment after a confirm() prompt. On success,
-   * refreshes badges so the soft-deleted comment renders as such.
+   * Delete the given comment. First click on the Delete button flips it
+   * into a red "Confirm delete" state for 3 seconds; a second click
+   * within that window actually deletes. Replaces the previous browser
+   * `confirm()` dialog with an inline two-step affordance so the
+   * mutation happens without a modal interruption.
    */
   async function deleteCommentAction(thread, comment, btn) {
-    if (!confirm('Delete this comment? (The comment will be marked as deleted; the thread stays.)')) return;
-    const originalText = btn.textContent;
+    // Two-step confirm: first click primes the button, second click
+    // (within the timer window) commits.
+    if (btn.dataset.adrcConfirming !== '1') {
+      const originalText = btn.textContent;
+      btn.dataset.adrcConfirming = '1';
+      btn.dataset.adrcOriginalText = originalText;
+      btn.textContent = 'Confirm delete';
+      btn.classList.add('adrc-comment-inline-btn-danger');
+      const timer = setTimeout(() => {
+        if (btn.dataset.adrcConfirming === '1') {
+          btn.dataset.adrcConfirming = '';
+          btn.textContent = originalText;
+          btn.classList.remove('adrc-comment-inline-btn-danger');
+        }
+      }, 3000);
+      btn.dataset.adrcConfirmTimer = String(timer);
+      return;
+    }
+
+    // Second click — actually delete.
+    const timer = parseInt(btn.dataset.adrcConfirmTimer, 10);
+    if (Number.isFinite(timer)) clearTimeout(timer);
+    btn.dataset.adrcConfirming = '';
     btn.disabled = true;
     btn.textContent = 'Deleting…';
+    btn.classList.remove('adrc-comment-inline-btn-danger');
     try {
       await adapter.resolveIds(ctx);
       await adapter.deleteComment(ctx, thread.id, comment.id);
@@ -927,8 +952,8 @@
     } catch (err) {
       console.error(`${LOG} deleteComment failed:`, err);
       btn.disabled = false;
-      btn.textContent = originalText;
-      alert('Delete failed: ' + String(err.message || err).slice(0, 200));
+      btn.textContent = btn.dataset.adrcOriginalText || 'Delete';
+      showErrorToast('Delete failed: ' + String(err.message || err).slice(0, 160));
     }
   }
 
@@ -1109,6 +1134,7 @@
       data = await adapter.listThreads(ctx);
     } catch (err) {
       console.error(`${LOG} refreshThreadBadges: listThreads failed:`, err);
+      showErrorToast('Could not load threads: ' + String(err.message || err).slice(0, 160));
       return;
     }
 
@@ -1172,6 +1198,156 @@
     });
   }
 
+  // ── Section collapse (fold headings and their sections) ──────────────
+  //
+  // Every mapped heading (H1–H6) grows a small chevron toggle in the left
+  // gutter that folds every block down to the next heading of equal or
+  // shallower level. Uses the shared `GRDC.collectSiblingsToHide` /
+  // `GRDC.collectSectionRoots` walker (see src/lib/sectionCollapse.js).
+
+  // In-memory only — collapsed state is lost on page reload. A typical
+  // review session is short and persisting to storage would be over-kill.
+  const collapsedHeadings = new WeakSet();
+
+  function isOurInjectedNode(el) {
+    if (!el || el.nodeType !== 1) return false;
+    const cl = el.classList;
+    if (!cl) return false;
+    return cl.contains('adrc-thread-badge') ||
+           cl.contains('adrc-thread-panel') ||
+           cl.contains('adrc-editor') ||
+           cl.contains('adrc-comment-btn') ||
+           cl.contains('adrc-collapse-toggle');
+  }
+
+  function siblingsToHide(heading) {
+    const GRDC = window.GRDC || {};
+    if (typeof GRDC.collectSiblingsToHide !== 'function') return [];
+    return GRDC.collectSiblingsToHide(heading, {
+      isInjected: isOurInjectedNode,
+      richDiffSelector: '.markdown-preview-container'
+    });
+  }
+
+  function sectionRoots(heading) {
+    const GRDC = window.GRDC || {};
+    if (typeof GRDC.collectSectionRoots !== 'function') return [];
+    return GRDC.collectSectionRoots(heading, {
+      isInjected: isOurInjectedNode,
+      richDiffSelector: '.markdown-preview-container'
+    });
+  }
+
+  function ensureCollapseToggle(element) {
+    if (!element || !/^H[1-6]$/.test(element.tagName)) return null;
+    const existing = element.querySelector(':scope > .adrc-collapse-toggle');
+    if (existing) return existing;
+
+    const toggle = document.createElement('button');
+    toggle.className = 'adrc-collapse-toggle';
+    toggle.type = 'button';
+    toggle.setAttribute('aria-label', 'Collapse section');
+    toggle.setAttribute('aria-expanded', 'true');
+    toggle.title = 'Collapse section (click to hide everything until the next heading of the same or higher level)';
+    toggle.textContent = '\u25be'; // down chevron when expanded
+    toggle.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleSection(element, toggle);
+    });
+
+    element.classList.add('adrc-collapsible');
+    element.prepend(toggle);
+
+    // Restore collapsed state on re-init.
+    if (collapsedHeadings.has(element)) {
+      applyCollapseVisuals(element, toggle, true);
+    }
+    return toggle;
+  }
+
+  function applyCollapseVisuals(heading, toggle, collapsed) {
+    const siblings = siblingsToHide(heading);
+    siblings.forEach((el) => {
+      if (collapsed) el.classList.add('adrc-collapsed-hidden');
+      else el.classList.remove('adrc-collapsed-hidden');
+    });
+
+    if (collapsed) foldInjectedInSection(heading);
+    else restoreInjectedInSection(heading);
+
+    heading.classList.toggle('adrc-section-collapsed', collapsed);
+    toggle.textContent = collapsed ? '\u25b8' : '\u25be';
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    toggle.setAttribute('aria-label', collapsed ? 'Expand section' : 'Collapse section');
+  }
+
+  /**
+   * When a section collapses, hide any auto-expanded thread panels
+   * inside it (badges remain visible so users know comments exist) and
+   * remove any open compose / reply / edit editors (their transient
+   * textarea contents can't reliably be preserved).
+   */
+  function foldInjectedInSection(heading) {
+    sectionRoots(heading).forEach((root) => {
+      const panels = root.classList && root.classList.contains('adrc-thread-panel')
+        ? [root]
+        : Array.from((root.querySelectorAll && root.querySelectorAll('.adrc-thread-panel')) || []);
+      panels.forEach((p) => {
+        if (p.style.display !== 'none') {
+          p.dataset.adrcWasVisible = '1';
+          p.style.display = 'none';
+        }
+      });
+      const editors = root.classList && root.classList.contains('adrc-editor')
+        ? [root]
+        : Array.from((root.querySelectorAll && root.querySelectorAll('.adrc-editor')) || []);
+      editors.forEach((edEl) => edEl.remove());
+    });
+  }
+
+  /**
+   * Un-hide any thread panels this section had hidden when it collapsed.
+   * Panels that were already collapsed at collapse-time stay collapsed.
+   */
+  function restoreInjectedInSection(heading) {
+    sectionRoots(heading).forEach((root) => {
+      const panels = root.classList && root.classList.contains('adrc-thread-panel')
+        ? [root]
+        : Array.from((root.querySelectorAll && root.querySelectorAll('.adrc-thread-panel')) || []);
+      panels.forEach((p) => {
+        if (p.dataset.adrcWasVisible === '1') {
+          p.style.display = '';
+          delete p.dataset.adrcWasVisible;
+        }
+      });
+    });
+  }
+
+  function toggleSection(heading, toggle) {
+    const willCollapse = !collapsedHeadings.has(heading);
+    if (willCollapse) collapsedHeadings.add(heading);
+    else collapsedHeadings.delete(heading);
+    applyCollapseVisuals(heading, toggle, willCollapse);
+  }
+
+  // ── Error toast ──────────────────────────────────────────────────────
+  //
+  // Small bottom-right slide-in banner for asynchronous errors (network
+  // failures, API errors) that would otherwise only reach the console.
+
+  function showErrorToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'adrc-toast adrc-toast-error';
+    toast.textContent = String(message || 'Something went wrong.').slice(0, 240);
+    document.body.appendChild(toast);
+    // Auto-dismiss with a short fade out.
+    setTimeout(() => {
+      toast.classList.add('adrc-toast-out');
+      setTimeout(() => toast.remove(), 250);
+    }, 5000);
+  }
+
   // ── Init flow ────────────────────────────────────────────────────────
 
   async function initButtonsForCurrentPreview() {
@@ -1214,6 +1390,11 @@
               if (!currentLineToBlock.has(ln)) currentLineToBlock.set(ln, block);
             }
           }
+        }
+        // Headings (H1–H6) also get a section-collapse chevron in the
+        // gutter so reviewers can fold long sections while reading.
+        if (/^H[1-6]$/.test(block.tagName)) {
+          ensureCollapseToggle(block);
         }
       });
       console.log(`${LOG} Initialized: ${attached} commentable blocks in ${filePath}`);

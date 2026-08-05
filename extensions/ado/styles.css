@@ -156,6 +156,100 @@ body.adrc-dragging {
   background-color: rgba(255, 191, 0, 0.05);
 }
 
+/* ── Section collapse chevron on H1–H6 headings ────────────────────── */
+
+.adrc-collapsible {
+  position: relative;
+}
+
+.adrc-collapse-toggle {
+  position: absolute;
+  left: 4px;
+  top: 0.25em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 0.85em;
+  line-height: 1;
+  color: var(--adrc-text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.12s;
+  z-index: 101;
+}
+
+.adrc-collapsible:hover .adrc-collapse-toggle,
+.adrc-collapse-toggle:focus-visible,
+.adrc-section-collapsed .adrc-collapse-toggle {
+  opacity: 1;
+}
+
+.adrc-collapse-toggle:hover {
+  color: var(--adrc-text);
+  background: var(--adrc-bg-subtle);
+}
+
+/* When a section is collapsed, dim its heading so the fold is obvious. */
+.adrc-section-collapsed {
+  opacity: 0.7;
+}
+
+/* Hide the bodies of collapsed sections. `!important` so ADO's own
+   preview styles can't win the specificity fight. */
+.adrc-collapsed-hidden {
+  display: none !important;
+}
+
+/* Push the `+` further left on collapsible headings so the chevron has
+   room in the gutter. Left → right visual order: `+`, chevron, heading. */
+.adrc-collapsible.adrc-hoverable > .adrc-comment-btn {
+  left: -30px;
+}
+
+/* ── Error toast (bottom-right slide-in) ────────────────────────────── */
+
+.adrc-toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 9999;
+  min-width: 280px;
+  max-width: 480px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  animation: adrc-toast-in 0.2s ease-out;
+}
+
+.adrc-toast-error {
+  background: #fdecea;
+  color: var(--adrc-danger);
+  border: 1px solid rgba(209, 52, 56, 0.35);
+}
+
+.adrc-toast-out {
+  animation: adrc-toast-out 0.25s ease-in forwards;
+}
+
+@keyframes adrc-toast-in {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes adrc-toast-out {
+  from { transform: translateY(0);    opacity: 1; }
+  to   { transform: translateY(12px); opacity: 0; }
+}
+
 /* ── The inline editor (compose new thread + reply + edit) ──────────── */
 
 .adrc-editor {
@@ -646,6 +740,16 @@ body.adrc-dragging {
   background: rgba(209, 52, 56, 0.08);
   border-color: var(--adrc-danger);
   color: var(--adrc-danger);
+}
+
+/* Two-step delete confirm state: after the first click, the Delete
+   button flips to a red-tinted "Confirm delete" state so the second
+   click is deliberate. Auto-resets after 3 seconds. */
+.adrc-comment-inline-btn-danger {
+  background: rgba(209, 52, 56, 0.12) !important;
+  border-color: var(--adrc-danger) !important;
+  color: var(--adrc-danger) !important;
+  font-weight: 600;
 }
 
 .adrc-comment-inline-btn:disabled {

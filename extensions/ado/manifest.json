@@ -27,6 +27,7 @@
         "src/lib/tableRows.js",
         "src/lib/markdownPreview.js",
         "src/lib/codeBlocks.js",
+        "src/lib/sectionCollapse.js",
         "src/lib/lineMap.js",
         "src/adapters/ado.js",
         "content.js"

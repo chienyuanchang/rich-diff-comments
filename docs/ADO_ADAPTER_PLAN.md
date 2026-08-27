@@ -194,7 +194,8 @@ that working behavior into the durable sidebar instead of maintaining two panels
 **Scope for this iteration:**
 
 - One fixed floating `.adrc-sidebar` with **Threads** and **Outline** tabs.
-- Header collapse toggle; collapsed mode keeps the header/tabs reachable.
+- Header collapse toggle; collapsed mode keeps the header navigation controls
+  reachable while hiding the tab row and pane body.
 - Drag by the header and resize from the lower-right corner.
 - Persist position, size, collapsed state, active tab, visibility, and the
   unresolved-only filter in `localStorage`, with viewport clamping on restore.
@@ -259,9 +260,8 @@ ported directly. Build ADO Changes from a source comparison instead:
   unit coverage in `tests/changes.test.js`.
 
 **Explicitly deferred:** PR-wide Changes aggregation, deleted-file summary
-cards, rename-aware old-path lookup, `[` / `]` shortcuts and header prev/next
-cluster (full keyboard/navigation iteration), and semantic suppression of
-Markdown syntax-only changes.
+cards, rename-aware old-path lookup, and semantic suppression of Markdown
+syntax-only changes.
 
 **Acceptance result:** changed headings, paragraphs, lists, table rows, and code
 blocks appear once in source order; added/removed/mixed labels are correct;
@@ -270,6 +270,44 @@ switches rebuild without stale cards; and failure states do not affect Threads
 or Outline. Manually verified on both a wholly new document and a partially
 modified README. Automated result: 344 / 344 unit/static tests and 21 / 21
 Playwright tests.
+
+### 7.3 Iteration K — sidebar controls + keyboard navigation (complete, 2026-08-26)
+
+Complete the navigation surface now that Changes / Threads / Outline share one
+sidebar. Match the GitHub extension's shortcuts and discoverability while
+reusing ADO's route-safe thread and nested-scroll-safe change navigation.
+
+**Scope for this iteration:**
+
+- Add always-available compact Changes and Threads header clusters with
+  previous / current-total / next controls. Clusters remain usable while the
+  sidebar body is collapsed.
+- Changes counter is current-file only; Threads counter walks the PR-wide list
+  after applying the unresolved-only filter.
+- `t`: toggle sidebar body collapsed / expanded. If hidden, show it first.
+- `Shift+T`: restore default position and size, expand/show the sidebar, and
+  retain the user's selected tab and unresolved filter.
+- `1` / `2` / `3`: show, expand, and select Changes / Threads / Outline.
+- `b`: idempotently show, expand, and select Outline.
+- `j` / `k`: next / previous visible thread with wrapping; `h` / `l`: first /
+  last visible thread. Cross-file keys use the same native ADO tree-row pending
+  jump flow as card clicks.
+- `[` / `]`: previous / next current-file change with wrapping; `{` / `}`
+  (Shift+[ / Shift+]): first / last change.
+- Ignore every shortcut inside input / textarea / select / contenteditable and
+  whenever Ctrl / Meta / Alt is held. Only call `preventDefault()` when an
+  action is available, so empty lists do not swallow normal page keys.
+- Keep existing editor-local Escape behavior; do not add a page-global Escape
+  handler that conflicts with ADO dialogs and menus.
+- Tooltips expose shortcut bindings; counters use `aria-live="polite"`; every
+  control remains keyboard focusable.
+
+**Acceptance result:** button and keyboard navigation select the same item;
+first press with no active item lands on the correct boundary; wrapping works;
+cross-file thread keys preserve Preview; collapsed header controls remain
+usable; reset recovers an off-screen/tiny sidebar while retaining tab/filter;
+and typing is never hijacked. Manually verified on the sandbox PR. Automated
+result: 349 / 349 unit/static tests and 21 / 21 Playwright tests.
 
 ## 8. DOM adapter surface — what actually needs writing
 
@@ -485,6 +523,7 @@ Append as decisions get made / revised.
 - **2026-07-22** — **Line-mapping validated on ADO with zero `src/lib/` changes.** Added `getPullRequest()` and `getFileSource()` to the adapter plus `pullRequestUrl()` / `itemUrl()` builders (project-scoped items endpoint with `versionDescriptor.version=<branch>` + `includeContent=true`). Wired `src/lib/textMatch.js` + `tableRows.js` + `lineMap.js` into the ADO manifest so `window.GRDC.mapBlocksToSourceLines` is available in-page. New `probe.detectLines(filePath)` fetches the file source at the PR's source branch, runs the block→line matcher against the visible `.markdown-preview-container`, and `console.table`s the result. **Sandbox test result**: **14/14 blocks mapped to correct source lines** on the sandbox PR's README.md — including the modified list item (line 8 "test replace"), a newly added H1 heading (line 17 "Section to Add"), and its new paragraph (line 18). Log: `[GRDC] Mapped 14 elements for /README.md (source-matched: true, text-hits: 13)`. This proves the entire pure-logic port from the audit works on ADO's DOM without modification — same forward-scan text matcher, same edge-case handling. Tests: 305 passing (5 new URL-builder tests for `pullRequestUrl` and `itemUrl` covering project scope, missing-project fallback, versionDescriptor, path normalization). Ready to start P0 UI (`+` button + comment box).
 - **2026-08-26** — **Iterations H + I complete: Threads sidebar + integrated Outline.** Replaced the standalone Outline panel with one draggable, resizable, persistent sidebar containing PR-wide Threads and current-file Outline tabs. Threads support file grouping, unresolved-only filtering, active-thread tracking, same-file scroll/expand, and cross-file pending jumps. Live testing exposed that generic `?path=` anchors / `window.location.assign()` remount ADO and reset Preview to Inline or Side-by-side (visible as a second MSAL/content-script initialization). Final architecture activates the native `[role="treeitem"]` / `.bolt-tree-row` cell instead, retains a one-shot safe Preview-menu restoration fallback, and intentionally fails with a toast when no materialized tree row exists rather than abandoning Preview. Manual sandbox result: same-file and cross-file thread navigation work while staying in Preview; Outline remains route-aware. Validation: 324 / 324 unit/static tests and 21 / 21 Playwright tests.
 - **2026-08-26** — **Iteration J complete: current-file Changes tab.** Because ADO Preview exposes no diff markers, Changes compares the already-fetched head Markdown with the same path at `lastMergeTargetCommit`, computes dependency-free Myers line hunks, and maps those hunks to the existing rendered block→line map. Cards show added / removed / mixed kind, line range, and snippet; active cards follow ADO's real scroll surface. A target-commit `404` is expected for a newly added file and is treated as an empty base (all rendered blocks added). Live testing also proved that one inferred scroll container is insufficient on some modified-file layouts; final navigation re-resolves the current block, expands containing folded sections, uses native `scrollIntoView()` to traverse nested ADO scrollers, preserves sticky offset with `scroll-margin-top`, and verifies/falls back when smooth scrolling does not start. Manually verified on a new 155-block design document and three modified README blocks. Validation: 344 / 344 unit/static tests and 21 / 21 Playwright tests.
+- **2026-08-26** — **Iteration K complete: sidebar controls + full keyboard navigation.** Added always-visible Changes and Threads previous/current/next clusters to the collapsed header and matched GitHub's shortcuts: `1` / `2` / `3` tabs, `b` Outline, `t` collapse, `Shift+T` layout reset, `j` / `k` / `h` / `l` thread navigation, and `[` / `]` / `{` / `}` change navigation. Navigation wraps, counters continue following ADO's inner scroll surface while collapsed or on another tab, cross-file thread keys reuse native tree-row Preview-preserving navigation, and all page shortcuts pass through in editors/contenteditable or with Ctrl/Meta/Alt. Existing editor-local Escape remains the only Escape binding to avoid conflicts with ADO dialogs and menus. Manual sandbox result: controls and shortcuts work as designed. Validation: 349 / 349 unit/static tests and 21 / 21 Playwright tests.
 
 ## 15. Appendix — ADO thread response shape (redacted)
 

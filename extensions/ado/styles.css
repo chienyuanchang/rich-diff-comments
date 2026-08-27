@@ -290,6 +290,15 @@ body.adrc-dragging {
   display: none;
 }
 
+.adrc-sidebar-collapsed .adrc-sidebar-tabs {
+  display: none;
+}
+
+.adrc-sidebar-collapsed .adrc-sidebar-header {
+  border-bottom: none;
+  border-radius: 6px;
+}
+
 .adrc-sidebar-dragging {
   opacity: 0.94;
   cursor: grabbing;
@@ -309,6 +318,66 @@ body.adrc-dragging {
   cursor: grab;
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+.adrc-sidebar-separator {
+  width: 1px;
+  height: 20px;
+  margin: 0 1px;
+  background: var(--adrc-border);
+  flex-shrink: 0;
+}
+
+.adrc-sidebar-header-spacer {
+  flex: 1;
+  min-width: 2px;
+}
+
+.adrc-sidebar-nav-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.adrc-sidebar-nav-button,
+.adrc-sidebar-nav-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0;
+  color: var(--adrc-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.adrc-sidebar-nav-button {
+  width: 22px;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.adrc-sidebar-nav-count {
+  min-width: 34px;
+  padding: 0 3px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.adrc-sidebar-nav-button:hover:not(:disabled),
+.adrc-sidebar-nav-count:hover {
+  color: var(--adrc-accent);
+  background: var(--adrc-accent-tint);
+  border-color: var(--adrc-border);
+}
+
+.adrc-sidebar-nav-button:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .adrc-sidebar-icon {
@@ -336,6 +405,8 @@ body.adrc-dragging {
 }
 
 .adrc-sidebar-icon:focus-visible,
+.adrc-sidebar-nav-button:focus-visible,
+.adrc-sidebar-nav-count:focus-visible,
 .adrc-sidebar-tab:focus-visible,
 .adrc-sidebar-thread-card:focus-visible,
 .adrc-sidebar-change-card:focus-visible,
@@ -356,14 +427,19 @@ body.adrc-dragging {
 
 .adrc-sidebar-tabs {
   display: flex;
-  align-self: stretch;
+  width: 100%;
+  min-height: 34px;
   min-width: 0;
-  flex: 1;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--adrc-border);
+  background: var(--adrc-bg);
 }
 
 .adrc-sidebar-tab {
   position: relative;
   min-width: 0;
+  min-height: 34px;
+  flex: 1;
   padding: 0 10px;
   color: var(--adrc-text-muted);
   background: transparent;

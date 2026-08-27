@@ -98,13 +98,64 @@ test('ADO sidebar replaced the standalone Outline panel builder', () => {
   assert.match(content, /outlinePanel = panel/);
 });
 
-test('ADO collapsed sidebar hides only the body and keeps header controls reachable', () => {
+test('ADO collapsed sidebar hides body/tabs but keeps both header nav clusters reachable', () => {
   const collapsed = ruleBody('.adrc-sidebar-collapsed');
   const collapsedBody = ruleBody('.adrc-sidebar-collapsed .adrc-sidebar-body');
+  const collapsedTabs = ruleBody('.adrc-sidebar-collapsed .adrc-sidebar-tabs');
   assert.match(collapsed, /height\s*:\s*42px\s*!important/);
   assert.match(collapsedBody, /display\s*:\s*none/);
+  assert.match(collapsedTabs, /display\s*:\s*none/);
   assert.doesNotMatch(css, /\.adrc-sidebar-collapsed\s+\.adrc-sidebar-header\s*\{[^}]*display\s*:\s*none/);
-  assert.doesNotMatch(css, /\.adrc-sidebar-collapsed\s+\.adrc-sidebar-tabs\s*\{[^}]*display\s*:\s*none/);
+  assert.doesNotMatch(css, /\.adrc-sidebar-collapsed\s+\.adrc-sidebar-changes-nav\s*\{[^}]*display\s*:\s*none/);
+  assert.doesNotMatch(css, /\.adrc-sidebar-collapsed\s+\.adrc-sidebar-thread-nav\s*\{[^}]*display\s*:\s*none/);
+});
+
+test('ADO header exposes scoped Changes and Threads nav controls with live counters', () => {
+  assert.match(content, /class="adrc-sidebar-nav-cluster adrc-sidebar-changes-nav"/);
+  assert.match(content, /class="adrc-sidebar-nav-cluster adrc-sidebar-thread-nav"/);
+  assert.match(content, /class="[^"]*adrc-sidebar-prev-change[^"]*"/);
+  assert.match(content, /class="[^"]*adrc-sidebar-next-change[^"]*"/);
+  assert.match(content, /class="[^"]*adrc-sidebar-prev-thread[^"]*"/);
+  assert.match(content, /class="[^"]*adrc-sidebar-next-thread[^"]*"/);
+  assert.ok((content.match(/aria-live="polite"/g) || []).length >= 2);
+  assert.match(content, /function updateSidebarNavigation\(\)/);
+});
+
+test('ADO keyboard maps 1/2/3 to Changes/Threads/Outline and b to Outline', () => {
+  assert.match(content, /const tab = e\.key === '1' \? 'changes' : e\.key === '2' \? 'threads' : 'outline'/);
+  assert.match(content, /if \(e\.key === 'b' && !e\.shiftKey\)[\s\S]*?showOutlinePanel\(\)/);
+});
+
+test('ADO keyboard wires thread and change step plus boundary navigation', () => {
+  assert.match(content, /e\.key === 'j'[\s\S]*?jumpSidebarThread\(1\)/);
+  assert.match(content, /e\.key === 'k'[\s\S]*?jumpSidebarThread\(-1\)/);
+  assert.match(content, /e\.key === 'h'[\s\S]*?jumpSidebarThreadBoundary\(false\)/);
+  assert.match(content, /e\.key === 'l'[\s\S]*?jumpSidebarThreadBoundary\(true\)/);
+  assert.match(content, /e\.key === '\]'[\s\S]*?jumpSidebarChange\(1\)/);
+  assert.match(content, /e\.key === '\['[\s\S]*?jumpSidebarChange\(-1\)/);
+  assert.match(content, /jumpSidebarChangeBoundary\(true\)/);
+  assert.match(content, /jumpSidebarChangeBoundary\(false\)/);
+  assert.match(content, /nextWrappingIndex/);
+  assert.match(content, /nextChangeIndex/);
+  assert.match(content, /navigateToSidebarThread\(items\[next\], \{ preserveSidebar: true \}\)/);
+  assert.match(content, /navigateToSidebarThread\(items\[index\], \{ preserveSidebar: true \}\)/);
+});
+
+test('ADO keyboard t toggles and Shift+T resets while preserving tab/filter', () => {
+  assert.match(content, /e\.key\.toLowerCase\(\) === 't' && e\.shiftKey/);
+  assert.match(content, /resetSidebarLayout\(\)/);
+  assert.match(content, /e\.key === 't' && !e\.shiftKey/);
+  assert.match(content, /toggleSidebarCollapsed\(\)/);
+  assert.match(content, /const tab = sidebarState\.tab/);
+  assert.match(content, /const unresolvedOnly = sidebarState\.unresolvedOnly/);
+  assert.match(content, /collapse\.setAttribute\('aria-label', sidebarState\.collapsed \? 'Expand sidebar' : 'Collapse sidebar'\)/);
+});
+
+test('ADO keyboard guards typing/modifiers and only prevents available list navigation', () => {
+  assert.match(content, /isShortcutTypingTarget\(e\.target\)/);
+  assert.match(content, /e\.ctrlKey \|\| e\.metaKey \|\| e\.altKey/);
+  assert.match(content, /if \(handled\) e\.preventDefault\(\)/);
+  assert.match(content, /document\.addEventListener\('keydown',[\s\S]*?\}, true\)/);
 });
 
 test('ADO sidebar is draggable, resizable, and persists state', () => {
@@ -166,4 +217,5 @@ test('ADO cross-file thread navigation activates a scored native tree row withou
 test('ADO `b` shortcut opens the integrated Outline tab without hijacking editors', () => {
   assert.match(content, /function showOutlinePanel\(\)\s*\{\s*showSidebar\('outline'\)/);
   assert.match(content, /tag === 'INPUT' \|\| tag === 'TEXTAREA' \|\| tag === 'SELECT'/);
+  assert.match(content, /row\.addEventListener\('click',[\s\S]*?revealChangedBlock\(h\.el\)[\s\S]*?scrollToWithStickyOffset\(h\.el\)/);
 });

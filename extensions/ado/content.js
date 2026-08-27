@@ -3,7 +3,7 @@
  *
  * Maps rendered Preview blocks back to Markdown source lines, adds inline
  * comment / thread UI, supports range comments and section folding, and
- * renders a persistent Threads + Outline sidebar. ADO's PR file viewer is an SPA that
+ * renders a persistent Changes + Threads + Outline sidebar. ADO's PR file viewer is an SPA that
  * may reuse the same Preview element across file changes, so initialization
  * is keyed by both the route and active Preview DOM.
  *
@@ -1419,7 +1419,7 @@
     }, 5000);
   }
 
-  // ── Threads + Outline sidebar ────────────────────────────────────────
+  // ── Changes + Threads + Outline sidebar ─────────────────────────────
   //
   // Persistent floating navigation shell. Threads are PR-wide; Outline is
   // scoped to the active file. Changes becomes a third tab in the next
@@ -1717,12 +1717,13 @@
     if (collapse) {
       collapse.textContent = sidebarState.collapsed ? '\u25b6' : '\u25bc';
       collapse.title = sidebarState.collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+      collapse.setAttribute('aria-label', sidebarState.collapsed ? 'Expand sidebar' : 'Collapse sidebar');
       collapse.setAttribute('aria-expanded', String(!sidebarState.collapsed));
     }
     setSidebarTab(sidebarState.tab, false);
     updateSidebarFilterUI();
 
-    if (sidebarState.visible !== false && !sidebarState.collapsed) attachOutlineScrollListener();
+    if (sidebarState.visible !== false) attachOutlineScrollListener();
     else detachOutlineScrollListener();
   }
 
@@ -1741,16 +1742,28 @@
     panel.setAttribute('aria-label', 'Markdown review navigation');
     panel.innerHTML = [
       '<div class="adrc-sidebar-header">',
-      '  <button type="button" class="adrc-sidebar-icon adrc-sidebar-collapse" aria-label="Collapse sidebar"></button>',
-      '  <div class="adrc-sidebar-tabs" role="tablist">',
-      '    <button type="button" class="adrc-sidebar-tab" data-tab="changes" role="tab">Changes <span class="adrc-sidebar-tab-count" data-count="changes">0</span></button>',
-      '    <button type="button" class="adrc-sidebar-tab" data-tab="threads" role="tab">Threads <span class="adrc-sidebar-tab-count" data-count="threads">0</span></button>',
-      '    <button type="button" class="adrc-sidebar-tab" data-tab="outline" role="tab">Outline <span class="adrc-sidebar-tab-count" data-count="outline">0</span></button>',
-      '  </div>',
+      '  <button type="button" class="adrc-sidebar-icon adrc-sidebar-collapse" aria-label="Toggle sidebar" title="Collapse / expand sidebar (t) \u2014 Shift+T to reset"></button>',
+      '  <span class="adrc-sidebar-nav-cluster adrc-sidebar-changes-nav" aria-label="Change navigation">',
+      '    <button type="button" class="adrc-sidebar-nav-button adrc-sidebar-prev-change" aria-label="Previous change" title="Previous change ([) \u2014 first change ({)">\u2039</button>',
+      '    <button type="button" class="adrc-sidebar-nav-count adrc-sidebar-changes-count" aria-label="Show Changes" title="Show Changes (1)"><span aria-live="polite">0/0</span></button>',
+      '    <button type="button" class="adrc-sidebar-nav-button adrc-sidebar-next-change" aria-label="Next change" title="Next change (]) \u2014 last change (})">\u203a</button>',
+      '  </span>',
+      '  <span class="adrc-sidebar-separator" aria-hidden="true"></span>',
+      '  <span class="adrc-sidebar-nav-cluster adrc-sidebar-thread-nav" aria-label="Thread navigation">',
+      '    <button type="button" class="adrc-sidebar-nav-button adrc-sidebar-prev-thread" aria-label="Previous thread" title="Previous thread (k) \u2014 first thread (h)">\u2039</button>',
+      '    <button type="button" class="adrc-sidebar-nav-count adrc-sidebar-thread-count" aria-label="Show Threads" title="Show Threads (2)"><span aria-live="polite">0/0</span></button>',
+      '    <button type="button" class="adrc-sidebar-nav-button adrc-sidebar-next-thread" aria-label="Next thread" title="Next thread (j) \u2014 last thread (l)">\u203a</button>',
+      '  </span>',
+      '  <span class="adrc-sidebar-header-spacer"></span>',
       '  <button type="button" class="adrc-sidebar-icon adrc-sidebar-filter" aria-pressed="false" title="Show unresolved threads only">',
       '    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5v4l-3 1V8L2 3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
       '  </button>',
       '  <button type="button" class="adrc-sidebar-icon adrc-sidebar-hide" aria-label="Hide sidebar" title="Hide sidebar">\u00d7</button>',
+      '</div>',
+      '<div class="adrc-sidebar-tabs" role="tablist">',
+      '    <button type="button" class="adrc-sidebar-tab" data-tab="changes" role="tab">Changes <span class="adrc-sidebar-tab-count" data-count="changes">0</span></button>',
+      '    <button type="button" class="adrc-sidebar-tab" data-tab="threads" role="tab">Threads <span class="adrc-sidebar-tab-count" data-count="threads">0</span></button>',
+      '    <button type="button" class="adrc-sidebar-tab" data-tab="outline" role="tab">Outline <span class="adrc-sidebar-tab-count" data-count="outline">0</span></button>',
       '</div>',
       '<div class="adrc-sidebar-body">',
       '  <section class="adrc-sidebar-pane adrc-sidebar-pane-changes" data-pane="changes" role="tabpanel">',
@@ -1790,6 +1803,12 @@
       updateSidebarFilterUI();
       setSidebarTab('threads', false);
     });
+    panel.querySelector('.adrc-sidebar-prev-change').addEventListener('click', () => jumpSidebarChange(-1));
+    panel.querySelector('.adrc-sidebar-next-change').addEventListener('click', () => jumpSidebarChange(1));
+    panel.querySelector('.adrc-sidebar-changes-count').addEventListener('click', () => showSidebar('changes'));
+    panel.querySelector('.adrc-sidebar-prev-thread').addEventListener('click', () => jumpSidebarThread(-1));
+    panel.querySelector('.adrc-sidebar-next-thread').addEventListener('click', () => jumpSidebarThread(1));
+    panel.querySelector('.adrc-sidebar-thread-count').addEventListener('click', () => showSidebar('threads'));
     panel.querySelectorAll('.adrc-sidebar-tab').forEach((tab) => {
       tab.addEventListener('click', () => {
         showSidebar(tab.dataset.tab);
@@ -1892,6 +1911,7 @@
       renderChangesSidebar();
       updateActiveSidebarChange();
     }
+    updateSidebarNavigation();
   }
 
   function showSidebar(tab) {
@@ -1920,6 +1940,106 @@
     filter.classList.toggle('adrc-sidebar-filter-active', active);
     filter.setAttribute('aria-pressed', String(active));
     filter.title = active ? 'Showing unresolved threads only' : 'Show unresolved threads only';
+    updateSidebarNavigation();
+  }
+
+  function updateSidebarNavigation() {
+    if (!sidebarPanel) return;
+
+    const changesTotal = sidebarChangeStops.length;
+    const changesCurrent = sidebarActiveChangeIndex >= 0 && sidebarActiveChangeIndex < changesTotal
+      ? sidebarActiveChangeIndex + 1
+      : 0;
+    const changesCount = sidebarPanel.querySelector('.adrc-sidebar-changes-count span');
+    if (changesCount) changesCount.textContent = `${changesCurrent}/${changesTotal}`;
+    sidebarPanel.querySelectorAll('.adrc-sidebar-prev-change, .adrc-sidebar-next-change')
+      .forEach((button) => { button.disabled = changesTotal === 0; });
+
+    const threads = getVisibleSidebarThreads();
+    const threadIndex = threads.findIndex((item) => String(item.id) === String(sidebarActiveThreadId));
+    const threadsCurrent = threadIndex >= 0 ? threadIndex + 1 : 0;
+    const threadCount = sidebarPanel.querySelector('.adrc-sidebar-thread-count span');
+    if (threadCount) threadCount.textContent = `${threadsCurrent}/${threads.length}`;
+    sidebarPanel.querySelectorAll('.adrc-sidebar-prev-thread, .adrc-sidebar-next-thread')
+      .forEach((button) => { button.disabled = threads.length === 0; });
+  }
+
+  function jumpSidebarThread(delta) {
+    const items = getVisibleSidebarThreads();
+    if (items.length === 0) return false;
+    const current = items.findIndex((item) => String(item.id) === String(sidebarActiveThreadId));
+    let next;
+    if (current < 0) {
+      next = delta < 0 ? items.length - 1 : 0;
+    } else {
+      const GRDC = window.GRDC || {};
+      next = typeof GRDC.nextWrappingIndex === 'function'
+        ? GRDC.nextWrappingIndex(current, delta, items.length)
+        : ((current + delta) % items.length + items.length) % items.length;
+    }
+    setActiveSidebarThread(items[next].id);
+    navigateToSidebarThread(items[next], { preserveSidebar: true });
+    return true;
+  }
+
+  function jumpSidebarThreadBoundary(last) {
+    const items = getVisibleSidebarThreads();
+    if (items.length === 0) return false;
+    const index = last ? items.length - 1 : 0;
+    setActiveSidebarThread(items[index].id);
+    navigateToSidebarThread(items[index], { preserveSidebar: true });
+    return true;
+  }
+
+  function jumpSidebarChange(delta) {
+    const total = sidebarChangeStops.length;
+    if (total === 0) return false;
+    let next;
+    if (sidebarActiveChangeIndex < 0 || sidebarActiveChangeIndex >= total) {
+      next = delta < 0 ? total - 1 : 0;
+    } else {
+      const GRDC = window.GRDC || {};
+      next = typeof GRDC.nextChangeIndex === 'function'
+        ? GRDC.nextChangeIndex(sidebarActiveChangeIndex, delta, total)
+        : ((sidebarActiveChangeIndex + delta) % total + total) % total;
+    }
+    navigateToSidebarChange(next);
+    return true;
+  }
+
+  function jumpSidebarChangeBoundary(last) {
+    if (sidebarChangeStops.length === 0) return false;
+    navigateToSidebarChange(last ? sidebarChangeStops.length - 1 : 0);
+    return true;
+  }
+
+  function toggleSidebarCollapsed() {
+    buildSidebarPanel();
+    if (sidebarState.visible === false) {
+      saveSidebarState({ visible: true, collapsed: false });
+    } else {
+      saveSidebarState({ collapsed: !sidebarState.collapsed });
+    }
+    applySidebarState();
+  }
+
+  function resetSidebarLayout() {
+    buildSidebarPanel();
+    const tab = sidebarState.tab;
+    const unresolvedOnly = sidebarState.unresolvedOnly;
+    sidebarState = Object.assign(defaultSidebarState(), {
+      tab,
+      unresolvedOnly,
+      visible: true,
+      collapsed: false
+    });
+    try { localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify(sidebarState)); } catch (_) {}
+    sidebarPanel.style.left = '';
+    sidebarPanel.style.top = '';
+    sidebarPanel.style.right = '';
+    sidebarPanel.style.width = '';
+    sidebarPanel.style.height = '';
+    applySidebarState();
   }
 
   function normalizeSidebarThread(thread) {
@@ -1988,6 +2108,7 @@
     }
     const count = sidebarPanel.querySelector('[data-count="threads"]');
     if (count) count.textContent = String(total);
+    updateSidebarNavigation();
 
     if (visible.length === 0) {
       const empty = document.createElement('div');
@@ -2064,6 +2185,7 @@
 
   function setActiveSidebarThread(threadId) {
     sidebarActiveThreadId = threadId == null ? null : String(threadId);
+    updateSidebarNavigation();
     if (!sidebarPanel) return;
     sidebarPanel.querySelectorAll('.adrc-sidebar-thread-card.adrc-sidebar-thread-active')
       .forEach((card) => card.classList.remove('adrc-sidebar-thread-active'));
@@ -2083,7 +2205,7 @@
   }
 
   function updateActiveSidebarThread() {
-    if (!sidebarPanel || sidebarState?.visible === false || sidebarState?.collapsed) return;
+    if (!sidebarPanel || sidebarState?.visible === false) return;
     const preview = getCurrentPreviewContainer();
     if (!preview) return;
     const visibleIds = new Set(getVisibleSidebarThreads().map((item) => String(item.id)));
@@ -2389,8 +2511,8 @@
     }
   }
 
-  function navigateToSidebarThread(item) {
-    showSidebar('threads');
+  function navigateToSidebarThread(item, options) {
+    if (!options || options.preserveSidebar !== true) showSidebar('threads');
     if (item.path === (currentFilePathCached || currentFilePath())) {
       clearPendingThreadJump();
       if (!scrollToInlineThread(item.id)) {
@@ -2567,6 +2689,7 @@
     list.innerHTML = '';
     const count = sidebarPanel.querySelector('[data-count="changes"]');
     if (count) count.textContent = String(sidebarChangeStops.length);
+    updateSidebarNavigation();
     const summary = sidebarPanel.querySelector('.adrc-sidebar-changes-summary');
     if (summary) {
       if (sidebarChangesStatus === 'loading') summary.textContent = 'Comparing\u2026';
@@ -2637,6 +2760,7 @@
     } else {
       sidebarActiveChangeIndex = index;
     }
+    updateSidebarNavigation();
     if (!sidebarPanel) return;
     sidebarPanel.querySelectorAll('.adrc-sidebar-change-card.adrc-sidebar-change-active')
       .forEach((card) => card.classList.remove('adrc-sidebar-change-active'));
@@ -2725,8 +2849,7 @@
   }
 
   function updateActiveSidebarChange() {
-    if (!sidebarPanel || sidebarState?.visible === false || sidebarState?.collapsed ||
-        sidebarState?.tab !== 'changes' || sidebarChangeStops.length === 0) return;
+    if (!sidebarPanel || sidebarState?.visible === false || sidebarChangeStops.length === 0) return;
     const scroller = getOutlineScrollContainer();
     const activeLine = (scroller === window ? 0 : scroller.getBoundingClientRect().top) + OUTLINE_ACTIVE_OFFSET;
     let bestIndex = 0;
@@ -2765,6 +2888,7 @@
       row.textContent = h.text;
       row.title = h.text;
       row.addEventListener('click', () => {
+        revealChangedBlock(h.el);
         setActiveOutlineRow(h.id);
         scrollToWithStickyOffset(h.el);
       });
@@ -2888,25 +3012,62 @@
     else showOutlinePanel();
   }
 
-  // Global keyboard shortcut: `b` opens / hides the sidebar Outline tab.
-  // Ignored while typing in a form field or contenteditable region so we
-  // don't hijack the editor.
+  function isShortcutTypingTarget(target) {
+    if (!target) return false;
+    const tag = target.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+  }
+
+  // Global navigation shortcuts. Capture phase matches the GitHub target and
+  // runs before ADO page handlers; modifiers and typing targets always pass
+  // through. Empty thread/change lists also pass through without swallowing
+  // the key.
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'b' && e.key !== 'B') return;
+    if (isShortcutTypingTarget(e.target)) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const active = document.activeElement;
-    const tag = active && active.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    if (active && active.isContentEditable) return;
-    e.preventDefault();
-    toggleOutlinePanel();
-  });
+
+    if (e.key.toLowerCase() === 't' && e.shiftKey) {
+      e.preventDefault();
+      resetSidebarLayout();
+      return;
+    }
+    if (e.key === 't' && !e.shiftKey) {
+      e.preventDefault();
+      toggleSidebarCollapsed();
+      return;
+    }
+    if (e.key === 'b' && !e.shiftKey) {
+      e.preventDefault();
+      showOutlinePanel();
+      return;
+    }
+    if (!e.shiftKey && (e.key === '1' || e.key === '2' || e.key === '3')) {
+      e.preventDefault();
+      const tab = e.key === '1' ? 'changes' : e.key === '2' ? 'threads' : 'outline';
+      showSidebar(tab);
+      return;
+    }
+
+    let handled = false;
+    if (e.key === 'j' && !e.shiftKey) handled = jumpSidebarThread(1);
+    else if (e.key === 'k' && !e.shiftKey) handled = jumpSidebarThread(-1);
+    else if (e.key === 'h' && !e.shiftKey) handled = jumpSidebarThreadBoundary(false);
+    else if (e.key === 'l' && !e.shiftKey) handled = jumpSidebarThreadBoundary(true);
+    else if (e.key === ']' && !e.shiftKey) handled = jumpSidebarChange(1);
+    else if (e.key === '[' && !e.shiftKey) handled = jumpSidebarChange(-1);
+    else if (e.key === '}' || (e.code === 'BracketRight' && e.shiftKey)) {
+      handled = jumpSidebarChangeBoundary(true);
+    } else if (e.key === '{' || (e.code === 'BracketLeft' && e.shiftKey)) {
+      handled = jumpSidebarChangeBoundary(false);
+    }
+    if (handled) e.preventDefault();
+  }, true);
 
   /**
    * Remove injected UI and stale per-file state before initializing a new
    * SPA file/view. ADO commonly keeps the preview element itself while
    * replacing its children, so this cleanup must not rely on node removal.
-  * The floating Threads + Outline sidebar is intentionally preserved.
+  * The floating Changes + Threads + Outline sidebar is intentionally preserved.
    */
   function resetPreviewContext(container, routeKey) {
     initGeneration++;

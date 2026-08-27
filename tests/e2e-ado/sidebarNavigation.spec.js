@@ -86,21 +86,31 @@ test.describe('ADO sidebar and keyboard navigation', () => {
     await expect(filter).toHaveAttribute('aria-pressed', 'false');
   });
 
-  test('uses change boundaries, wraps, and scrolls the nested ADO content surface', async ({ page }) => {
+  test('keeps thread groups in stable file order while highlighting the current file', async ({ page }) => {
+    await page.keyboard.press('2');
+    const groups = page.locator('.adrc-sidebar-thread-list > .adrc-sidebar-file-group');
+    await expect(groups).toHaveText(['docs/design.md', 'docs/other.md']);
+
+    await page.locator('.adrc-sidebar-thread-card[data-thread-id="103"]').click();
+    await expect.poll(() => new URL(page.url()).searchParams.get('path')).toBe('/docs/other.md');
+    await expect(groups).toHaveText(['docs/design.md', 'docs/other.md']);
+    await expect(groups.nth(0)).not.toHaveClass(/adrc-sidebar-file-current/);
+    await expect(groups.nth(1)).toHaveClass(/adrc-sidebar-file-current/);
+  });
+
+  test('same-file change cards scroll the nested ADO content surface', async ({ page }) => {
     const changeCount = await page.evaluate(() => window.ADORC_probe.sidebar().changeCount);
     expect(changeCount).toBeGreaterThanOrEqual(2);
 
-    await page.keyboard.press('Shift+]');
+    const designCards = page.locator('.adrc-sidebar-change-card[data-path="/docs/design.md"]');
+    await expect(designCards).toHaveCount(3);
+    await designCards.nth(2).click();
     await expect.poll(() => page.evaluate(() => window.ADORC_probe.sidebar().activeChangeIndex))
-      .toBe(changeCount - 1);
-    await expect(page.locator('.adrc-sidebar-changes-count span')).toHaveText(`${changeCount}/${changeCount}`);
+      .toBe(2);
+    await expect(page.locator('.adrc-sidebar-changes-count span')).toHaveText(`3/3 (${changeCount})`);
     await expect.poll(() => page.locator('#preview-scroll').evaluate((element) => element.scrollTop))
       .toBeGreaterThan(0);
     await expect(page.locator('.markdown-preview-container .adrc-change-target-pulse')).toHaveCount(1);
-
-    await page.keyboard.press(']');
-    await expect.poll(() => page.evaluate(() => window.ADORC_probe.sidebar().activeChangeIndex)).toBe(0);
-    await expect(page.locator('.adrc-sidebar-changes-count span')).toHaveText(`1/${changeCount}`);
   });
 
   test('folds heading sections and navigates through the Outline pane', async ({ page }) => {

@@ -11,6 +11,8 @@ const {
   splitSourceLines,
   diffLineHunks,
   mapDiffHunksToBlocks,
+  buildSourceChangeSnippet,
+  buildPrChangeStops,
 } = require('../src/lib/changes.js');
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -626,6 +628,100 @@ test('mapDiffHunksToBlocks — defensive invalid inputs return empty arrays', ()
   assert.deepEqual(mapDiffHunksToBlocks(null, [], 1), []);
   assert.deepEqual(mapDiffHunksToBlocks([], null, 1), []);
   assert.deepEqual(mapDiffHunksToBlocks([], [{ line: 1 }], 1), []);
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// PR-wide DOM-free change stops
+// ───────────────────────────────────────────────────────────────────────────
+
+test('buildSourceChangeSnippet — flattens and truncates changed source', () => {
+  assert.equal(buildSourceChangeSnippet(['## Heading', '', 'body']), '## Heading body');
+  assert.equal(buildSourceChangeSnippet(['x'.repeat(20)], 10), 'xxxxxxxxxx\u2026');
+  assert.equal(buildSourceChangeSnippet(null), '');
+});
+
+test('buildPrChangeStops — added file emits one NEW FILE summary', () => {
+  const stops = buildPrChangeStops(
+    { type: 'add', path: '/new.md', oldPath: '/new.md', changeTrackingId: 7 },
+    '',
+    '# New document\n\nBody'
+  );
+  assert.equal(stops.length, 1);
+  assert.equal(stops[0].label, 'NEW FILE');
+  assert.equal(stops[0].kind, 'added');
+  assert.equal(stops[0].line, 1);
+  assert.match(stops[0].snippet, /New document/);
+});
+
+test('buildPrChangeStops — deleted file emits one DELETED summary without a line target', () => {
+  const stops = buildPrChangeStops(
+    { type: 'delete', path: '/gone.md', oldPath: '/gone.md', changeTrackingId: 8 },
+    '# Removed document',
+    ''
+  );
+  assert.equal(stops.length, 1);
+  assert.equal(stops[0].label, 'DELETED');
+  assert.equal(stops[0].kind, 'removed');
+  assert.equal(stops[0].line, null);
+});
+
+test('buildPrChangeStops — edit emits stable source-hunk cards', () => {
+  const stops = buildPrChangeStops(
+    { type: 'edit', path: '/doc.md', oldPath: '/doc.md', changeTrackingId: 9 },
+    'one\nold\nthree\nremove',
+    'one\nnew\nthree'
+  );
+  assert.equal(stops.length, 2);
+  assert.deepEqual(stops.map((stop) => stop.kind), ['mixed', 'removed']);
+  assert.deepEqual(stops.map((stop) => stop.path), ['/doc.md', '/doc.md']);
+  assert.ok(stops.every((stop) => stop.stopType === 'hunk' && stop.hunk));
+  assert.notEqual(stops[0].key, stops[1].key);
+});
+
+test('buildPrChangeStops — pure rename emits only a RENAMED summary', () => {
+  const stops = buildPrChangeStops(
+    { type: 'rename', path: '/new.md', oldPath: '/old.md', changeTrackingId: 10 },
+    '# Same',
+    '# Same'
+  );
+  assert.equal(stops.length, 1);
+  assert.equal(stops[0].label, 'RENAMED');
+  assert.equal(stops[0].kind, 'renamed');
+  assert.equal(stops[0].snippet, '/old.md \u2192 /new.md');
+});
+
+test('buildPrChangeStops — renamed-and-edited file adds content hunks after its summary', () => {
+  const stops = buildPrChangeStops(
+    { type: 'rename', path: '/new.md', oldPath: '/old.md', changeTrackingId: 11 },
+    '# Old',
+    '# New'
+  );
+  assert.equal(stops.length, 2);
+  assert.equal(stops[0].label, 'RENAMED');
+  assert.equal(stops[1].kind, 'mixed');
+  assert.equal(stops[1].line, 1);
+});
+
+test('buildPrChangeStops — source failure remains visible per file', () => {
+  const edit = buildPrChangeStops(
+    { type: 'edit', path: '/broken.md', oldPath: '/broken.md', changeTrackingId: 12 },
+    '',
+    '',
+    { error: new Error('HTTP 503') }
+  );
+  assert.equal(edit.length, 1);
+  assert.equal(edit[0].label, 'UNAVAILABLE');
+  assert.equal(edit[0].error, 'HTTP 503');
+
+  const added = buildPrChangeStops(
+    { type: 'add', path: '/new.md', oldPath: '/new.md', changeTrackingId: 13 },
+    '',
+    '',
+    { error: 'HTTP 500' }
+  );
+  assert.equal(added.length, 1);
+  assert.equal(added[0].label, 'NEW FILE');
+  assert.equal(added[0].error, 'HTTP 500');
 });
 
 test('classifyChangeKind — null / invalid input → null', () => {

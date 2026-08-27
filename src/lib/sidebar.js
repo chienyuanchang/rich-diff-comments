@@ -114,15 +114,21 @@
     return items.filter((item) => item && item.resolved !== true);
   }
 
-  // Stable product ordering for PR-wide thread cards:
-  //   1. current file first,
-  //   2. remaining files alphabetically,
+  // Stable product ordering for PR-wide thread cards. An optional orderedPaths
+  // array lets a platform follow its native file navigator rather than API
+  // response order. Existing callers retain the original behavior:
+  //   1. current file first (when currentPath is supplied),
+  //   2. explicit file order, or paths alphabetically when none is supplied,
   //   3. line ascending,
   //   4. creation time ascending,
   //   5. original order as the stable final tiebreaker.
   // Returns a NEW array and tolerates partial / malformed items.
-  function sortSidebarThreadItems(items, currentPath) {
+  function sortSidebarThreadItems(items, currentPath, orderedPaths) {
     if (!Array.isArray(items)) return [];
+    const pathRanks = new Map();
+    (Array.isArray(orderedPaths) ? orderedPaths : []).forEach((path, index) => {
+      if (typeof path === 'string' && !pathRanks.has(path)) pathRanks.set(path, index);
+    });
     return items
       .map((item, index) => ({ item, index }))
       .sort((a, b) => {
@@ -131,7 +137,9 @@
         const ac = !!currentPath && ap === currentPath;
         const bc = !!currentPath && bp === currentPath;
         if (ac !== bc) return ac ? -1 : 1;
-        const pathOrder = ap.localeCompare(bp);
+        const ar = pathRanks.has(ap) ? pathRanks.get(ap) : Number.MAX_SAFE_INTEGER;
+        const br = pathRanks.has(bp) ? pathRanks.get(bp) : Number.MAX_SAFE_INTEGER;
+        const pathOrder = ar !== br ? ar - br : ap.localeCompare(bp);
         if (pathOrder !== 0) return pathOrder;
         const al = Number.isFinite(a.item?.line) ? a.item.line : Number.MAX_SAFE_INTEGER;
         const bl = Number.isFinite(b.item?.line) ? b.item.line : Number.MAX_SAFE_INTEGER;

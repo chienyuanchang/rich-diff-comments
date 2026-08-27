@@ -449,6 +449,129 @@
       });
   }
 
+  // Build a compact source snippet for a DOM-free PR-wide card. Prefer the
+  // changed head text (what the reviewer sees), falling back to removed base
+  // text. This deliberately keeps Markdown punctuation: it often carries
+  // useful context (`##`, `- [ ]`, fenced language) and mirrors source view.
+  function buildSourceChangeSnippet(lines, maxLen) {
+    const max = Number.isFinite(maxLen) && maxLen > 0 ? maxLen : 90;
+    const flat = (Array.isArray(lines) ? lines : [])
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return flat.length > max ? flat.slice(0, max).trimEnd() + '\u2026' : flat;
+  }
+
+  /**
+   * Convert one normalized PR file change plus optional source contents into
+   * stable, DOM-free sidebar stops.
+   *
+   * `change`: `{type, path, oldPath, changeId, changeTrackingId}` where type
+   * is add/edit/delete/rename. The ADO adapter owns that normalization.
+   * `options.error` represents a source-fetch failure; lifecycle summaries
+   * remain useful without source, while an edit becomes one UNAVAILABLE card.
+   *
+   * Added/deleted files intentionally emit one summary rather than one stop
+   * per source line. A rename always emits its summary and adds hunk stops only
+   * when content also changed. Modified files emit one card per source hunk.
+   */
+  function buildPrChangeStops(change, baseSource, headSource, options) {
+    if (!change || typeof change.path !== 'string' || !change.path) return [];
+    const type = change.type === 'add' || change.type === 'delete' || change.type === 'rename'
+      ? change.type
+      : 'edit';
+    const path = change.path;
+    const oldPath = change.oldPath || path;
+    const identity = change.changeTrackingId != null
+      ? String(change.changeTrackingId)
+      : change.changeId != null ? String(change.changeId) : `${oldPath}->${path}`;
+    const error = options && options.error
+      ? String(options.error.message || options.error).slice(0, 200)
+      : '';
+
+    function summary(kind, lifecycle, label, source, detail) {
+      const sourceLines = splitSourceLines(source);
+      return {
+        key: `${identity}:summary:${lifecycle}`,
+        stopType: 'summary',
+        lifecycle,
+        kind,
+        label,
+        path,
+        oldPath,
+        line: lifecycle === 'delete' ? null : 1,
+        endLine: lifecycle === 'delete' ? null : 1,
+        snippet: buildSourceChangeSnippet(sourceLines, 90) || detail || '(empty file)',
+        error: error || null,
+      };
+    }
+
+    if (type === 'add') {
+      return [summary('added', 'add', 'NEW FILE', headSource, error ? 'Source preview unavailable' : '')];
+    }
+    if (type === 'delete') {
+      return [summary('removed', 'delete', 'DELETED', baseSource, error ? 'Source preview unavailable' : '')];
+    }
+
+    const stops = [];
+    if (type === 'rename') {
+      stops.push(summary(
+        'renamed',
+        'rename',
+        'RENAMED',
+        '',
+        `${oldPath} \u2192 ${path}`
+      ));
+    }
+
+    if (error) {
+      stops.push({
+        key: `${identity}:unavailable`,
+        stopType: 'unavailable',
+        lifecycle: type,
+        kind: 'unavailable',
+        label: 'UNAVAILABLE',
+        path,
+        oldPath,
+        line: 1,
+        endLine: 1,
+        snippet: error,
+        error,
+      });
+      return stops;
+    }
+
+    const hunks = diffLineHunks(baseSource || '', headSource || '');
+    const headLineCount = splitSourceLines(headSource).length;
+    hunks.forEach((hunk, index) => {
+      const hasHead = Array.isArray(hunk.headLines) && hunk.headLines.length > 0;
+      const line = hasHead
+        ? Math.max(1, Number(hunk.headStart) || 1)
+        : Math.max(1, Math.min(headLineCount || 1, Number(hunk.headStart) || 1));
+      const endLine = hasHead
+        ? Math.max(line, Number(hunk.headEnd) || line)
+        : line;
+      const snippetLines = hunk.kind === 'removed' ? hunk.baseLines : hunk.headLines;
+      stops.push({
+        key: `${identity}:hunk:${index}:${hunk.baseStart}:${hunk.headStart}`,
+        stopType: 'hunk',
+        lifecycle: type,
+        kind: hunk.kind,
+        label: null,
+        path,
+        oldPath,
+        line,
+        endLine,
+        snippet: buildSourceChangeSnippet(snippetLines, 90) || '(No visible text)',
+        baseLines: (hunk.baseLines || []).slice(),
+        headLines: (hunk.headLines || []).slice(),
+        hunk,
+        error: null,
+      });
+    });
+    return stops;
+  }
+
   return {
     findChangeBlocks,
     classifyChangeKind,
@@ -457,5 +580,7 @@
     splitSourceLines,
     diffLineHunks,
     mapDiffHunksToBlocks,
+    buildSourceChangeSnippet,
+    buildPrChangeStops,
   };
 });

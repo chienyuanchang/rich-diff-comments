@@ -202,8 +202,10 @@ that working behavior into the durable sidebar instead of maintaining two panels
 - Threads pane is PR-wide: file path, source line/range, author, timestamp,
   status, and an 80-character first-comment snippet per card.
 - Unresolved-only filter persists and affects only the Threads pane.
-- Current-file cards are grouped first; the card nearest the active reading
-  position is highlighted while scrolling.
+- Thread groups keep the stable native ADO file-tree order; the current file is
+  highlighted in place rather than moving to the top. (Iteration M superseded
+  the initial current-file-first behavior after manual feedback showed the list
+  jumping around during review.)
 - Clicking a current-file card scrolls to and expands its inline thread.
 - Clicking a card for another file activates ADO's native file-tree row, then
   resumes the pending thread jump after route-aware Preview initialization.
@@ -347,6 +349,114 @@ user-visible extension change, it does not receive a CHANGELOG entry.
 cover the planned review surface, navigation, mutation, and SPA lifecycle paths.
 Full validation passed: 349 / 349 unit/static tests, 21 / 21 GitHub Playwright
 tests, and 18 / 18 ADO Playwright tests. No extension runtime files changed.
+
+### 7.5 Iteration M — PR-wide Changes and file lifecycle summaries (complete, 2026-08-27)
+
+Replace the current-file-only Changes model with one stable PR-wide list. ADO
+exposes the authoritative changed-file inventory through the latest pull-request
+iteration's `changes` resource; unlike Preview DOM, that inventory includes
+files that have never been opened and deleted files that cannot render.
+
+**Scope:**
+
+- Resolve the latest PR iteration, request its changes against iteration zero
+  (the common source/target commit), follow `nextSkip` / `nextTop` pagination,
+  and retain Markdown paths only.
+- Normalize ADO `add`, `edit`, `delete`, and `rename` entries, including
+  `originalPath` / `sourceServerItem` fallbacks for rename-aware base lookup.
+- Fetch head/base Markdown with bounded concurrency and cache sources/results
+  for the PR session. One slow or missing file produces a per-file unavailable
+  card rather than disabling Changes, Threads, Outline, or inline comments.
+- Modified files produce stable source-hunk cards with added / removed / mixed
+  kind, full path, source range, and snippet. Navigation resolves the target
+  line against the fresh rendered block map after opening that file.
+- Added files produce one **NEW FILE** summary instead of one card per rendered
+  block. Deleted files produce one **DELETED** summary. Renames produce one
+  **RENAMED** summary (`old → new`) plus content-hunk cards when content also
+  changed.
+- Group Changes and Threads in the same stable native ADO file-tree order. Do
+  not trust iteration-response order (observed reversed) and do not promote the
+  current file; highlight it in place. If the tree is collapsed/virtualized,
+  fall back to deterministic path order. The counter and `[` / `]` / `{` / `}`
+  walk the global visible Changes list; active state follows ADO's real scroll
+  surface.
+- Same-file cards scroll through all nested ADO containers. Cross-file cards
+  activate the native ADO tree row, preserve Preview for renderable Markdown,
+  and resume the pending line/summary jump after route-aware initialization.
+  Deleted-file summaries activate the native row without requiring Preview.
+- Stale asynchronous inventory/source work is generation-guarded across SPA
+  route changes. The sidebar shell and PR-wide cards survive file switches;
+  only live DOM block references are per-file.
+
+**Acceptance:** cards and counters cover all Markdown changes in the PR; source
+order and file grouping are deterministic; added/deleted/renamed summaries are
+not flooded with per-block cards; current-file and cross-file navigation land
+correctly without a full page reload; Preview remains selected for renderable
+files; rapid switching cannot publish stale maps; failures remain isolated.
+
+**Acceptance result:** the catalog uses the
+latest cumulative iteration inventory and exact source/common commits; source
+work is bounded to four files at a time; stable DOM-free cards cover modified,
+new, deleted, renamed, and unavailable files; scoped counters and global keys
+cross files through native Preview-preserving navigation. Changes and Threads
+remain in native file-tree order while the current group highlights in place.
+Manual sandbox confirmation covered PR-wide grouping, corrected file order, and
+stable navigation. Automated validation: 367 / 367 unit/static tests, 21 / 21
+GitHub Chromium scenarios, and 27 / 27 ADO Chromium scenarios.
+
+### 7.6 Iteration N — PR-wide Outline, thread counts, and fold controls
+
+ADO renders one Preview file at a time, so accumulate a session-scoped outline
+snapshot whenever a Markdown file is opened. The authoritative changed-file
+inventory from Iteration M supplies file order and lifecycle status; cached
+heading descriptors contain source line/text only, never detached DOM nodes.
+
+**Scope:**
+
+- Group the Outline by file in PR order. Current live headings are refreshed on
+  every route-aware init; previously visited files retain source-line snapshots.
+- Clicking a file label or cached heading uses native tree-row activation and a
+  pending jump, then resolves the heading against the new live Preview before
+  scrolling. Current-file rows continue to navigate immediately.
+- Attribute PR-wide thread anchors to the deepest owning heading within the
+  same file and show `N 💬` pills beside headings with comments.
+- Render a disclosure chevron per heading and provide **Fold H1**, **Fold H2**,
+  **Fold H3**, and **Expand all** controls. Bulk actions affect the active
+  rendered file; cached files receive the requested fold intent when opened.
+- Active heading/file tracking follows the nested ADO scroll surface and keeps
+  the corresponding Outline row visible without forcing another sidebar tab.
+- Deleted files and files with no headings show a compact file-level state, not
+  fabricated heading rows.
+
+**Acceptance:** multi-file groups stay stable across route changes; current and
+cached heading clicks preserve Preview and land after initialization; counts do
+not leak across files; per-row and bulk folding stay synchronized; scroll
+tracking highlights the correct file/heading; no detached heading references
+survive a file switch.
+
+### 7.7 Iteration O — ADO theme integration
+
+Replace the light-only Fluent palette with semantic extension tokens that use
+live ADO theme variables when available and safe browser fallbacks otherwise.
+
+**Scope:**
+
+- Cover every opaque surface, text, border, status, focus, hover, range marker,
+  toast, and pulse used by the inline review UI and navigation sidebar.
+- Support ADO light, dark, and high-contrast themes. `prefers-color-scheme` and
+  `forced-colors` are fallback/safety layers, not substitutes for ADO's own
+  in-app theme when the page exposes it.
+- Theme changes update without reinitializing comment buttons or losing sidebar
+  state. No runtime dependency is introduced.
+- Add static token-coverage tests and Playwright light/dark/forced-colors
+  assertions. Confirm final variable/class hooks against a real ADO page.
+
+**Acceptance:** the complete extension remains legible and visually integrated
+in ADO light/dark/high-contrast modes, meets visible focus/selection contrast,
+reacts to a theme switch in place, and retains all existing browser behavior.
+
+**Deferred by decision:** `@mention` autocomplete remains a later iteration;
+none of M/N/O adds identity-search traffic or editor suggestion UI.
 
 ## 8. DOM adapter surface — what actually needs writing
 

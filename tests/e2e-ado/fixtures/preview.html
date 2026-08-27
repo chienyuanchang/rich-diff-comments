@@ -39,6 +39,15 @@
       <div id="tree-other" class="bolt-tree-row" role="treeitem" aria-label="docs/other.md" data-path="/docs/other.md">
         <div class="bolt-tree-cell"><div class="bolt-table-cell-content">other.md</div></div>
       </div>
+      <div id="tree-new" class="bolt-tree-row" role="treeitem" aria-label="docs/new.md" data-path="/docs/new.md">
+        <div class="bolt-tree-cell"><div class="bolt-table-cell-content">new.md</div></div>
+      </div>
+      <div id="tree-deleted" class="bolt-tree-row" role="treeitem" aria-label="docs/deleted.md" data-path="/docs/deleted.md">
+        <div class="bolt-tree-cell"><div class="bolt-table-cell-content">deleted.md</div></div>
+      </div>
+      <div id="tree-renamed" class="bolt-tree-row" role="treeitem" aria-label="docs/renamed.md" data-path="/docs/renamed.md">
+        <div class="bolt-tree-cell"><div class="bolt-table-cell-content">renamed.md</div></div>
+      </div>
     </nav>
 
     <main class="repos-changes-viewer">
@@ -76,6 +85,15 @@
           '<p>Cross-file review target.</p>',
           '<h2 id="user-content-notes">Notes<a class="shareHeaderAnchor" href="#notes"></a></h2>',
           '<p>This page proves Preview-preserving navigation.</p>'
+        ].join(''),
+        '/docs/new.md': [
+          '<h1 id="user-content-brand-new-guide">Brand New Guide<a class="shareHeaderAnchor" href="#brand-new-guide"></a></h1>',
+          '<p>This Markdown file exists only on the pull request branch.</p>'
+        ].join(''),
+        '/docs/deleted.md': null,
+        '/docs/renamed.md': [
+          '<h1 id="user-content-renamed-notes">Renamed Notes<a class="shareHeaderAnchor" href="#renamed-notes"></a></h1>',
+          '<p>Updated wording after the rename.</p>'
         ].join('')
       };
 
@@ -83,11 +101,13 @@
       const rows = Array.from(document.querySelectorAll('.bolt-tree-row[data-path]'));
 
       function openPath(path) {
-        if (!fragments[path]) throw new Error('Unknown fixture path: ' + path);
+        if (!Object.prototype.hasOwnProperty.call(fragments, path)) throw new Error('Unknown fixture path: ' + path);
         history.pushState({}, '', location.pathname + '?_a=files&path=' + encodeURIComponent(path));
-        preview.innerHTML = fragments[path];
+        const renderable = fragments[path] != null;
+        preview.style.display = renderable ? '' : 'none';
+        preview.innerHTML = renderable ? fragments[path] : '';
         rows.forEach((row) => row.classList.toggle('fixture-active', row.dataset.path === path));
-        document.querySelector('.fixture-view-mode').textContent = 'Preview';
+        document.querySelector('.fixture-view-mode').textContent = renderable ? 'Preview' : 'Inline';
         document.getElementById('preview-scroll').scrollTop = 0;
       }
 

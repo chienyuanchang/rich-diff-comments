@@ -5,6 +5,7 @@ const {
   setupAdoExtensionPage,
   waitForAdoReady,
   userThreadCount,
+  SOURCE_COMMIT,
 } = require('./_helpers');
 const fixtures = require('./fixtures/sources');
 
@@ -56,20 +57,26 @@ test.describe('ADO SPA lifecycle and cross-file navigation', () => {
   });
 
   test('rejects a slow prior-file source response after a rapid route switch', async ({ page }) => {
-    const { server, logs } = await setupAdoExtensionPage(page);
-    server.sourceDelays[`branch:${fixtures.OTHER_PATH}`] = 700;
+    const { server, logs } = await setupAdoExtensionPage(page, {
+      // PR-wide Changes eagerly caches inventory files. Exclude OTHER here so
+      // opening it still exercises a genuinely slow line-map fetch.
+      prChanges: fixtures.defaultChanges().filter((change) =>
+        change.item.path !== fixtures.OTHER_PATH
+      ),
+    });
+    server.sourceDelays[`${SOURCE_COMMIT}:${fixtures.OTHER_PATH}`] = 700;
 
     await page.evaluate((path) => window.__ADO_FIXTURE__.openPath(path), fixtures.OTHER_PATH);
     await expect.poll(() => server.requests.filter((request) => {
       if (request.method !== 'GET' || !request.pathname.endsWith('/items')) return false;
       const url = new URL(request.url);
       return url.searchParams.get('path') === fixtures.OTHER_PATH &&
-        url.searchParams.get('versionDescriptor.versionType') === 'branch';
+        url.searchParams.get('versionDescriptor.version') === SOURCE_COMMIT;
     }).length).toBe(1);
 
     await page.evaluate((path) => window.__ADO_FIXTURE__.openPath(path), fixtures.DESIGN_PATH);
     await expect.poll(() => server.completedSources.some((entry) =>
-      entry.path === fixtures.OTHER_PATH && entry.versionType === 'branch'
+      entry.path === fixtures.OTHER_PATH && entry.version === SOURCE_COMMIT
     )).toBe(true);
     await waitForAdoReady(page, fixtures.DESIGN_PATH, userThreadCount(server.threads));
 

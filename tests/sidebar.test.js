@@ -272,6 +272,32 @@ test('sortSidebarThreadItems — current file first then path and line', () => {
   assert.deepEqual(items.map(x => x.id), [1, 2, 3, 4, 5]);
 });
 
+test('sortSidebarThreadItems — explicit native file order stays stable without promoting current file', () => {
+  const items = [
+    { id: 1, path: '/z.md', line: 4 },
+    { id: 2, path: '/a.md', line: 20 },
+    { id: 3, path: '/m.md', line: 30 },
+    { id: 4, path: '/a.md', line: 5 },
+  ];
+  assert.deepEqual(
+    sortSidebarThreadItems(items, null, ['/m.md', '/z.md', '/a.md']).map(x => x.id),
+    [3, 1, 4, 2]
+  );
+  assert.deepEqual(items.map(x => x.id), [1, 2, 3, 4]);
+});
+
+test('sortSidebarThreadItems — paths missing from explicit order sort after ranked paths', () => {
+  const items = [
+    { id: 1, path: '/unknown-b.md', line: 1 },
+    { id: 2, path: '/known.md', line: 1 },
+    { id: 3, path: '/unknown-a.md', line: 1 },
+  ];
+  assert.deepEqual(
+    sortSidebarThreadItems(items, null, ['/known.md']).map(x => x.id),
+    [2, 3, 1]
+  );
+});
+
 test('sortSidebarThreadItems — creation time and stability break ties', () => {
   const items = [
     { id: 1, path: '/a.md', line: 5, createdAt: '2026-01-02T00:00:00Z' },

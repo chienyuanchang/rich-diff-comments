@@ -5,10 +5,11 @@
  * `extensions/ado/src/adapters/ado.js` by `scripts/dev-sync.ps1` at
  * build / dev-load time.
  *
- * Wraps the ADO REST API surface for PR review comments. All endpoints
- * verified against a live sandbox on 2026-07-22 — see
- * `docs/ADO_ADAPTER_PLAN.md` §15/§16 for shape references and
- * `local-only/ado-samples/all-probes.json` for the raw fixtures.
+ * Wraps the ADO REST API surface for PR review comments and changed-file
+ * inventory. Thread endpoints were verified against a live sandbox on
+ * 2026-07-22; iteration endpoints follow Microsoft's stable 7.1 contract and
+ * are covered by adapter + browser fixtures pending final live confirmation.
+ * See `docs/ADO_ADAPTER_PLAN.md` §15/§16 and `docs/ADO_DEV_NOTES.md`.
  *
  * Auth model: cookie-based. All fetches use `credentials: 'same-origin'`;
  * ADO's session cookies authenticate the request. No PAT, no bearer, no
@@ -109,6 +110,33 @@
   }
 
   /**
+   * Build the project-scoped PR iterations endpoint. The project segment is
+   * optional when a repository GUID is used, but including it matches ADO's
+   * documented route and the file-content endpoint already used below.
+   */
+  function iterationsUrl(ctx) {
+    const project = ctx.projectId || ctx.projectName || '';
+    const projectSegment = project ? `/${project}` : '';
+    return `/${ctx.org}${projectSegment}/_apis/git/repositories/${ctx.repoId}/pullRequests/${ctx.prId}/iterations?api-version=${API_VERSION}`;
+  }
+
+  /**
+   * Build one page of changes for a PR iteration. `$compareTo=0` means compare
+   * the iteration against the common commit between source and target — the
+   * cumulative changed-file inventory reviewers expect for the whole PR.
+   */
+  function iterationChangesUrl(ctx, iterationId, opts) {
+    const project = ctx.projectId || ctx.projectName || '';
+    const projectSegment = project ? `/${project}` : '';
+    const params = new URLSearchParams();
+    params.set('$compareTo', String(opts && Number.isFinite(opts.compareTo) ? opts.compareTo : 0));
+    params.set('$top', String(opts && Number.isFinite(opts.top) ? opts.top : 2000));
+    params.set('$skip', String(opts && Number.isFinite(opts.skip) ? opts.skip : 0));
+    params.set('api-version', API_VERSION);
+    return `/${ctx.org}${projectSegment}/_apis/git/repositories/${ctx.repoId}/pullRequests/${ctx.prId}/iterations/${iterationId}/changes?${params.toString()}`;
+  }
+
+  /**
    * Org-scoped connection-data endpoint. Returns `{ authenticatedUser: {...}, ... }`
    * with the current user's identity — used to figure out which comments
    * "belong to me" for edit / delete affordances.
@@ -157,6 +185,46 @@
   function normalizeFilePath(path) {
     if (!path) return '';
     return path.startsWith('/') ? path : '/' + path;
+  }
+
+  /**
+   * Normalize the polymorphic ADO GitPullRequestChange shape into the small
+   * platform contract consumed by the sidebar. ADO serializes changeType as a
+   * lowercase enum in normal responses, but combined flags and casing have
+   * appeared in older Server responses, so token matching is defensive.
+   */
+  function normalizePullRequestChange(change) {
+    if (!change || typeof change !== 'object') return null;
+    const item = change.item && typeof change.item === 'object' ? change.item : {};
+    const path = normalizeFilePath(item.path || change.path || '');
+    if (!path) return null;
+
+    const tokens = String(change.changeType || '')
+      .toLowerCase()
+      .split(/[^a-z]+/)
+      .filter(Boolean);
+    let type = 'edit';
+    if (tokens.some((token) => token === 'rename' || token === 'sourcerename' || token === 'targetrename')) {
+      type = 'rename';
+    } else if (tokens.includes('delete')) {
+      type = 'delete';
+    } else if (tokens.includes('add') || tokens.includes('undelete')) {
+      type = 'add';
+    } else if (tokens.includes('edit') || tokens.includes('encoding')) {
+      type = 'edit';
+    }
+
+    const oldCandidate = change.originalPath || item.originalPath ||
+      change.sourceServerItem || item.sourceServerItem || path;
+    const oldPath = normalizeFilePath(oldCandidate);
+    return {
+      changeId: change.changeId,
+      changeTrackingId: change.changeTrackingId,
+      type,
+      path,
+      oldPath: type === 'rename' ? (oldPath || path) : path,
+      rawChangeType: change.changeType || '',
+    };
   }
 
   // ── System-thread filter ───────────────────────────────────────────────
@@ -209,6 +277,57 @@
     fetchImpl = fetchImpl || fetch;
     const resp = await fetchImpl(pullRequestUrl(ctx), { credentials: 'same-origin' });
     return _json(resp);
+  }
+
+  async function listIterations(ctx, fetchImpl) {
+    fetchImpl = fetchImpl || fetch;
+    const resp = await fetchImpl(iterationsUrl(ctx), { credentials: 'same-origin' });
+    return _json(resp);
+  }
+
+  async function getIterationChanges(ctx, iterationId, opts, fetchImpl) {
+    fetchImpl = fetchImpl || fetch;
+    const resp = await fetchImpl(iterationChangesUrl(ctx, iterationId, opts), {
+      credentials: 'same-origin'
+    });
+    return _json(resp);
+  }
+
+  /**
+   * Return the cumulative changed-file inventory for the latest PR iteration,
+   * following ADO's nextSkip/nextTop pagination contract.
+   */
+  async function listPullRequestChanges(ctx, fetchImpl) {
+    fetchImpl = fetchImpl || fetch;
+    const data = await listIterations(ctx, fetchImpl);
+    const iterations = (data && data.value) || [];
+    const latest = iterations.reduce((best, item) => {
+      if (!item || !Number.isFinite(Number(item.id))) return best;
+      return !best || Number(item.id) > Number(best.id) ? item : best;
+    }, null);
+    if (!latest) return { iteration: null, changeEntries: [] };
+
+    const changeEntries = [];
+    let skip = 0;
+    let top = 2000;
+    let pages = 0;
+    do {
+      const page = await getIterationChanges(
+        ctx,
+        Number(latest.id),
+        { compareTo: 0, top, skip },
+        fetchImpl
+      );
+      changeEntries.push(...((page && page.changeEntries) || []));
+      const nextSkip = Number(page && page.nextSkip) || 0;
+      const nextTop = Number(page && page.nextTop) || 0;
+      if (nextSkip <= skip || nextTop <= 0) break;
+      skip = nextSkip;
+      top = nextTop;
+      pages++;
+    } while (pages < 100);
+
+    return { iteration: latest, changeEntries };
   }
 
   /**
@@ -378,15 +497,21 @@
     commentsUrl,
     commentUrl,
     pullRequestUrl,
+    iterationsUrl,
+    iterationChangesUrl,
     connectionDataUrl,
     itemUrl,
 
     // Predicates / normalizers
     isSystemThread,
+    normalizePullRequestChange,
 
     // Endpoint wrappers (all cookie-authenticated)
     listThreads,
     getPullRequest,
+    listIterations,
+    getIterationChanges,
+    listPullRequestChanges,
     getConnectionData,
     getFileSource,
     createThread,

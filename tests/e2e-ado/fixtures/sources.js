@@ -2,6 +2,10 @@
 
 const DESIGN_PATH = '/docs/design.md';
 const OTHER_PATH = '/docs/other.md';
+const NEW_PATH = '/docs/new.md';
+const DELETED_PATH = '/docs/deleted.md';
+const RENAMED_PATH = '/docs/renamed.md';
+const OLD_RENAMED_PATH = '/docs/legacy.md';
 
 const DESIGN_SOURCE = [
   '# Design Review',                            // 1
@@ -69,6 +73,40 @@ const OTHER_SOURCE = [
   '## Notes',                                   // 5
   '',                                           // 6
   'This page proves Preview-preserving navigation.', // 7
+].join('\n');
+
+const OTHER_BASE_SOURCE = [
+  '# Other Document',
+  '',
+  'Cross-file review target.',
+  '',
+  '## Notes',
+  '',
+  'This page used to describe only local navigation.',
+].join('\n');
+
+const NEW_SOURCE = [
+  '# Brand New Guide',
+  '',
+  'This Markdown file exists only on the pull request branch.',
+].join('\n');
+
+const DELETED_SOURCE = [
+  '# Retired Guide',
+  '',
+  'This Markdown file was removed by the pull request.',
+].join('\n');
+
+const RENAMED_SOURCE = [
+  '# Renamed Notes',
+  '',
+  'Updated wording after the rename.',
+].join('\n');
+
+const RENAMED_BASE_SOURCE = [
+  '# Legacy Notes',
+  '',
+  'Old wording before the rename.',
 ].join('\n');
 
 const CURRENT_USER = {
@@ -161,13 +199,50 @@ function defaultThreads() {
   ];
 }
 
+function defaultChanges() {
+  // ADO's iteration API has been observed returning the reverse of the native
+  // file tree. Keep this fixture reversed so E2E tests prove the extension
+  // derives UI order from the tree/path contract rather than response order.
+  return [
+    { changeId: 1, changeTrackingId: 101, changeType: 'edit', item: { path: DESIGN_PATH } },
+    { changeId: 2, changeTrackingId: 102, changeType: 'edit', item: { path: OTHER_PATH } },
+    { changeId: 3, changeTrackingId: 103, changeType: 'add', item: { path: NEW_PATH } },
+    { changeId: 4, changeTrackingId: 104, changeType: 'delete', item: { path: DELETED_PATH } },
+    {
+      changeId: 5,
+      changeTrackingId: 105,
+      changeType: 'rename, edit',
+      originalPath: OLD_RENAMED_PATH,
+      item: { path: RENAMED_PATH },
+    },
+    { changeId: 6, changeTrackingId: 106, changeType: 'edit', item: { path: '/src/ignored.js' } },
+    {
+      changeId: 7,
+      changeTrackingId: 107,
+      changeType: 'rename',
+      originalPath: '/docs/was-markdown.md',
+      item: { path: '/docs/now-text.txt' },
+    },
+  ].reverse();
+}
+
 module.exports = {
   DESIGN_PATH,
   OTHER_PATH,
+  NEW_PATH,
+  DELETED_PATH,
+  RENAMED_PATH,
+  OLD_RENAMED_PATH,
   DESIGN_SOURCE,
   DESIGN_BASE_SOURCE,
   OTHER_SOURCE,
+  OTHER_BASE_SOURCE,
+  NEW_SOURCE,
+  DELETED_SOURCE,
+  RENAMED_SOURCE,
+  RENAMED_BASE_SOURCE,
   CURRENT_USER,
   OTHER_USER,
   defaultThreads,
+  defaultChanges,
 };

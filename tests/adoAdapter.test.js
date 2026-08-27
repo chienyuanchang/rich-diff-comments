@@ -1,11 +1,10 @@
 /**
  * Unit tests for the Azure DevOps adapter's pure helpers.
  *
- * Only the pure / DOM-free / fetch-free parts are covered here:
- *   parsePRUrl, normalizeFilePath, isSystemThread, and the URL builders.
- * The HTTP wrappers (listThreads, createThread, reply, ...) are validated
- * by manual DevTools probes captured in local-only/ado-samples/ — a full
- * mock-fetch harness will land alongside the button-attachment work.
+ * Pure URL/normalization behavior is covered directly. The iteration inventory
+ * wrapper also uses a small mock fetch to pin latest-iteration selection and
+ * pagination. Thread mutations are exercised by the stateful ADO Playwright
+ * fixture and live DevTools probes captured in local-only/ado-samples/.
  */
 
 const test = require('node:test');
@@ -143,6 +142,29 @@ test('pullRequestUrl - builds the single-PR metadata endpoint', () => {
   );
 });
 
+test('iterationsUrl - uses the project-scoped latest-iteration collection', () => {
+  assert.equal(
+    ado.iterationsUrl(CTX_WITH_PROJECT),
+    `/myorg/PROJ-GUID/_apis/git/repositories/REPO-GUID/pullRequests/42/iterations?api-version=${ado.API_VERSION}`
+  );
+});
+
+test('iterationChangesUrl - requests cumulative changes with explicit paging', () => {
+  const url = new URL('https://dev.azure.com' + ado.iterationChangesUrl(
+    CTX_WITH_PROJECT,
+    7,
+    { compareTo: 0, top: 250, skip: 500 }
+  ));
+  assert.equal(
+    url.pathname,
+    '/myorg/PROJ-GUID/_apis/git/repositories/REPO-GUID/pullRequests/42/iterations/7/changes'
+  );
+  assert.equal(url.searchParams.get('$compareTo'), '0');
+  assert.equal(url.searchParams.get('$top'), '250');
+  assert.equal(url.searchParams.get('$skip'), '500');
+  assert.equal(url.searchParams.get('api-version'), ado.API_VERSION);
+});
+
 test('connectionDataUrl - builds the org-scoped connection-data endpoint', () => {
   const url = ado.connectionDataUrl(CTX);
   assert.match(url, /^\/myorg\/_apis\/connectionData\?/);
@@ -177,6 +199,86 @@ test('itemUrl - normalizes filePath so callers can pass with or without leading 
   const noSlash = ado.itemUrl(CTX_WITH_PROJECT, 'README.md', {});
   assert.equal(withSlash, noSlash);
 });
+
+// ─── pull-request change normalization ─────────────────────────────────
+
+test('normalizePullRequestChange - normalizes add/edit/delete entries', () => {
+  assert.deepEqual(
+    ado.normalizePullRequestChange({ changeId: 1, changeTrackingId: 11, changeType: 'add', item: { path: 'new.md' } }),
+    { changeId: 1, changeTrackingId: 11, type: 'add', path: '/new.md', oldPath: '/new.md', rawChangeType: 'add' }
+  );
+  assert.equal(ado.normalizePullRequestChange({ changeType: 'edit', item: { path: '/edit.md' } }).type, 'edit');
+  assert.equal(ado.normalizePullRequestChange({ changeType: 'delete', item: { path: '/gone.md' } }).type, 'delete');
+});
+
+test('normalizePullRequestChange - rename wins combined flags and preserves originalPath', () => {
+  const change = ado.normalizePullRequestChange({
+    changeId: 9,
+    changeTrackingId: 19,
+    changeType: 'rename, edit',
+    originalPath: '/docs/old.md',
+    item: { path: '/docs/new.md' }
+  });
+  assert.equal(change.type, 'rename');
+  assert.equal(change.path, '/docs/new.md');
+  assert.equal(change.oldPath, '/docs/old.md');
+});
+
+test('normalizePullRequestChange - falls back through item.originalPath and sourceServerItem', () => {
+  assert.equal(ado.normalizePullRequestChange({
+    changeType: 'sourceRename',
+    item: { path: '/new.md', originalPath: '/item-old.md' }
+  }).oldPath, '/item-old.md');
+  assert.equal(ado.normalizePullRequestChange({
+    changeType: 'targetRename',
+    sourceServerItem: 'source-old.md',
+    item: { path: '/new.md' }
+  }).oldPath, '/source-old.md');
+});
+
+test('normalizePullRequestChange - rejects malformed entries without a path', () => {
+  assert.equal(ado.normalizePullRequestChange(null), null);
+  assert.equal(ado.normalizePullRequestChange({ changeType: 'edit', item: {} }), null);
+});
+
+test('listPullRequestChanges - selects latest iteration and follows nextSkip/nextTop pages', async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    if (/\/iterations\?/.test(url)) {
+      return response({ value: [{ id: 1 }, { id: 4 }, { id: 2 }] });
+    }
+    const parsed = new URL('https://dev.azure.com' + url);
+    const skip = parsed.searchParams.get('$skip');
+    if (skip === '0') {
+      return response({
+        changeEntries: [{ changeId: 1, item: { path: '/one.md' }, changeType: 'edit' }],
+        nextSkip: 1,
+        nextTop: 1
+      });
+    }
+    return response({
+      changeEntries: [{ changeId: 2, item: { path: '/two.md' }, changeType: 'add' }],
+      nextSkip: 0,
+      nextTop: 0
+    });
+  };
+
+  const result = await ado.listPullRequestChanges(CTX_WITH_PROJECT, fetchImpl);
+  assert.equal(result.iteration.id, 4);
+  assert.deepEqual(result.changeEntries.map((entry) => entry.changeId), [1, 2]);
+  assert.equal(calls.length, 3);
+  assert.match(calls[1], /\/iterations\/4\/changes\?/);
+  assert.equal(new URL('https://dev.azure.com' + calls[2]).searchParams.get('$skip'), '1');
+});
+
+function response(data, status = 200) {
+  return {
+    status,
+    ok: status >= 200 && status < 300,
+    async text() { return data == null ? '' : JSON.stringify(data); }
+  };
+}
 
 // ─── API_VERSION constant ──────────────────────────────────────────────
 

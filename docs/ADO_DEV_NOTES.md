@@ -253,35 +253,67 @@ ADO Preview renders only the final document. Unlike GitHub rich diff, it does
 not include `<ins>`, `<del>`, `.added`, or `.removed` markers, so the Changes tab
 cannot discover edits by walking the rendered DOM.
 
-The ADO flow is:
+The current ADO flow is:
 
-1. reuse the head Markdown already fetched for block→line mapping,
-2. fetch the same path at `lastMergeTargetCommit.commitId` (target-branch
-  fallback only when that commit is absent),
+1. fetch the cumulative changed-file inventory from the latest PR iteration,
+2. fetch each Markdown file at that iteration's exact source/common commits,
 3. compute dependency-free Myers line hunks with `diffLineHunks()`, and
-4. map head ranges / deletion insertion points to rendered reading blocks with
-  `mapDiffHunksToBlocks()`.
+4. resolve a stored hunk against the fresh rendered block map only when the
+   reviewer navigates to that card.
 
-The mapper infers a block's source interval from its line and the next mapped
-block. Fenced code blocks provide an explicit end line. A deletion-only hunk has
-no rendered head content, so it anchors to adjacent surviving context and uses
-the deleted base text as its sidebar snippet. Multiple hunks landing on one
-reading block merge into one card.
+### PR-wide inventory comes from the latest iteration
 
-### Target-commit 404 means “new file”
-
-A request such as:
+The authoritative file list is not the currently rendered Preview DOM. Use:
 
 ```text
-GET .../items?path=/new.md&versionDescriptor.version=<target-commit>
-→ 404 Not Found
+GET /{org}/{project}/_apis/git/repositories/{repoId}/pullRequests/{prId}/iterations?api-version=7.1
+GET /{org}/{project}/_apis/git/repositories/{repoId}/pullRequests/{prId}/iterations/{latest}/changes?$compareTo=0&$top=2000&$skip=0&api-version=7.1
 ```
 
-is expected when the path exists only on the PR source side. Chrome still
-prints the handled request in red. `getBaseFileSource()` catches status 404,
-logs that the path is absent from the target commit, returns an empty base, and
-Changes marks every rendered block as added. Other failures remain isolated to
-the Changes pane.
+`$compareTo=0` compares the latest iteration against its common source/target
+commit and returns the cumulative PR inventory. Follow `nextSkip` / `nextTop`
+until both are zero. `GitPullRequestChange` supplies `changeType`, `item.path`,
+`changeTrackingId`, and (for renames) `originalPath` / `sourceServerItem`.
+
+**Do not use response order as display order.** Live testing found that the
+iteration endpoint can return entries in the reverse of ADO's left file tree.
+When all relevant tree rows are materialized, order both Changes and Threads by
+their native DOM order. If folders/virtualization hide any row, use stable path
+order for the entire list rather than mixing two order systems. The current
+file is highlighted in place; never move its group to the top, which makes the
+list jump whenever the reviewer changes files.
+
+Pin head reads to the latest iteration's `sourceRefCommit.commitId` and base
+reads to `commonRefCommit.commitId`. Do not read moving branch/target tips for
+PR-wide cards: either can advance between requests and create hunks that do not
+belong to the inventory being displayed. Cache source requests by version and
+path, not by path alone.
+
+Only final/current Markdown paths are included. A rename from `.md` to `.txt`
+is not a rendered-review change even though its old path was Markdown; a rename
+from `.txt` to `.md` is included.
+
+### Stable cards are DOM-free
+
+PR-wide cards store path, source range, lifecycle, snippet, and source hunk—no
+element reference. ADO renders one Preview at a time, so a node from a previous
+file is necessarily stale. On navigation, activate the native ADO tree row,
+wait for route-aware Preview initialization, and map the stored source hunk to
+the fresh block→line map. The card catalog survives Preview resets.
+
+Added, deleted, and renamed files receive one lifecycle summary (`NEW FILE`,
+`DELETED`, `RENAMED`). Renames can also have content-hunk cards. Deleted files
+have no head Preview, so their summary activates the native row without entering
+the Preview-restoration retry loop.
+
+### New-file handling no longer relies on a target 404
+
+The earlier current-file implementation inferred a new file from a handled
+target-commit 404. The PR-wide implementation trusts `changeType: "add"` from
+the iteration changes resource and does not request a base version. This avoids
+a noisy expected 404 and prevents an unexpected 404 on an edited or renamed
+file from being misclassified as new. Source failures produce one `UNAVAILABLE`
+card for that file while Changes, Threads, Outline, and inline review continue.
 
 ### Navigation must cross nested ADO scrollers
 

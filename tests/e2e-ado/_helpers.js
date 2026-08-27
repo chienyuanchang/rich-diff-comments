@@ -26,6 +26,8 @@ const REPO_NAME = 'test-repo';
 const REPO_ID = 'repo-guid';
 const PR_ID = 42;
 const TARGET_COMMIT = 'b'.repeat(40);
+const SOURCE_COMMIT = 'c'.repeat(40);
+const COMMON_COMMIT = 'a'.repeat(40);
 const FAKE_PR_PATH = `/${ORG}/${PROJECT_NAME}/_git/${REPO_NAME}/pullrequest/${PR_ID}`;
 const FAKE_PR_URL = `https://dev.azure.com${FAKE_PR_PATH}?_a=files&path=${encodeURIComponent(fixtureData.DESIGN_PATH)}`;
 
@@ -84,15 +86,21 @@ async function installAdoRoutes(page, options) {
     completedSources: [],
     pageLoads: 0,
     threads: clone(opts.threads || fixtureData.defaultThreads()),
+    prChanges: clone(opts.prChanges || fixtureData.defaultChanges()),
     headSources: Object.assign({
       [fixtureData.DESIGN_PATH]: fixtureData.DESIGN_SOURCE,
       [fixtureData.OTHER_PATH]: fixtureData.OTHER_SOURCE,
+      [fixtureData.NEW_PATH]: fixtureData.NEW_SOURCE,
+      [fixtureData.RENAMED_PATH]: fixtureData.RENAMED_SOURCE,
     }, opts.headSources || {}),
     baseSources: Object.assign({
       [fixtureData.DESIGN_PATH]: fixtureData.DESIGN_BASE_SOURCE,
-      [fixtureData.OTHER_PATH]: fixtureData.OTHER_SOURCE,
+      [fixtureData.OTHER_PATH]: fixtureData.OTHER_BASE_SOURCE,
+      [fixtureData.DELETED_PATH]: fixtureData.DELETED_SOURCE,
+      [fixtureData.OLD_RENAMED_PATH]: fixtureData.RENAMED_BASE_SOURCE,
     }, opts.baseSources || {}),
     sourceDelays: Object.assign({}, opts.sourceDelays || {}),
+    sourceFailures: Object.assign({}, opts.sourceFailures || {}),
     nextThreadId: 1000,
   };
 
@@ -137,14 +145,46 @@ async function installAdoRoutes(page, options) {
       });
     }
 
+    const projectPrPath = `/${ORG}/${PROJECT_ID}/_apis/git/repositories/${REPO_ID}/pullRequests/${PR_ID}`;
+    if (method === 'GET' && url.pathname === `${projectPrPath}/iterations`) {
+      return fulfillJson(route, {
+        count: 2,
+        value: [
+          { id: 1, reason: 'create' },
+          {
+            id: 2,
+            reason: 'push',
+            sourceRefCommit: { commitId: SOURCE_COMMIT },
+            commonRefCommit: { commitId: COMMON_COMMIT },
+          },
+        ],
+      });
+    }
+
+    if (method === 'GET' && url.pathname === `${projectPrPath}/iterations/2/changes`) {
+      return fulfillJson(route, {
+        changeEntries: clone(state.prChanges),
+        nextSkip: 0,
+        nextTop: 0,
+      });
+    }
+
     if (method === 'GET' && /\/_apis\/git\/repositories\/repo-guid\/items$/.test(url.pathname)) {
       const filePath = url.searchParams.get('path');
+      const version = url.searchParams.get('versionDescriptor.version');
       const versionType = url.searchParams.get('versionDescriptor.versionType');
-      const sourceSet = versionType === 'commit' ? state.baseSources : state.headSources;
-      const delayKey = `${versionType || 'head'}:${filePath}`;
-      const delay = Number(state.sourceDelays[delayKey] || state.sourceDelays[filePath] || 0);
+      const sourceSet = versionType === 'commit' && version !== SOURCE_COMMIT
+        ? state.baseSources
+        : state.headSources;
+      const exactKey = `${version || versionType || 'head'}:${filePath}`;
+      const typeKey = `${versionType || 'head'}:${filePath}`;
+      const delay = Number(state.sourceDelays[exactKey] || state.sourceDelays[typeKey] || state.sourceDelays[filePath] || 0);
       if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
-      state.completedSources.push({ path: filePath, versionType: versionType || 'head' });
+      state.completedSources.push({ path: filePath, version, versionType: versionType || 'head' });
+      const failureStatus = Number(state.sourceFailures[exactKey] || state.sourceFailures[typeKey] || state.sourceFailures[filePath] || 0);
+      if (failureStatus >= 400) {
+        return route.fulfill({ status: failureStatus, body: `Fixture source failure for ${filePath}` });
+      }
       if (!Object.prototype.hasOwnProperty.call(sourceSet, filePath)) {
         return route.fulfill({ status: 404, body: `No fixture source for ${filePath}` });
       }
@@ -303,6 +343,8 @@ module.exports = {
   FAKE_PR_URL,
   FAKE_PR_PATH,
   TARGET_COMMIT,
+  SOURCE_COMMIT,
+  COMMON_COMMIT,
   setupAdoExtensionPage,
   waitForAdoReady,
   matchingRequests,

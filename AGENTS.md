@@ -37,9 +37,9 @@ The repository is a monorepo with per-target extension folders sharing a single 
 
 ### Tests
 
-- `npm test` — 349 Node:test unit/static tests (~2s, no browser). Run before every commit touching JS.
+- `npm test` — 367 Node:test unit/static tests (no browser). Run before every commit touching JS.
 - `npm run test:e2e` / `npm run test:e2e:github` — 21 GitHub fixture tests in headless Chromium.
-- `npm run test:e2e:ado` — 18 ADO Preview + mocked REST fixture tests in headless Chromium.
+- `npm run test:e2e:ado` — 27 ADO Preview + mocked REST fixture tests in headless Chromium.
 - `npm run test:e2e:all` — both browser targets.
 - `npm run test:all` — Node tests plus both browser targets.
 - Preflight (`.github/skills/rdc-publish-check/scripts/preflight.ps1`) runs `npm test` only — add `test:e2e` to your manual flow when DOM behavior changed.

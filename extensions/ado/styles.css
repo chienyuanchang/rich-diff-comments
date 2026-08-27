@@ -669,6 +669,14 @@ body.adrc-dragging {
   border-left-color: #ca5010;
 }
 
+.adrc-sidebar-change-renamed {
+  border-left-color: #8764b8;
+}
+
+.adrc-sidebar-change-unavailable {
+  border-left-color: var(--adrc-text-muted);
+}
+
 .adrc-sidebar-change-active {
   background: var(--adrc-accent-tint);
   box-shadow: inset 0 0 0 1px rgba(0, 120, 212, 0.25);
@@ -705,6 +713,24 @@ body.adrc-dragging {
 
 .adrc-sidebar-change-mixed .adrc-sidebar-change-kind {
   background: #ca5010;
+}
+
+.adrc-sidebar-change-renamed .adrc-sidebar-change-kind {
+  background: #8764b8;
+}
+
+.adrc-sidebar-change-unavailable .adrc-sidebar-change-kind {
+  background: var(--adrc-text-muted);
+}
+
+.adrc-sidebar-change-summary-card .adrc-sidebar-change-location {
+  color: var(--adrc-text);
+  font-weight: 700;
+  letter-spacing: 0.025em;
+}
+
+.adrc-sidebar-change-summary-card .adrc-sidebar-change-snippet {
+  color: var(--adrc-text-muted);
 }
 
 .adrc-sidebar-change-location {

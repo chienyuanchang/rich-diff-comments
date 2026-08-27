@@ -46,19 +46,40 @@ test('ADO sidebar renders Changes, Threads, Outline tabs in GitHub parity order'
   assert.match(content, /class="adrc-outline-body"/);
 });
 
-test('ADO Changes compares target commit source to active head source', () => {
+test('ADO Changes loads the latest PR inventory and compares target/head sources with bounded concurrency', () => {
+  assert.match(content, /adapter\.resolveIds\(ctx\)\.then\(\(\) => adapter\.getPullRequest\(ctx\)\)/);
   assert.match(content, /lastMergeTargetCommit/);
   assert.match(content, /versionType:\s*'commit'/);
   assert.match(content, /function getBaseFileSource\(filePath\)/);
-  assert.match(content, /GRDC\.diffLineHunks\(baseSource, currentSource\)/);
-  assert.match(content, /GRDC\.mapDiffHunksToBlocks/);
+  assert.match(content, /adapter\.listPullRequestChanges\(ctx\)/);
+  assert.match(content, /adapter\.normalizePullRequestChange\(entry\)/);
+  assert.match(content, /mapWithConcurrency\([\s\S]*?prMarkdownChanges,[\s\S]*?4,/);
+  assert.match(content, /GRDC\.buildPrChangeStops\(change, baseSource, headSource/);
+  assert.match(content, /changeHeadSourcePromises/);
+  assert.match(content, /changeBaseSourcePromises/);
+  assert.match(content, /inventory\.iteration\?\.sourceRefCommit\?\.commitId/);
+  assert.match(content, /inventory\.iteration\?\.commonRefCommit\?\.commitId/);
+  assert.match(content, /versionType:\s*'commit'/);
 });
 
-test('ADO Changes rejects stale async comparisons after SPA file switches', () => {
-  assert.match(content, /requestVersion === changesGeneration/);
-  assert.match(content, /initVersion === initGeneration/);
-  assert.match(content, /routeKey === currentPreviewRouteKeyCached/);
-  assert.match(content, /filePath === currentFilePathCached/);
+test('ADO Changes keeps DOM-free PR cards across SPA Preview resets', () => {
+  assert.match(content, /Stable, DOM-free PR-wide cards/);
+  assert.match(content, /requestVersion !== changesGeneration/);
+  const resetStart = content.indexOf('function resetPreviewContext(');
+  const resetEnd = content.indexOf('// ── Init flow', resetStart);
+  const resetBody = content.slice(resetStart, resetEnd);
+  assert.doesNotMatch(resetBody, /sidebarChangeStops\s*=\s*\[\]/);
+  assert.doesNotMatch(resetBody, /sidebarChangesStatus\s*=\s*'idle'/);
+  assert.match(resetBody, /currentLineToBlock\s*=\s*new Map\(\)/);
+});
+
+test('ADO Changes and Threads share stable native file order without current-file promotion', () => {
+  assert.match(content, /function getStableAdoFileOrder\(paths\)/);
+  assert.match(content, /ranked\.every\(\(entry\) => entry\.target\)/);
+  assert.match(content, /a\.target\.index - b\.target\.index/);
+  assert.match(content, /prMarkdownFileOrder = getStableAdoFileOrder/);
+  assert.match(content, /GRDC\.sortSidebarThreadItems\(filtered, null, fileOrder\)/);
+  assert.doesNotMatch(content, /GRDC\.sortSidebarThreadItems\(filtered, currentFilePath/);
 });
 
 test('ADO Changes cards support kind styling, click navigation, active tracking, and pulse', () => {
@@ -69,6 +90,10 @@ test('ADO Changes cards support kind styling, click navigation, active tracking,
   assert.match(css, /\.adrc-sidebar-change-added/);
   assert.match(css, /\.adrc-sidebar-change-removed/);
   assert.match(css, /\.adrc-sidebar-change-mixed/);
+  assert.match(css, /\.adrc-sidebar-change-renamed/);
+  assert.match(css, /\.adrc-sidebar-change-unavailable/);
+  assert.match(content, /dataset\.lifecycle/);
+  assert.match(content, /NEW FILE|stop\.label/);
 });
 
 test('ADO Changes navigation reveals folded sections and re-resolves its current block', () => {
@@ -178,6 +203,16 @@ test('ADO cross-file thread navigation stores and resumes a pending jump', () =>
   assert.match(content, /SIDEBAR_PENDING_THREAD_KEY/);
   assert.match(content, /sessionStorage\.setItem\(SIDEBAR_PENDING_THREAD_KEY/);
   assert.match(content, /function resumePendingThreadJump\(attempt\)/);
+});
+
+test('ADO cross-file change navigation stores a stable key and resumes against the live Preview map', () => {
+  assert.match(content, /SIDEBAR_PENDING_CHANGE_KEY/);
+  assert.match(content, /sessionStorage\.setItem\(SIDEBAR_PENDING_CHANGE_KEY/);
+  assert.match(content, /key:\s*stop\.key/);
+  assert.match(content, /function continuePendingChangeNavigation\(\)/);
+  assert.match(content, /function resumePendingChangeJump\(attempt\)/);
+  assert.match(content, /sidebarChangeStops\.findIndex\(\(stop\) => stop\.key === pending\.key\)/);
+  assert.match(content, /function scrollToCurrentChange\(index\)/);
 });
 
 test('ADO cross-file thread navigation explicitly restores Markdown Preview', () => {

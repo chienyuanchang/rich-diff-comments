@@ -4,6 +4,14 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+### Added — Azure DevOps
+
+- **The Changes tab now covers every Markdown file in the pull request, not only the file currently open in Preview.** Changes are grouped by file, the counter shows progress in the current file alongside the pull-request total, and the previous/next controls and keyboard shortcuts move across files without leaving Preview. New, deleted, and renamed Markdown files appear as clear summary cards instead of being skipped or flooding the list.
+
+### Changed — Azure DevOps
+
+- **Changes and Threads now stay in the same order as Azure DevOps' file tree.** Opening another file highlights its group without moving it to the top, so both lists remain stable while reviewing a multi-file pull request.
+
 ## [1.9.0] — 2026-07-02
 
 ### Added

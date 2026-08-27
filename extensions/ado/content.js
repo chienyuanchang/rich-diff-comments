@@ -115,8 +115,14 @@
    */
   let _pullRequestPromise = null;
   let _sourceBranchPromise = null;
+  const changeHeadSourcePromises = new Map();
+  const changeBaseSourcePromises = new Map();
+  let prChangesHeadVersion = null;
+  let prChangesBaseVersion = null;
   function getPullRequestMetadata() {
-    if (!_pullRequestPromise) _pullRequestPromise = adapter.getPullRequest(ctx);
+    if (!_pullRequestPromise) {
+      _pullRequestPromise = adapter.resolveIds(ctx).then(() => adapter.getPullRequest(ctx));
+    }
     return _pullRequestPromise;
   }
 
@@ -145,20 +151,44 @@
     return _targetVersionPromise;
   }
 
-  async function getBaseFileSource(filePath) {
-    await adapter.resolveIds(ctx);
-    const version = await getTargetVersion();
-    try {
-      return await adapter.getFileSource(ctx, filePath, version);
-    } catch (err) {
-      // The current path does not exist in the target commit: treat it as a
-      // newly added file so every mapped rendered block becomes an addition.
-      if (err && err.status === 404) {
-        console.info(`${LOG} Changes: ${filePath} is absent from the target commit; treating it as a new file`);
-        return '';
+  function versionedSource(cache, filePath, versionPromise) {
+    const normalizedPath = adapter.normalizeFilePath(filePath);
+    return Promise.resolve(versionPromise).then(async (version) => {
+      const descriptor = version || {};
+      const key = `${descriptor.versionType || 'default'}:${descriptor.version || ''}:${normalizedPath}`;
+      if (!cache.has(key)) {
+        await adapter.resolveIds(ctx);
+        const request = adapter.getFileSource(ctx, normalizedPath, descriptor);
+        cache.set(key, request);
+        request.catch(() => {
+          if (cache.get(key) === request) cache.delete(key);
+        });
       }
-      throw err;
-    }
+      return cache.get(key);
+    });
+  }
+
+  function getBaseFileSource(filePath) {
+    const version = prChangesBaseVersion || getTargetVersion();
+    return versionedSource(changeBaseSourcePromises, filePath, version);
+  }
+
+  function getHeadFileSource(filePath) {
+    const version = prChangesHeadVersion || getSourceBranch().then((branch) => ({
+      version: branch,
+      versionType: 'branch'
+    }));
+    return versionedSource(changeHeadSourcePromises, filePath, version);
+  }
+
+  // Rejected fetches are not cached forever. A transient ADO request failure
+  // can therefore recover on the next explicit catalog refresh/page reload.
+  function retryableHeadFileSource(filePath) {
+    return getHeadFileSource(filePath);
+  }
+
+  function retryableBaseFileSource(filePath) {
+    return getBaseFileSource(filePath);
   }
 
   /**
@@ -168,9 +198,7 @@
   * SPA route, preventing a slow prior-file fetch from overwriting state.
    */
   async function buildFileLineMap(container, filePath) {
-    await adapter.resolveIds(ctx);
-    const branch = await getSourceBranch();
-    const source = await adapter.getFileSource(ctx, filePath, { version: branch, versionType: 'branch' });
+    const source = await retryableHeadFileSource(filePath);
     const sourceLines = source.split('\n');
 
     const GRDC = window.GRDC || {};
@@ -1421,13 +1449,14 @@
 
   // ── Changes + Threads + Outline sidebar ─────────────────────────────
   //
-  // Persistent floating navigation shell. Threads are PR-wide; Outline is
-  // scoped to the active file. Changes becomes a third tab in the next
-  // iteration. All state is local-only and namespaced for the ADO target.
+  // Persistent floating navigation shell. Changes and Threads are PR-wide;
+  // Outline is scoped to the active file until Iteration N. All state is
+  // local-only and namespaced for the ADO target.
 
   const SIDEBAR_STORAGE_KEY = 'adrc-sidebar-state-v1';
   const LEGACY_OUTLINE_STORAGE_KEY = 'adrc-outline-state-v1';
   const SIDEBAR_PENDING_THREAD_KEY = 'adrc-pending-thread-jump-v1';
+  const SIDEBAR_PENDING_CHANGE_KEY = 'adrc-pending-change-jump-v1';
   const SIDEBAR_MIN_WIDTH = 300;
   const SIDEBAR_MIN_HEIGHT = 180;
   const SIDEBAR_DEFAULT_WIDTH = 340;
@@ -1440,11 +1469,18 @@
   let sidebarState = null;
   let sidebarThreadItems = [];
   let sidebarActiveThreadId = null;
+  // Stable, DOM-free PR-wide cards. Live target elements are resolved from
+  // `currentLineToBlock` only when a card belongs to the active Preview.
   let sidebarChangeStops = [];
   let sidebarActiveChangeIndex = -1;
+  let sidebarFollowSuppressedUntil = 0;
   let sidebarChangesStatus = 'idle'; // idle | loading | ready | error
   let sidebarChangesError = '';
   let changesGeneration = 0;
+  let prChangesPromise = null;
+  let prChangesIterationId = null;
+  let prMarkdownChanges = [];
+  let prMarkdownFileOrder = [];
   let sidebarResizeObserver = null;
   let sidebarResizeTimer = null;
   // Alias retained for the established Outline row renderer. It points to
@@ -1767,7 +1803,7 @@
       '</div>',
       '<div class="adrc-sidebar-body">',
       '  <section class="adrc-sidebar-pane adrc-sidebar-pane-changes" data-pane="changes" role="tabpanel">',
-      '    <div class="adrc-sidebar-pane-header"><span class="adrc-sidebar-pane-title">Changed blocks</span><span class="adrc-sidebar-changes-summary"></span></div>',
+      '    <div class="adrc-sidebar-pane-header"><span class="adrc-sidebar-pane-title">Pull request changes</span><span class="adrc-sidebar-changes-summary"></span></div>',
       '    <div class="adrc-sidebar-change-list"></div>',
       '  </section>',
       '  <section class="adrc-sidebar-pane adrc-sidebar-pane-threads" data-pane="threads" role="tabpanel">',
@@ -1947,11 +1983,33 @@
     if (!sidebarPanel) return;
 
     const changesTotal = sidebarChangeStops.length;
-    const changesCurrent = sidebarActiveChangeIndex >= 0 && sidebarActiveChangeIndex < changesTotal
-      ? sidebarActiveChangeIndex + 1
-      : 0;
+    const activePath = currentFilePath() || currentFilePathCached;
+    const fileChangeIndexes = activePath
+      ? sidebarChangeStops
+          .map((stop, index) => stop && stop.path === activePath ? index : -1)
+          .filter((index) => index >= 0)
+      : [];
+    const filePosition = fileChangeIndexes.indexOf(sidebarActiveChangeIndex);
+    const changesCurrent = filePosition >= 0 ? filePosition + 1 : 0;
     const changesCount = sidebarPanel.querySelector('.adrc-sidebar-changes-count span');
-    if (changesCount) changesCount.textContent = `${changesCurrent}/${changesTotal}`;
+    if (changesCount) {
+      if (activePath && fileChangeIndexes.length !== changesTotal) {
+        changesCount.textContent = `${changesCurrent}/${fileChangeIndexes.length} (${changesTotal})`;
+      } else {
+        const flatCurrent = activePath
+          ? changesCurrent
+          : (sidebarActiveChangeIndex >= 0 && sidebarActiveChangeIndex < changesTotal
+              ? sidebarActiveChangeIndex + 1
+              : 0);
+        changesCount.textContent = `${flatCurrent}/${activePath ? fileChangeIndexes.length : changesTotal}`;
+      }
+      const countButton = changesCount.closest('.adrc-sidebar-changes-count');
+      if (countButton) {
+        countButton.title = activePath
+          ? `${changesCurrent} of ${fileChangeIndexes.length} changes in this file · ${changesTotal} in this pull request`
+          : `${sidebarActiveChangeIndex + 1} of ${changesTotal} changes in this pull request`;
+      }
+    }
     sidebarPanel.querySelectorAll('.adrc-sidebar-prev-change, .adrc-sidebar-next-change')
       .forEach((button) => { button.disabled = changesTotal === 0; });
 
@@ -2087,8 +2145,12 @@
     const filtered = typeof GRDC.filterSidebarThreadItems === 'function'
       ? GRDC.filterSidebarThreadItems(sidebarThreadItems, sidebarState && sidebarState.unresolvedOnly)
       : sidebarThreadItems.filter((item) => !sidebarState?.unresolvedOnly || !item.resolved);
+    const fileOrder = getStableAdoFileOrder([
+      ...prMarkdownFileOrder,
+      ...filtered.map((item) => item && item.path)
+    ]);
     return typeof GRDC.sortSidebarThreadItems === 'function'
-      ? GRDC.sortSidebarThreadItems(filtered, currentFilePathCached || currentFilePath())
+      ? GRDC.sortSidebarThreadItems(filtered, null, fileOrder)
       : filtered.slice().sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line);
   }
 
@@ -2121,7 +2183,7 @@
     }
 
     let lastPath = null;
-    const activePath = currentFilePathCached || currentFilePath();
+    const activePath = currentFilePath() || currentFilePathCached;
     visible.forEach((item) => {
       if (item.path !== lastPath) {
         const group = document.createElement('div');
@@ -2206,6 +2268,7 @@
 
   function updateActiveSidebarThread() {
     if (!sidebarPanel || sidebarState?.visible === false) return;
+    if (Date.now() < sidebarFollowSuppressedUntil) return;
     const preview = getCurrentPreviewContainer();
     if (!preview) return;
     const visibleIds = new Set(getVisibleSidebarThreads().map((item) => String(item.id)));
@@ -2254,6 +2317,7 @@
     );
     if (!panel) badge.click();
     setActiveSidebarThread(threadId);
+    sidebarFollowSuppressedUntil = Date.now() + 1500;
     scrollToWithStickyOffset(badge);
     badge.classList.add('adrc-sidebar-target-pulse');
     setTimeout(() => badge.classList.remove('adrc-sidebar-target-pulse'), 1400);
@@ -2261,6 +2325,7 @@
   }
 
   function savePendingThreadJump(item) {
+    clearPendingChangeJump();
     resetPreviewRestoreState();
     try {
       sessionStorage.setItem(SIDEBAR_PENDING_THREAD_KEY, JSON.stringify({
@@ -2287,6 +2352,37 @@
 
   function clearPendingThreadJump() {
     try { sessionStorage.removeItem(SIDEBAR_PENDING_THREAD_KEY); } catch (_) {}
+    resetPreviewRestoreState();
+  }
+
+  function savePendingChangeJump(stop) {
+    clearPendingThreadJump();
+    resetPreviewRestoreState();
+    try {
+      sessionStorage.setItem(SIDEBAR_PENDING_CHANGE_KEY, JSON.stringify({
+        key: stop.key,
+        path: stop.path,
+        requirePreview: true,
+        expiresAt: Date.now() + 30000
+      }));
+    } catch (_) { /* sessionStorage may be blocked */ }
+  }
+
+  function readPendingChangeJump() {
+    try {
+      const pending = JSON.parse(sessionStorage.getItem(SIDEBAR_PENDING_CHANGE_KEY) || 'null');
+      if (!pending || pending.expiresAt < Date.now()) {
+        sessionStorage.removeItem(SIDEBAR_PENDING_CHANGE_KEY);
+        return null;
+      }
+      return pending;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function clearPendingChangeJump() {
+    try { sessionStorage.removeItem(SIDEBAR_PENDING_CHANGE_KEY); } catch (_) {}
     resetPreviewRestoreState();
   }
 
@@ -2491,6 +2587,14 @@
     if (currentFilePathCached === pending.path) resumePendingThreadJump(0);
   }
 
+  function continuePendingChangeNavigation() {
+    const pending = readPendingChangeJump();
+    if (!pending || pending.path !== currentFilePath()) return;
+    if (pending.requirePreview && !ensureAdoPreviewMode()) return;
+    schedulePreviewInit(50);
+    if (currentFilePathCached === pending.path) resumePendingChangeJump(0);
+  }
+
   function resumePendingThreadJump(attempt) {
     const pending = readPendingThreadJump();
     if (!pending || pending.path !== currentFilePathCached) return;
@@ -2511,9 +2615,30 @@
     }
   }
 
+  function resumePendingChangeJump(attempt) {
+    const pending = readPendingChangeJump();
+    if (!pending || pending.path !== currentFilePathCached) return;
+    if (pending.requirePreview && !hasVisibleMarkdownPreview()) {
+      ensureAdoPreviewMode();
+      return;
+    }
+    const index = sidebarChangeStops.findIndex((stop) => stop.key === pending.key);
+    if (index >= 0 && scrollToCurrentChange(index)) {
+      clearPendingChangeJump();
+      return;
+    }
+    const n = Number.isFinite(attempt) ? attempt : 0;
+    if (n < 20) {
+      setTimeout(() => resumePendingChangeJump(n + 1), 250);
+    } else {
+      clearPendingChangeJump();
+      showErrorToast(`Could not locate the selected change in ${pending.path}.`);
+    }
+  }
+
   function navigateToSidebarThread(item, options) {
     if (!options || options.preserveSidebar !== true) showSidebar('threads');
-    if (item.path === (currentFilePathCached || currentFilePath())) {
+    if (item.path === (currentFilePath() || currentFilePathCached)) {
       clearPendingThreadJump();
       if (!scrollToInlineThread(item.id)) {
         showErrorToast(`Could not locate thread ${item.id} in the rendered file.`);
@@ -2598,6 +2723,34 @@
     return getAdoFileTreeCandidates(path)[0] || null;
   }
 
+  /**
+   * Resolve the reviewer's visible ADO file order. The iteration changes API
+   * has been observed returning the reverse of the native tree, so API order is
+   * not a UI contract. When every relevant row is materialized, use its DOM
+   * position. Collapsed/virtualized trees fall back to deterministic path order
+   * rather than partially mixing two orderings.
+   */
+  function getStableAdoFileOrder(paths) {
+    const unique = [];
+    const seen = new Set();
+    (Array.isArray(paths) ? paths : []).forEach((value) => {
+      const path = adapter.normalizeFilePath(value);
+      if (!path || seen.has(path)) return;
+      seen.add(path);
+      unique.push(path);
+    });
+    const ranked = unique.map((path) => ({ path, target: findBestAdoFileTreeTarget(path) }));
+    if (ranked.length > 0 && ranked.every((entry) => entry.target)) {
+      return ranked
+        .sort((a, b) => a.target.index - b.target.index)
+        .map((entry) => entry.path);
+    }
+    return unique.slice().sort((a, b) => a.localeCompare(b, undefined, {
+      sensitivity: 'base',
+      numeric: true
+    }));
+  }
+
   function getMappedBlocksForChanges() {
     const out = [];
     currentBlockInfo.forEach((info, block) => {
@@ -2612,74 +2765,158 @@
     return out;
   }
 
-  async function refreshChangesSidebar(filePath, routeKey, initVersion) {
+  function isMarkdownChange(change) {
+    const GRDC = window.GRDC || {};
+    const isMarkdown = typeof GRDC.isMarkdownPath === 'function'
+      ? GRDC.isMarkdownPath
+      : (path) => /\.(md|markdown)$/i.test(String(path || '').split(/[?#]/)[0]);
+    return !!change && isMarkdown(change.path);
+  }
+
+  async function mapWithConcurrency(items, limit, worker) {
+    const values = Array.isArray(items) ? items : [];
+    if (values.length === 0) return [];
+    const results = new Array(values.length);
+    let nextIndex = 0;
+    const workerCount = Math.max(1, Math.min(Number(limit) || 1, values.length));
+    const runners = Array.from({ length: workerCount }, async () => {
+      while (nextIndex < values.length) {
+        const index = nextIndex++;
+        results[index] = await worker(values[index], index);
+      }
+    });
+    await Promise.all(runners);
+    return results;
+  }
+
+  async function buildPrChangeStopsForEntry(change) {
+    const GRDC = window.GRDC || {};
+    if (typeof GRDC.buildPrChangeStops !== 'function') {
+      throw new Error('PR-wide Changes helpers are unavailable — check ADO manifest script order');
+    }
+
+    let headSource = '';
+    let baseSource = '';
+    try {
+      if (change.type !== 'delete') {
+        headSource = await retryableHeadFileSource(change.path);
+      }
+      if (change.type !== 'add') {
+        baseSource = await retryableBaseFileSource(change.oldPath || change.path);
+      }
+      return GRDC.buildPrChangeStops(change, baseSource, headSource);
+    } catch (err) {
+      console.warn(`${LOG} Changes source unavailable for ${change.path}:`, err);
+      return GRDC.buildPrChangeStops(change, baseSource, headSource, { error: err });
+    }
+  }
+
+  /**
+   * Fetch and build the stable PR-wide Markdown change catalog once per page
+   * session. Source work is capped at four files concurrently; each worker
+   * fetches head/base sequentially so large PRs cannot burst dozens of ADO
+   * item requests at once.
+   */
+  function ensurePrChangesCatalog() {
+    if (prChangesPromise) return prChangesPromise;
     const requestVersion = ++changesGeneration;
+    const priorKey = sidebarChangeStops[sidebarActiveChangeIndex]?.key || null;
     sidebarChangesStatus = 'loading';
     sidebarChangesError = '';
-    sidebarChangeStops = [];
-    sidebarActiveChangeIndex = -1;
     renderChangesSidebar();
 
-    try {
-      const baseSource = await getBaseFileSource(filePath);
-      const stillCurrent =
-        requestVersion === changesGeneration &&
-        initVersion === initGeneration &&
-        routeKey === currentPreviewRouteKeyCached &&
-        filePath === currentFilePathCached &&
-        typeof currentSource === 'string';
-      if (!stillCurrent) return;
+    prChangesPromise = (async () => {
+      await adapter.resolveIds(ctx);
+      const inventory = await adapter.listPullRequestChanges(ctx);
+      if (requestVersion !== changesGeneration) return sidebarChangeStops;
 
-      const GRDC = window.GRDC || {};
-      if (typeof GRDC.diffLineHunks !== 'function' ||
-          typeof GRDC.mapDiffHunksToBlocks !== 'function') {
-        throw new Error('Changes helpers are unavailable — check ADO manifest script order');
-      }
-      const hunks = GRDC.diffLineHunks(baseSource, currentSource);
-      const headLineCount = typeof GRDC.splitSourceLines === 'function'
-        ? GRDC.splitSourceLines(currentSource).length
-        : currentSource.split(/\r?\n/).length;
-      sidebarChangeStops = GRDC.mapDiffHunksToBlocks(
-        hunks,
-        getMappedBlocksForChanges(),
-        headLineCount
+      prChangesIterationId = inventory.iteration && inventory.iteration.id != null
+        ? Number(inventory.iteration.id)
+        : null;
+      const sourceCommit = inventory.iteration?.sourceRefCommit?.commitId;
+      const commonCommit = inventory.iteration?.commonRefCommit?.commitId;
+      prChangesHeadVersion = sourceCommit
+        ? { version: sourceCommit, versionType: 'commit' }
+        : null;
+      prChangesBaseVersion = commonCommit
+        ? { version: commonCommit, versionType: 'commit' }
+        : null;
+      prMarkdownChanges = (inventory.changeEntries || [])
+        .map((entry) => adapter.normalizePullRequestChange(entry))
+        .filter((change) => change && isMarkdownChange(change));
+      prMarkdownFileOrder = getStableAdoFileOrder(
+        prMarkdownChanges.map((change) => change.path)
       );
+      const fileRank = new Map(prMarkdownFileOrder.map((path, index) => [path, index]));
+      prMarkdownChanges.sort((a, b) =>
+        (fileRank.get(a.path) ?? Number.MAX_SAFE_INTEGER) -
+        (fileRank.get(b.path) ?? Number.MAX_SAFE_INTEGER)
+      );
+
+      const groups = await mapWithConcurrency(
+        prMarkdownChanges,
+        4,
+        (change) => buildPrChangeStopsForEntry(change)
+      );
+      if (requestVersion !== changesGeneration) return sidebarChangeStops;
+
+      sidebarChangeStops = groups.flat();
       sidebarChangesStatus = 'ready';
-      sidebarActiveChangeIndex = sidebarChangeStops.length > 0 ? 0 : -1;
+      sidebarChangesError = '';
+      const restored = priorKey
+        ? sidebarChangeStops.findIndex((stop) => stop.key === priorKey)
+        : -1;
+      if (restored >= 0) {
+        sidebarActiveChangeIndex = restored;
+      } else {
+        const activePath = currentFilePath() || currentFilePathCached;
+        const currentFileIndex = sidebarChangeStops.findIndex((stop) => stop.path === activePath);
+        sidebarActiveChangeIndex = currentFileIndex >= 0
+          ? currentFileIndex
+          : (sidebarChangeStops.length > 0 ? 0 : -1);
+      }
       renderChangesSidebar();
       updateActiveSidebarChange();
-      console.log(`${LOG} Changes: ${sidebarChangeStops.length} rendered block${sidebarChangeStops.length === 1 ? '' : 's'} from ${hunks.length} source hunk${hunks.length === 1 ? '' : 's'} in ${filePath}`);
-    } catch (err) {
-      if (requestVersion !== changesGeneration || initVersion !== initGeneration) return;
-      sidebarChangesStatus = 'error';
-      sidebarChangesError = String(err && (err.message || err)).slice(0, 200);
-      sidebarChangeStops = [];
-      sidebarActiveChangeIndex = -1;
-      renderChangesSidebar();
-      console.warn(`${LOG} Changes unavailable for ${filePath}:`, err);
-    }
+      resumePendingChangeJump(0);
+      console.log(
+        `${LOG} Changes: ${sidebarChangeStops.length} PR-wide stop${sidebarChangeStops.length === 1 ? '' : 's'} ` +
+        `across ${prMarkdownChanges.length} Markdown file${prMarkdownChanges.length === 1 ? '' : 's'} ` +
+        `(iteration ${prChangesIterationId == null ? 'unknown' : prChangesIterationId})`
+      );
+      return sidebarChangeStops;
+    })().catch((err) => {
+      if (requestVersion === changesGeneration) {
+        sidebarChangesStatus = 'error';
+        sidebarChangesError = String(err && (err.message || err)).slice(0, 200);
+        sidebarChangeStops = [];
+        sidebarActiveChangeIndex = -1;
+        renderChangesSidebar();
+        console.warn(`${LOG} PR-wide Changes unavailable:`, err);
+      }
+      prChangesPromise = null;
+      return sidebarChangeStops;
+    });
+    return prChangesPromise;
+  }
+
+  function refreshChangesSidebar() {
+    renderChangesSidebar();
+    ensurePrChangesCatalog().then(() => {
+      updateActiveSidebarChange();
+      resumePendingChangeJump(0);
+    });
   }
 
   function changeKindGlyph(kind) {
     if (kind === 'added') return '+';
     if (kind === 'removed') return '\u2212';
+    if (kind === 'renamed') return '\u2192';
+    if (kind === 'unavailable') return '!';
     return '\u00b1';
   }
 
   function buildSidebarChangeSnippet(stop) {
-    const GRDC = window.GRDC || {};
-    let snippet = '';
-    if (stop.kind !== 'removed' && typeof GRDC.buildChangeSnippet === 'function') {
-      snippet = GRDC.buildChangeSnippet(stop.block, 90);
-    }
-    if (!snippet) {
-      const lines = stop.kind === 'removed' ? stop.baseLines : stop.headLines;
-      const raw = (Array.isArray(lines) ? lines : []).join(' ');
-      snippet = typeof GRDC.buildSnippet === 'function'
-        ? GRDC.buildSnippet(raw, 90)
-        : raw.replace(/\s+/g, ' ').trim().slice(0, 90);
-    }
-    return snippet || '(No visible text)';
+    return stop && stop.snippet ? stop.snippet : '(No visible text)';
   }
 
   function renderChangesSidebar() {
@@ -2692,17 +2929,15 @@
     updateSidebarNavigation();
     const summary = sidebarPanel.querySelector('.adrc-sidebar-changes-summary');
     if (summary) {
-      if (sidebarChangesStatus === 'loading') summary.textContent = 'Comparing\u2026';
+      if (sidebarChangesStatus === 'loading') summary.textContent = 'Loading PR\u2026';
       else if (sidebarChangesStatus === 'error') summary.textContent = 'Unavailable';
-      else summary.textContent = sidebarChangeStops.length === 1
-        ? '1 changed block'
-        : `${sidebarChangeStops.length} changed blocks`;
+      else summary.textContent = `${prMarkdownChanges.length} Markdown file${prMarkdownChanges.length === 1 ? '' : 's'} \u00b7 ${sidebarChangeStops.length} stop${sidebarChangeStops.length === 1 ? '' : 's'}`;
     }
 
     if (sidebarChangesStatus === 'loading') {
       const loading = document.createElement('div');
       loading.className = 'adrc-sidebar-empty';
-      loading.textContent = 'Comparing target and source\u2026';
+      loading.textContent = 'Loading pull request changes\u2026';
       list.appendChild(loading);
       return;
     }
@@ -2717,31 +2952,48 @@
       const empty = document.createElement('div');
       empty.className = 'adrc-sidebar-empty';
       empty.textContent = sidebarChangesStatus === 'idle'
-        ? 'Open a Markdown file in Preview to compare changes.'
-        : 'No source changes in this file.';
+        ? 'Open a Markdown file in Preview to load changes.'
+        : 'No Markdown source changes in this pull request.';
       list.appendChild(empty);
       return;
     }
 
     const GRDC = window.GRDC || {};
+    let lastPath = null;
+    const activePath = currentFilePath() || currentFilePathCached;
     sidebarChangeStops.forEach((stop, index) => {
+      if (stop.path !== lastPath) {
+        const group = document.createElement('div');
+        group.className = 'adrc-sidebar-file-group';
+        if (stop.path === activePath) group.classList.add('adrc-sidebar-file-current');
+        group.textContent = String(stop.path || '').replace(/^\//, '') || '(unknown file)';
+        group.title = stop.path || '';
+        list.appendChild(group);
+        lastPath = stop.path;
+      }
+
       const card = document.createElement('button');
       card.type = 'button';
       card.className = `adrc-sidebar-change-card adrc-sidebar-change-${stop.kind}`;
       card.dataset.changeIndex = String(index);
+      card.dataset.changeKey = stop.key;
+      card.dataset.path = stop.path;
+      card.dataset.stopType = stop.stopType;
+      card.dataset.lifecycle = stop.lifecycle;
+      if (stop.stopType === 'summary') card.classList.add('adrc-sidebar-change-summary-card');
 
       const top = document.createElement('span');
       top.className = 'adrc-sidebar-change-top';
       const glyph = document.createElement('span');
       glyph.className = 'adrc-sidebar-change-kind';
       glyph.textContent = changeKindGlyph(stop.kind);
-      glyph.title = stop.kind === 'mixed' ? 'Modified' : stop.kind[0].toUpperCase() + stop.kind.slice(1);
+      glyph.title = stop.label || (stop.kind === 'mixed' ? 'Modified' : stop.kind[0].toUpperCase() + stop.kind.slice(1));
       const location = document.createElement('span');
       location.className = 'adrc-sidebar-change-location';
-      const range = typeof GRDC.formatLineRange === 'function'
+      const range = Number.isFinite(stop.line) && typeof GRDC.formatLineRange === 'function'
         ? GRDC.formatLineRange(stop.line, stop.endLine)
-        : `line ${stop.line}`;
-      location.textContent = `${currentFilePathCached || currentFilePath()} \u00b7 ${range}`;
+        : Number.isFinite(stop.line) ? `line ${stop.line}` : '';
+      location.textContent = stop.label || range || 'File change';
       top.append(glyph, location);
 
       const snippet = document.createElement('span');
@@ -2812,32 +3064,46 @@
   }
 
   function resolveCurrentChangeBlock(stop) {
-    if (!stop) return null;
+    if (!stop || stop.path !== currentFilePathCached || stop.lifecycle === 'delete') return null;
+    const preview = getCurrentPreviewContainer();
+    if (!preview) return null;
+    if (stop.stopType === 'summary' || stop.stopType === 'unavailable') {
+      for (const block of currentBlockInfo.keys()) {
+        if (block && block.isConnected && preview.contains(block)) return block;
+      }
+      return null;
+    }
     // Exact source-line lookup is the strongest signal and is refreshed on
     // every route-aware Preview init. It also resolves interior code lines to
     // their shared <pre> host.
     const exact = currentLineToBlock.get(stop.line);
-    if (exact && exact.isConnected && getCurrentPreviewContainer()?.contains(exact)) return exact;
-    if (stop.block && stop.block.isConnected && getCurrentPreviewContainer()?.contains(stop.block)) {
-      return stop.block;
+    if (exact && exact.isConnected && preview.contains(exact)) return exact;
+    const GRDC = window.GRDC || {};
+    if (stop.hunk && typeof GRDC.mapDiffHunksToBlocks === 'function') {
+      const headLineCount = typeof GRDC.splitSourceLines === 'function'
+        ? GRDC.splitSourceLines(currentSource).length
+        : String(currentSource || '').split(/\r?\n/).length;
+      const mapped = GRDC.mapDiffHunksToBlocks(
+        [stop.hunk],
+        getMappedBlocksForChanges(),
+        headLineCount
+      );
+      const block = mapped[0] && mapped[0].block;
+      if (block && block.isConnected && preview.contains(block)) return block;
     }
     return null;
   }
 
-  function navigateToSidebarChange(index) {
+  function scrollToCurrentChange(index) {
     const stop = sidebarChangeStops[index];
     const block = resolveCurrentChangeBlock(stop);
-    if (!block) {
-      schedulePreviewInit(50);
-      showErrorToast('This changed block is no longer in the active Preview.');
-      return;
-    }
-    stop.block = block;
+    if (!block) return false;
     if (!revealChangedBlock(block)) {
       showErrorToast('This changed block is currently hidden in the rendered Preview.');
-      return;
+      return false;
     }
     setActiveSidebarChange(index, true);
+    sidebarFollowSuppressedUntil = Date.now() + 1500;
     scrollToWithStickyOffset(block);
     const GRDC = window.GRDC || {};
     const host = (typeof GRDC.buttonAnchor === 'function' ? GRDC.buttonAnchor(block) : block) || block;
@@ -2846,23 +3112,85 @@
     void host.offsetWidth;
     host.classList.add('adrc-change-target-pulse');
     setTimeout(() => host.classList.remove('adrc-change-target-pulse'), 1400);
+    return true;
+  }
+
+  function navigateToSidebarChange(index) {
+    const stop = sidebarChangeStops[index];
+    if (!stop) return false;
+    setActiveSidebarChange(index, true);
+
+    if (stop.path === currentFilePath() &&
+      stop.path === currentFilePathCached &&
+      stop.lifecycle !== 'delete') {
+      clearPendingChangeJump();
+      if (scrollToCurrentChange(index)) return true;
+      schedulePreviewInit(50);
+      showErrorToast('This changed block is no longer in the active Preview.');
+      return false;
+    }
+
+    const fileTarget = findBestAdoFileTreeTarget(stop.path);
+    if (!fileTarget) {
+      clearPendingChangeJump();
+      console.warn(`${LOG} no native ADO file-tree row found for changed file ${stop.path}`);
+      showErrorToast(`Could not find ${stop.path} in the visible ADO file tree.`);
+      return false;
+    }
+
+    // Deleted files have no renderable head Markdown. Native ADO navigation
+    // is still useful, but requiring Preview would create an impossible retry.
+    if (stop.lifecycle === 'delete') {
+      clearPendingChangeJump();
+      fileTarget.target.click();
+      return true;
+    }
+
+    savePendingChangeJump(stop);
+    console.log(`${LOG} navigating to changed file ${stop.path} through native ADO tree row`, {
+      changeKey: stop.key,
+      rowId: fileTarget.row.id,
+      labels: fileTarget.labels,
+      score: fileTarget.score
+    });
+    fileTarget.target.click();
+    setTimeout(continuePendingChangeNavigation, 100);
+    setTimeout(() => {
+      const pending = readPendingChangeJump();
+      if (pending && pending.path === stop.path && currentFilePath() !== stop.path) {
+        clearPendingChangeJump();
+        console.warn(`${LOG} ADO tree row did not activate changed file ${stop.path}`, fileTarget);
+        showErrorToast(`ADO did not open ${stop.path}; expand its folder in the file tree and retry.`);
+      }
+    }, 2000);
+    return true;
   }
 
   function updateActiveSidebarChange() {
     if (!sidebarPanel || sidebarState?.visible === false || sidebarChangeStops.length === 0) return;
+    if (Date.now() < sidebarFollowSuppressedUntil) return;
+    const activePath = currentFilePathCached;
+    if (!activePath) return;
     const scroller = getOutlineScrollContainer();
     const activeLine = (scroller === window ? 0 : scroller.getBoundingClientRect().top) + OUTLINE_ACTIVE_OFFSET;
-    let bestIndex = 0;
+    let bestIndex = -1;
     let bestY = -Infinity;
     sidebarChangeStops.forEach((stop, index) => {
-      if (!stop.block || !stop.block.isConnected) return;
-      const y = stop.block.getBoundingClientRect().top;
+      if (!stop || stop.path !== activePath || stop.lifecycle === 'delete') return;
+      const block = resolveCurrentChangeBlock(stop);
+      if (!block) return;
+      const y = block.getBoundingClientRect().top;
       if (y <= activeLine && y > bestY) {
         bestIndex = index;
         bestY = y;
       }
     });
-    setActiveSidebarChange(bestIndex, true);
+    if (bestIndex < 0) {
+      bestIndex = sidebarChangeStops.findIndex((stop) =>
+        stop && stop.path === activePath && stop.lifecycle !== 'delete'
+      );
+    }
+    if (bestIndex >= 0) setActiveSidebarChange(bestIndex, true);
   }
 
   function renderOutlineRows() {
@@ -3107,11 +3435,6 @@
     outlineHeadings = [];
     outlineActiveId = null;
     sidebarActiveThreadId = null;
-    changesGeneration++;
-    sidebarChangeStops = [];
-    sidebarActiveChangeIndex = -1;
-    sidebarChangesStatus = 'idle';
-    sidebarChangesError = '';
     renderOutlineRows();
     renderThreadsSidebar();
     renderChangesSidebar();
@@ -3161,6 +3484,9 @@
       const outlineIsStale = outlineHeadings.some((h) => !h.el.isConnected || !container.contains(h.el));
       if (outlineIsStale) refreshOutline();
       if (outlineIsVisible()) attachOutlineScrollListener();
+      if (sidebarChangesStatus === 'idle' || sidebarChangesStatus === 'error') refreshChangesSidebar();
+      else updateActiveSidebarChange();
+      resumePendingChangeJump(0);
       return;
     }
 
@@ -3227,7 +3553,7 @@
       buildSidebarPanel();
       refreshOutline();
       renderThreadsSidebar();
-      refreshChangesSidebar(filePath, routeKey, generation);
+      refreshChangesSidebar();
       // Fire-and-forget — thread badge rendering shouldn't block the +
       // buttons showing up, and any error is already logged.
       refreshThreadBadges();
@@ -3276,9 +3602,12 @@
   let observedRouteKey = currentPreviewRouteKey();
   setInterval(() => {
     continuePendingThreadNavigation();
+    continuePendingChangeNavigation();
     const nextRouteKey = currentPreviewRouteKey();
     if (nextRouteKey === observedRouteKey) return;
     observedRouteKey = nextRouteKey;
+    renderChangesSidebar();
+    updateSidebarNavigation();
     schedulePreviewInit(100);
   }, 250);
 
@@ -3447,6 +3776,8 @@
         activeThreadId: sidebarActiveThreadId,
         changesStatus: sidebarChangesStatus,
         changeCount: sidebarChangeStops.length,
+        changedMarkdownFileCount: prMarkdownChanges.length,
+        changesIterationId: prChangesIterationId,
         activeChangeIndex: sidebarActiveChangeIndex,
         outlineCount: outlineHeadings.length,
         currentFile: currentFilePathCached
@@ -3457,6 +3788,12 @@
       if (Number.isFinite(index)) navigateToSidebarChange(index);
       return {
         filePath: currentFilePathCached,
+        iterationId: prChangesIterationId,
+        changedMarkdownFiles: prMarkdownChanges.map((change) => ({
+          type: change.type,
+          path: change.path,
+          oldPath: change.oldPath
+        })),
         status: sidebarChangesStatus,
         error: sidebarChangesError || null,
         activeIndex: sidebarActiveChangeIndex,
@@ -3466,6 +3803,12 @@
           const rect = block ? block.getBoundingClientRect() : null;
           return {
             index: stopIndex,
+            key: stop.key,
+            path: stop.path,
+            oldPath: stop.oldPath,
+            stopType: stop.stopType,
+            lifecycle: stop.lifecycle,
+            label: stop.label,
             kind: stop.kind,
             line: stop.line,
             endLine: stop.endLine,
@@ -3500,7 +3843,8 @@
           className: option.className
         })),
         restore: Object.assign({}, previewRestoreState),
-        pendingThreadJump: readPendingThreadJump()
+        pendingThreadJump: readPendingThreadJump(),
+        pendingChangeJump: readPendingChangeJump()
       };
     },
 

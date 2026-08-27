@@ -94,11 +94,64 @@
     return /\.(md|markdown)$/i.test(cleaned);
   }
 
+  // Format a 1-based source-line anchor for compact sidebar display.
+  // Single-line: "line 12". Multi-line: "lines 12–18". Invalid starts
+  // return an empty string; invalid/earlier ends fall back to single-line.
+  function formatLineRange(startLine, endLine) {
+    if (!Number.isFinite(startLine) || startLine <= 0) return '';
+    if (Number.isFinite(endLine) && endLine > startLine) {
+      return `lines ${startLine}\u2013${endLine}`;
+    }
+    return `line ${startLine}`;
+  }
+
+  // Apply the sidebar's unresolved-only filter without mutating the input.
+  // Items use a normalized boolean `resolved` property so this helper is
+  // platform-neutral (GitHub/ADO adapters choose how statuses map to it).
+  function filterSidebarThreadItems(items, unresolvedOnly) {
+    if (!Array.isArray(items)) return [];
+    if (!unresolvedOnly) return items.slice();
+    return items.filter((item) => item && item.resolved !== true);
+  }
+
+  // Stable product ordering for PR-wide thread cards:
+  //   1. current file first,
+  //   2. remaining files alphabetically,
+  //   3. line ascending,
+  //   4. creation time ascending,
+  //   5. original order as the stable final tiebreaker.
+  // Returns a NEW array and tolerates partial / malformed items.
+  function sortSidebarThreadItems(items, currentPath) {
+    if (!Array.isArray(items)) return [];
+    return items
+      .map((item, index) => ({ item, index }))
+      .sort((a, b) => {
+        const ap = typeof a.item?.path === 'string' ? a.item.path : '';
+        const bp = typeof b.item?.path === 'string' ? b.item.path : '';
+        const ac = !!currentPath && ap === currentPath;
+        const bc = !!currentPath && bp === currentPath;
+        if (ac !== bc) return ac ? -1 : 1;
+        const pathOrder = ap.localeCompare(bp);
+        if (pathOrder !== 0) return pathOrder;
+        const al = Number.isFinite(a.item?.line) ? a.item.line : Number.MAX_SAFE_INTEGER;
+        const bl = Number.isFinite(b.item?.line) ? b.item.line : Number.MAX_SAFE_INTEGER;
+        if (al !== bl) return al - bl;
+        const at = new Date(a.item?.createdAt || 0).getTime();
+        const bt = new Date(b.item?.createdAt || 0).getTime();
+        if (at !== bt) return at - bt;
+        return a.index - b.index;
+      })
+      .map((entry) => entry.item);
+  }
+
   return {
     buildSnippet,
     clampDragPos,
     nextWrappingIndex,
     clampSize,
     isMarkdownPath,
+    formatLineRange,
+    filterSidebarThreadItems,
+    sortSidebarThreadItems,
   };
 });

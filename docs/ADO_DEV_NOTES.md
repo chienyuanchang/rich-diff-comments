@@ -200,6 +200,53 @@ slow response for file A from attaching buttons or outline rows to file B.
 **Debug helper:** `ADORC_probe.outline()` reports the current headings and the
 detected scroll container. After a file switch, both must reflect the new file.
 
+### Cross-file sidebar navigation must reapply Preview
+
+The four-option file view mode (**Side-by-side / Inline / Raw content /
+Preview**) is not encoded in the PR URL. A generic click on the first anchor
+whose URL contains the desired `?path=` can select an ADO diff/card link and
+remount the target file in Side-by-side mode, even when the reviewer started in
+Preview.
+
+Sidebar thread navigation therefore:
+
+1. scores visible native `[role="treeitem"]` / `.bolt-tree-row` candidates
+   by path and filename,
+2. activates the row's `.bolt-tree-cell` content so ADO's React tree handles
+   the file switch and preserves its sticky Preview state,
+3. stores a pending `{threadId, path, requirePreview}` jump in session storage,
+4. after the file route changes, detects whether a visible
+   `.markdown-preview-container` exists,
+5. if not, opens ADO's documented view-mode split button and selects the
+   visible menu option whose label is `Preview` or begins with `Preview`, and
+6. waits for route-aware Preview initialization before scrolling to and
+   expanding the target inline thread.
+
+There is intentionally **no full-page URL or generic anchor fallback**. That
+fallback reloaded ADO (visible as a second MSAL/content-script initialization)
+and remounted the target file in Inline mode. If the target tree row is not
+materialized—usually because its folder is collapsed—the sidebar shows an
+actionable toast instead of destroying the user's Preview state. Use
+`ADORC_probe.fileTargets('/path/to/file.md')` to inspect row discovery.
+
+Do not add a made-up view-mode URL parameter: ADO currently keeps this in its
+React/session state. The DOM fallback deliberately relies on user-visible mode
+labels rather than unstable generated Fluent class names.
+
+**Menu DOM detail:** `azure-devops-ui` renders contextual menu options as
+`<tr class="bolt-menuitem-row bolt-list-row" role="menuitem">`; the visible
+text is in a nested `.bolt-menuitem-cell-text`, while `aria-label` may be a
+longer descriptive string beginning with the mode name. Match `Preview` or an
+accessible label beginning with `Preview`, not strict whole-element text.
+
+**Do not broadly scan/click page buttons while the menu is open.** An earlier
+implementation mistook Side-by-side/Inline menu rows for the split-button
+control and repeatedly clicked neighboring options, oscillating between modes.
+The restore flow is one-shot per pending navigation: open only the documented
+`.bolt-split-button-option`, click only the Preview menu row once, then wait for
+the rendered container. Unknown menu DOM fails safely and is exposed through
+`ADORC_probe.viewMode()`.
+
 ## URL parsing
 
 **PR URL** (browser): `/{org}/{project}/_git/{repo}/pullrequest/{id}[?path=/README.md]`

@@ -3,7 +3,16 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildSnippet, clampDragPos, nextWrappingIndex, clampSize, isMarkdownPath } = require('../src/lib/sidebar.js');
+const {
+  buildSnippet,
+  clampDragPos,
+  nextWrappingIndex,
+  clampSize,
+  isMarkdownPath,
+  formatLineRange,
+  filterSidebarThreadItems,
+  sortSidebarThreadItems,
+} = require('../src/lib/sidebar.js');
 
 // ───────────────────────────────────────────────────────────────────────────
 // buildSnippet
@@ -218,6 +227,64 @@ test('clampSize — non-finite minimums return null (defensive)', () => {
   const r = clampSize(400, 600, NaN, NaN);
   assert.equal(r.width, null);
   assert.equal(r.height, null);
+});
+
+// ──────────────────────────────────────────────────────────────────────
+// Thread-card helpers — shared by platform sidebar renderers
+// ──────────────────────────────────────────────────────────────────────
+
+test('formatLineRange — formats single and multi-line anchors', () => {
+  assert.equal(formatLineRange(12, 12), 'line 12');
+  assert.equal(formatLineRange(12, 18), 'lines 12\u201318');
+  assert.equal(formatLineRange(12, null), 'line 12');
+});
+
+test('formatLineRange — rejects invalid starts and earlier ends', () => {
+  assert.equal(formatLineRange(null, 5), '');
+  assert.equal(formatLineRange(0, 5), '');
+  assert.equal(formatLineRange(8, 3), 'line 8');
+});
+
+test('filterSidebarThreadItems — unresolved filter is non-mutating', () => {
+  const items = [{ id: 1, resolved: false }, { id: 2, resolved: true }, { id: 3 }];
+  assert.deepEqual(filterSidebarThreadItems(items, true).map(x => x.id), [1, 3]);
+  assert.deepEqual(filterSidebarThreadItems(items, false).map(x => x.id), [1, 2, 3]);
+  assert.deepEqual(items.map(x => x.id), [1, 2, 3]);
+});
+
+test('filterSidebarThreadItems — defensive against non-arrays', () => {
+  assert.deepEqual(filterSidebarThreadItems(null, true), []);
+  assert.deepEqual(filterSidebarThreadItems({}, false), []);
+});
+
+test('sortSidebarThreadItems — current file first then path and line', () => {
+  const items = [
+    { id: 1, path: '/z.md', line: 4 },
+    { id: 2, path: '/a.md', line: 20 },
+    { id: 3, path: '/current.md', line: 30 },
+    { id: 4, path: '/a.md', line: 5 },
+    { id: 5, path: '/current.md', line: 2 },
+  ];
+  assert.deepEqual(
+    sortSidebarThreadItems(items, '/current.md').map(x => x.id),
+    [5, 3, 4, 2, 1]
+  );
+  assert.deepEqual(items.map(x => x.id), [1, 2, 3, 4, 5]);
+});
+
+test('sortSidebarThreadItems — creation time and stability break ties', () => {
+  const items = [
+    { id: 1, path: '/a.md', line: 5, createdAt: '2026-01-02T00:00:00Z' },
+    { id: 2, path: '/a.md', line: 5, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 3, path: '/a.md', line: 5, createdAt: '2026-01-02T00:00:00Z' },
+  ];
+  assert.deepEqual(sortSidebarThreadItems(items).map(x => x.id), [2, 1, 3]);
+});
+
+test('sortSidebarThreadItems — defensive against malformed input', () => {
+  assert.deepEqual(sortSidebarThreadItems(null, '/a.md'), []);
+  const malformed = [{ id: 1 }, null, { id: 2, path: '/a.md', line: 1 }];
+  assert.deepEqual(sortSidebarThreadItems(malformed, '/a.md').map(x => x && x.id), [2, 1, null]);
 });
 
 

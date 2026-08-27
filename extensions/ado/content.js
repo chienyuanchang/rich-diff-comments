@@ -3,7 +3,7 @@
  *
  * Maps rendered Preview blocks back to Markdown source lines, adds inline
  * comment / thread UI, supports range comments and section folding, and
- * renders a standalone Outline panel. ADO's PR file viewer is an SPA that
+ * renders a persistent Threads + Outline sidebar. ADO's PR file viewer is an SPA that
  * may reuse the same Preview element across file changes, so initialization
  * is keyed by both the route and active Preview DOM.
  *
@@ -1144,7 +1144,8 @@
 
     // Capture scroll before we mutate the DOM so we can put the reader
     // back where they were reading after re-render.
-    const savedScrollY = window.scrollY;
+    const scrollContainer = getOutlineScrollContainer();
+    const savedScrollY = scrollContainer === window ? window.scrollY : scrollContainer.scrollTop;
 
     // Clear any prior badges/panels — safe to re-render from scratch.
     document.querySelectorAll('.adrc-thread-badge, .adrc-thread-panel').forEach(el => el.remove());
@@ -1162,6 +1163,8 @@
     }
 
     const threads = (data && data.value) || [];
+    const userThreads = threads.filter((thread) => !adapter.isSystemThread(thread));
+    setSidebarThreads(userThreads);
 
     // Filter to threads that (a) aren't system-generated, (b) target the
     // current file, and (c) have a mapped anchor block. Then sort by
@@ -1169,8 +1172,7 @@
     // GRDC.sortThreadHeads so same-block stacks render top-to-bottom.
     const GRDC = window.GRDC || {};
     const anchored = [];
-    threads.forEach(thread => {
-      if (adapter.isSystemThread(thread)) return;
+    userThreads.forEach(thread => {
       const tc = thread.threadContext;
       if (!tc || tc.filePath !== currentFilePathCached) return;
       if (!tc.rightFileStart || typeof tc.rightFileStart.line !== 'number') return;
@@ -1211,13 +1213,19 @@
       }
     });
     console.log(`${LOG} rendered ${rendered} thread badge${rendered !== 1 ? 's' : ''} for ${currentFilePathCached}`);
+    updateActiveSidebarThread();
 
     // Restore scroll on the next frame so any layout-affecting reflow
     // (image loads, etc.) has settled first.
     requestAnimationFrame(() => {
-      if (Math.abs(window.scrollY - savedScrollY) > 1) {
+      if (scrollContainer === window && Math.abs(window.scrollY - savedScrollY) > 1) {
         window.scrollTo({ top: savedScrollY, behavior: 'instant' });
+      } else if (scrollContainer !== window && Math.abs(scrollContainer.scrollTop - savedScrollY) > 1) {
+        scrollContainer.scrollTo({ top: savedScrollY, behavior: 'instant' });
       }
+      // Run after scroll restoration so a cross-file card jump wins over
+      // the refresh's "stay where the reader was" behavior.
+      resumePendingThreadJump(0);
     });
   }
 
@@ -1240,7 +1248,10 @@
            cl.contains('adrc-thread-panel') ||
            cl.contains('adrc-editor') ||
            cl.contains('adrc-comment-btn') ||
-           cl.contains('adrc-collapse-toggle');
+          cl.contains('adrc-collapse-toggle') ||
+          cl.contains('adrc-sidebar') ||
+          cl.contains('adrc-sidebar-launcher') ||
+          cl.contains('adrc-toast');
   }
 
   function siblingsToHide(heading) {
@@ -1371,20 +1382,31 @@
     }, 5000);
   }
 
-  // ── Outline panel (standalone floating heading tree) ─────────────────
+  // ── Threads + Outline sidebar ────────────────────────────────────────
   //
-  // A small floating panel top-right that lists every H1–H6 in the current
-  // file with click-to-scroll and current-heading tracking as the user
-  // scrolls. Toggled by pressing `b`. Position + visibility persist in
-  // localStorage across page loads.
-  //
-  // Deliberately kept standalone (not part of a sidebar shell yet) — see
-  // Iteration G in the ADO port plan.
+  // Persistent floating navigation shell. Threads are PR-wide; Outline is
+  // scoped to the active file. Changes becomes a third tab in the next
+  // iteration. All state is local-only and namespaced for the ADO target.
 
-  const OUTLINE_STORAGE_KEY = 'adrc-outline-state-v1';
+  const SIDEBAR_STORAGE_KEY = 'adrc-sidebar-state-v1';
+  const LEGACY_OUTLINE_STORAGE_KEY = 'adrc-outline-state-v1';
+  const SIDEBAR_PENDING_THREAD_KEY = 'adrc-pending-thread-jump-v1';
+  const SIDEBAR_MIN_WIDTH = 300;
+  const SIDEBAR_MIN_HEIGHT = 180;
+  const SIDEBAR_DEFAULT_WIDTH = 340;
+  const SIDEBAR_DEFAULT_HEIGHT = 480;
   const OUTLINE_STICKY_OFFSET = 100;         // px above heading during scroll-to
   const OUTLINE_ACTIVE_OFFSET = 140;         // px below viewport top where the "reading line" sits
 
+  let sidebarPanel = null;
+  let sidebarLauncher = null;
+  let sidebarState = null;
+  let sidebarThreadItems = [];
+  let sidebarActiveThreadId = null;
+  let sidebarResizeObserver = null;
+  let sidebarResizeTimer = null;
+  // Alias retained for the established Outline row renderer. It points to
+  // the sidebar shell, whose Outline pane owns `.adrc-outline-body`.
   let outlinePanel = null;
   let outlineHeadings = [];
   let outlineActiveId = null;
@@ -1438,20 +1460,58 @@
   }
 
   function outlineIsVisible() {
-    return !!outlinePanel && !outlinePanel.classList.contains('adrc-outline-hidden');
+    return !!sidebarPanel &&
+      !!sidebarPanel.querySelector('.adrc-outline-body') &&
+      !sidebarPanel.classList.contains('adrc-sidebar-hidden') &&
+      !sidebarPanel.classList.contains('adrc-sidebar-collapsed') &&
+      sidebarState && sidebarState.tab === 'outline';
   }
 
-  function saveOutlineState(patch) {
+  function defaultSidebarState() {
+    return {
+      visible: true,
+      collapsed: false,
+      tab: 'threads',
+      unresolvedOnly: false,
+      left: null,
+      top: 80,
+      width: SIDEBAR_DEFAULT_WIDTH,
+      height: SIDEBAR_DEFAULT_HEIGHT
+    };
+  }
+
+  function readSidebarState() {
+    const defaults = defaultSidebarState();
     try {
-      const prev = JSON.parse(localStorage.getItem(OUTLINE_STORAGE_KEY) || '{}');
-      localStorage.setItem(OUTLINE_STORAGE_KEY, JSON.stringify(Object.assign(prev, patch)));
+      const raw = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      const next = Object.assign(defaults, parsed || {});
+      if (next.tab !== 'threads' && next.tab !== 'outline') next.tab = 'threads';
+      const GRDC = window.GRDC || {};
+      if (typeof GRDC.clampSize === 'function') {
+        const size = GRDC.clampSize(
+          Number(next.width), Number(next.height), SIDEBAR_MIN_WIDTH, SIDEBAR_MIN_HEIGHT
+        );
+        next.width = size.width || SIDEBAR_DEFAULT_WIDTH;
+        next.height = size.height || SIDEBAR_DEFAULT_HEIGHT;
+      }
+      if (!raw) {
+        // Preserve the user's standalone Outline preference during the
+        // one-time migration to the combined sidebar.
+        const legacy = JSON.parse(localStorage.getItem(LEGACY_OUTLINE_STORAGE_KEY) || '{}');
+        if (legacy.visible === true) next.tab = 'outline';
+      }
+      return next;
+    } catch (_) {
+      return defaults;
+    }
+  }
+
+  function saveSidebarState(patch) {
+    sidebarState = Object.assign(sidebarState || readSidebarState(), patch || {});
+    try {
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify(sidebarState));
     } catch (_) { /* localStorage may be blocked in some contexts */ }
-  }
-
-  function readOutlineState() {
-    try {
-      return JSON.parse(localStorage.getItem(OUTLINE_STORAGE_KEY) || '{}');
-    } catch (_) { return {}; }
   }
 
   function collectHeadingsForOutline() {
@@ -1490,21 +1550,793 @@
     container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
   }
 
-  function buildOutlinePanel() {
-    if (outlinePanel) return outlinePanel;
-    const panel = document.createElement('div');
-    panel.className = 'adrc-outline-panel adrc-outline-hidden';
+  function clampSidebarPosition(left, top, width) {
+    const GRDC = window.GRDC || {};
+    const rect = { left, top, width: width || SIDEBAR_DEFAULT_WIDTH };
+    if (typeof GRDC.clampDragPos === 'function') {
+      return GRDC.clampDragPos(
+        rect,
+        { dx: 0, dy: 0 },
+        { width: window.innerWidth, height: window.innerHeight },
+        80
+      );
+    }
+    return {
+      left: Math.max(16, Math.min(left, window.innerWidth - 80)),
+      top: Math.max(0, Math.min(top, window.innerHeight - 40))
+    };
+  }
+
+  function applySidebarGeometry() {
+    if (!sidebarPanel || !sidebarState) return;
+    const width = Number(sidebarState.width) || SIDEBAR_DEFAULT_WIDTH;
+    const height = Number(sidebarState.height) || SIDEBAR_DEFAULT_HEIGHT;
+    const desiredLeft = sidebarState.left != null && Number.isFinite(Number(sidebarState.left))
+      ? Number(sidebarState.left)
+      : window.innerWidth - width - 16;
+    const desiredTop = sidebarState.top != null && Number.isFinite(Number(sidebarState.top))
+      ? Number(sidebarState.top)
+      : 80;
+    const pos = clampSidebarPosition(desiredLeft, desiredTop, width);
+    sidebarPanel.style.right = 'auto';
+    sidebarPanel.style.left = pos.left + 'px';
+    sidebarPanel.style.top = pos.top + 'px';
+    sidebarPanel.style.width = width + 'px';
+    sidebarPanel.style.height = height + 'px';
+  }
+
+  function applySidebarState() {
+    if (!sidebarPanel || !sidebarState) return;
+    sidebarPanel.classList.toggle('adrc-sidebar-hidden', sidebarState.visible === false);
+    sidebarPanel.classList.toggle('adrc-sidebar-collapsed', sidebarState.collapsed === true);
+    if (sidebarLauncher) sidebarLauncher.hidden = sidebarState.visible !== false;
+    applySidebarGeometry();
+
+    const collapse = sidebarPanel.querySelector('.adrc-sidebar-collapse');
+    if (collapse) {
+      collapse.textContent = sidebarState.collapsed ? '\u25b6' : '\u25bc';
+      collapse.title = sidebarState.collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+      collapse.setAttribute('aria-expanded', String(!sidebarState.collapsed));
+    }
+    setSidebarTab(sidebarState.tab, false);
+    updateSidebarFilterUI();
+
+    if (sidebarState.visible !== false && !sidebarState.collapsed) attachOutlineScrollListener();
+    else detachOutlineScrollListener();
+  }
+
+  function buildSidebarPanel() {
+    if (sidebarPanel && sidebarPanel.isConnected) {
+      applySidebarState();
+      return sidebarPanel;
+    }
+
+    // Remove a stale standalone panel from an older dev-loaded build.
+    document.querySelectorAll('.adrc-outline-panel').forEach((el) => el.remove());
+    sidebarState = readSidebarState();
+
+    const panel = document.createElement('aside');
+    panel.className = 'adrc-sidebar';
+    panel.setAttribute('aria-label', 'Markdown review navigation');
     panel.innerHTML = [
-      '<div class="adrc-outline-header">',
-      '  <span class="adrc-outline-title">Outline</span>',
-      '  <button type="button" class="adrc-outline-close" title="Close (b)">\u00d7</button>',
+      '<div class="adrc-sidebar-header">',
+      '  <button type="button" class="adrc-sidebar-icon adrc-sidebar-collapse" aria-label="Collapse sidebar"></button>',
+      '  <div class="adrc-sidebar-tabs" role="tablist">',
+      '    <button type="button" class="adrc-sidebar-tab" data-tab="threads" role="tab">Threads <span class="adrc-sidebar-tab-count" data-count="threads">0</span></button>',
+      '    <button type="button" class="adrc-sidebar-tab" data-tab="outline" role="tab">Outline <span class="adrc-sidebar-tab-count" data-count="outline">0</span></button>',
+      '  </div>',
+      '  <button type="button" class="adrc-sidebar-icon adrc-sidebar-filter" aria-pressed="false" title="Show unresolved threads only">',
+      '    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5v4l-3 1V8L2 3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+      '  </button>',
+      '  <button type="button" class="adrc-sidebar-icon adrc-sidebar-hide" aria-label="Hide sidebar" title="Hide sidebar">\u00d7</button>',
       '</div>',
-      '<div class="adrc-outline-body"></div>'
+      '<div class="adrc-sidebar-body">',
+      '  <section class="adrc-sidebar-pane adrc-sidebar-pane-threads" data-pane="threads" role="tabpanel">',
+      '    <div class="adrc-sidebar-pane-header"><span class="adrc-sidebar-pane-title">Pull request threads</span><span class="adrc-sidebar-pane-summary"></span></div>',
+      '    <div class="adrc-sidebar-thread-list"></div>',
+      '  </section>',
+      '  <section class="adrc-sidebar-pane adrc-sidebar-pane-outline" data-pane="outline" role="tabpanel">',
+      '    <div class="adrc-outline-body"></div>',
+      '  </section>',
+      '</div>'
     ].join('\n');
     document.body.appendChild(panel);
-    panel.querySelector('.adrc-outline-close').addEventListener('click', hideOutlinePanel);
+
+    const launcher = document.createElement('button');
+    launcher.type = 'button';
+    launcher.className = 'adrc-sidebar-launcher';
+    launcher.title = 'Show review sidebar';
+    launcher.setAttribute('aria-label', 'Show review sidebar');
+    launcher.textContent = '\u2630';
+    document.body.appendChild(launcher);
+
+    sidebarPanel = panel;
+    sidebarLauncher = launcher;
     outlinePanel = panel;
+
+    panel.querySelector('.adrc-sidebar-collapse').addEventListener('click', () => {
+      saveSidebarState({ collapsed: !sidebarState.collapsed });
+      applySidebarState();
+    });
+    panel.querySelector('.adrc-sidebar-hide').addEventListener('click', hideSidebar);
+    panel.querySelector('.adrc-sidebar-filter').addEventListener('click', () => {
+      saveSidebarState({ unresolvedOnly: !sidebarState.unresolvedOnly, tab: 'threads' });
+      updateSidebarFilterUI();
+      setSidebarTab('threads', false);
+    });
+    panel.querySelectorAll('.adrc-sidebar-tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        showSidebar(tab.dataset.tab);
+      });
+    });
+    launcher.addEventListener('click', () => showSidebar('threads'));
+
+    wireSidebarDrag(panel);
+    wireSidebarResize(panel);
+    window.addEventListener('resize', applySidebarGeometry, { passive: true });
+    applySidebarState();
+    renderThreadsSidebar();
+    renderOutlineRows();
     return panel;
+  }
+
+  function buildOutlinePanel() {
+    return buildSidebarPanel();
+  }
+
+  function wireSidebarDrag(panel) {
+    const header = panel.querySelector('.adrc-sidebar-header');
+    if (!header) return;
+    header.addEventListener('mousedown', (e) => {
+      if (e.button !== 0 || e.target.closest('button')) return;
+      e.preventDefault();
+      const rect = panel.getBoundingClientRect();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      panel.classList.add('adrc-sidebar-dragging');
+
+      const onMove = (moveEvent) => {
+        const GRDC = window.GRDC || {};
+        const delta = { dx: moveEvent.clientX - startX, dy: moveEvent.clientY - startY };
+        const pos = typeof GRDC.clampDragPos === 'function'
+          ? GRDC.clampDragPos(rect, delta, { width: window.innerWidth, height: window.innerHeight }, 80)
+          : clampSidebarPosition(rect.left + delta.dx, rect.top + delta.dy, rect.width);
+        panel.style.left = pos.left + 'px';
+        panel.style.top = pos.top + 'px';
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        panel.classList.remove('adrc-sidebar-dragging');
+        const finalRect = panel.getBoundingClientRect();
+        saveSidebarState({ left: finalRect.left, top: finalRect.top });
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+
+  function wireSidebarResize(panel) {
+    if (typeof ResizeObserver === 'undefined') return;
+    sidebarResizeObserver = new ResizeObserver(() => {
+      if (!sidebarState || sidebarState.collapsed || sidebarState.visible === false) return;
+      clearTimeout(sidebarResizeTimer);
+      sidebarResizeTimer = setTimeout(() => {
+        const rect = panel.getBoundingClientRect();
+        const GRDC = window.GRDC || {};
+        const size = typeof GRDC.clampSize === 'function'
+          ? GRDC.clampSize(rect.width, rect.height, SIDEBAR_MIN_WIDTH, SIDEBAR_MIN_HEIGHT)
+          : { width: rect.width, height: rect.height };
+        if (size.width && size.height) {
+          saveSidebarState({ width: size.width, height: size.height });
+        }
+      }, 150);
+    });
+    sidebarResizeObserver.observe(panel);
+  }
+
+  function setSidebarTab(tab, persist) {
+    if (!sidebarPanel) return;
+    const target = tab === 'outline' ? 'outline' : 'threads';
+    sidebarState.tab = target;
+    if (persist !== false) saveSidebarState({ tab: target });
+    sidebarPanel.querySelectorAll('.adrc-sidebar-tab').forEach((button) => {
+      const active = button.dataset.tab === target;
+      button.classList.toggle('adrc-sidebar-tab-active', active);
+      button.setAttribute('aria-selected', String(active));
+    });
+    sidebarPanel.querySelectorAll('.adrc-sidebar-pane').forEach((pane) => {
+      pane.hidden = pane.dataset.pane !== target;
+    });
+    const filter = sidebarPanel.querySelector('.adrc-sidebar-filter');
+    if (filter) filter.hidden = target !== 'threads';
+    if (target === 'outline') {
+      refreshOutline();
+      updateActiveOutline();
+    } else {
+      renderThreadsSidebar();
+      updateActiveSidebarThread();
+    }
+  }
+
+  function showSidebar(tab) {
+    buildSidebarPanel();
+    saveSidebarState({
+      visible: true,
+      collapsed: false,
+      tab: tab === 'outline' ? 'outline' : (tab === 'threads' ? 'threads' : sidebarState.tab)
+    });
+    applySidebarState();
+  }
+
+  function hideSidebar() {
+    if (!sidebarPanel) return;
+    saveSidebarState({ visible: false });
+    applySidebarState();
+  }
+
+  function updateSidebarFilterUI() {
+    if (!sidebarPanel || !sidebarState) return;
+    const filter = sidebarPanel.querySelector('.adrc-sidebar-filter');
+    if (!filter) return;
+    const active = sidebarState.unresolvedOnly === true;
+    filter.classList.toggle('adrc-sidebar-filter-active', active);
+    filter.setAttribute('aria-pressed', String(active));
+    filter.title = active ? 'Showing unresolved threads only' : 'Show unresolved threads only';
+  }
+
+  function normalizeSidebarThread(thread) {
+    if (!thread || adapter.isSystemThread(thread)) return null;
+    const tc = thread.threadContext || {};
+    const path = tc.filePath;
+    const line = tc.rightFileStart && tc.rightFileStart.line;
+    if (typeof path !== 'string' || !Number.isFinite(line)) return null;
+    const endLine = tc.rightFileEnd && Number.isFinite(tc.rightFileEnd.line)
+      ? tc.rightFileEnd.line
+      : line;
+    const comments = Array.isArray(thread.comments) ? thread.comments : [];
+    const visibleComments = comments.filter((comment) => !comment.isDeleted);
+    const head = visibleComments[0] || comments[0] || {};
+    const author = head.author || {};
+    const GRDC = window.GRDC || {};
+    const snippetSource = head.isDeleted ? '(This comment was deleted.)' : (head.content || '');
+    return {
+      id: thread.id,
+      thread,
+      path,
+      line,
+      endLine,
+      resolved: thread.status === 'fixed',
+      status: thread.status || 'active',
+      author: author.displayName || 'Unknown',
+      avatarUrl: author.imageUrl || null,
+      createdAt: head.publishedDate || thread.publishedDate || null,
+      commentCount: visibleComments.length,
+      snippet: typeof GRDC.buildSnippet === 'function'
+        ? GRDC.buildSnippet(snippetSource, 80)
+        : String(snippetSource).replace(/\s+/g, ' ').trim().slice(0, 80)
+    };
+  }
+
+  function setSidebarThreads(threads) {
+    sidebarThreadItems = (Array.isArray(threads) ? threads : [])
+      .map(normalizeSidebarThread)
+      .filter(Boolean);
+    renderThreadsSidebar();
+  }
+
+  function getVisibleSidebarThreads() {
+    const GRDC = window.GRDC || {};
+    const filtered = typeof GRDC.filterSidebarThreadItems === 'function'
+      ? GRDC.filterSidebarThreadItems(sidebarThreadItems, sidebarState && sidebarState.unresolvedOnly)
+      : sidebarThreadItems.filter((item) => !sidebarState?.unresolvedOnly || !item.resolved);
+    return typeof GRDC.sortSidebarThreadItems === 'function'
+      ? GRDC.sortSidebarThreadItems(filtered, currentFilePathCached || currentFilePath())
+      : filtered.slice().sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line);
+  }
+
+  function renderThreadsSidebar() {
+    if (!sidebarPanel) return;
+    const list = sidebarPanel.querySelector('.adrc-sidebar-thread-list');
+    if (!list) return;
+    list.innerHTML = '';
+    const visible = getVisibleSidebarThreads();
+    const total = sidebarThreadItems.length;
+    const unresolved = sidebarThreadItems.filter((item) => !item.resolved).length;
+    const summary = sidebarPanel.querySelector('.adrc-sidebar-pane-summary');
+    if (summary) {
+      summary.textContent = sidebarState?.unresolvedOnly
+        ? `${visible.length} unresolved`
+        : `${total} total \u00b7 ${unresolved} unresolved`;
+    }
+    const count = sidebarPanel.querySelector('[data-count="threads"]');
+    if (count) count.textContent = String(total);
+
+    if (visible.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'adrc-sidebar-empty';
+      empty.textContent = sidebarState?.unresolvedOnly
+        ? 'No unresolved threads.'
+        : 'No review threads yet.';
+      list.appendChild(empty);
+      return;
+    }
+
+    let lastPath = null;
+    const activePath = currentFilePathCached || currentFilePath();
+    visible.forEach((item) => {
+      if (item.path !== lastPath) {
+        const group = document.createElement('div');
+        group.className = 'adrc-sidebar-file-group';
+        if (item.path === activePath) group.classList.add('adrc-sidebar-file-current');
+        group.textContent = item.path.replace(/^\//, '') || item.path;
+        group.title = item.path;
+        list.appendChild(group);
+        lastPath = item.path;
+      }
+
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'adrc-sidebar-thread-card';
+      card.dataset.threadId = String(item.id);
+      card.dataset.path = item.path;
+      if (item.resolved) card.classList.add('adrc-sidebar-thread-resolved');
+      if (item.path === activePath) card.classList.add('adrc-sidebar-thread-current-file');
+
+      const top = document.createElement('span');
+      top.className = 'adrc-sidebar-thread-top';
+      if (item.avatarUrl) {
+        const avatar = document.createElement('img');
+        avatar.className = 'adrc-sidebar-thread-avatar';
+        avatar.src = item.avatarUrl;
+        avatar.alt = '';
+        top.appendChild(avatar);
+      }
+      const author = document.createElement('span');
+      author.className = 'adrc-sidebar-thread-author';
+      author.textContent = item.author;
+      top.appendChild(author);
+      const location = document.createElement('span');
+      location.className = 'adrc-sidebar-thread-location';
+      const GRDC = window.GRDC || {};
+      location.textContent = typeof GRDC.formatLineRange === 'function'
+        ? GRDC.formatLineRange(item.line, item.endLine)
+        : `line ${item.line}`;
+      top.appendChild(location);
+
+      const snippet = document.createElement('span');
+      snippet.className = 'adrc-sidebar-thread-snippet';
+      snippet.textContent = item.snippet || '(No comment text)';
+
+      const bottom = document.createElement('span');
+      bottom.className = 'adrc-sidebar-thread-bottom';
+      bottom.textContent = `${item.commentCount} comment${item.commentCount === 1 ? '' : 's'}`;
+      if (item.resolved) {
+        const status = document.createElement('span');
+        status.className = 'adrc-sidebar-thread-status';
+        status.textContent = '\u2713 resolved';
+        bottom.appendChild(status);
+      }
+
+      card.append(top, snippet, bottom);
+      card.addEventListener('click', () => navigateToSidebarThread(item));
+      list.appendChild(card);
+    });
+    setActiveSidebarThread(sidebarActiveThreadId);
+  }
+
+  function setActiveSidebarThread(threadId) {
+    sidebarActiveThreadId = threadId == null ? null : String(threadId);
+    if (!sidebarPanel) return;
+    sidebarPanel.querySelectorAll('.adrc-sidebar-thread-card.adrc-sidebar-thread-active')
+      .forEach((card) => card.classList.remove('adrc-sidebar-thread-active'));
+    if (!sidebarActiveThreadId) return;
+    const card = sidebarPanel.querySelector(
+      `.adrc-sidebar-thread-card[data-thread-id="${escapeCssValue(sidebarActiveThreadId)}"]`
+    );
+    if (!card) return;
+    card.classList.add('adrc-sidebar-thread-active');
+    const list = sidebarPanel.querySelector('.adrc-sidebar-thread-list');
+    if (list && sidebarState?.tab === 'threads') {
+      const cardRect = card.getBoundingClientRect();
+      const listRect = list.getBoundingClientRect();
+      if (cardRect.top < listRect.top) list.scrollTop -= listRect.top - cardRect.top;
+      else if (cardRect.bottom > listRect.bottom) list.scrollTop += cardRect.bottom - listRect.bottom;
+    }
+  }
+
+  function updateActiveSidebarThread() {
+    if (!sidebarPanel || sidebarState?.visible === false || sidebarState?.collapsed) return;
+    const preview = getCurrentPreviewContainer();
+    if (!preview) return;
+    const visibleIds = new Set(getVisibleSidebarThreads().map((item) => String(item.id)));
+    const badges = Array.from(preview.querySelectorAll('.adrc-thread-badge[data-thread-id]'))
+      .filter((badge) => visibleIds.has(String(badge.dataset.threadId)));
+    if (badges.length === 0) {
+      setActiveSidebarThread(null);
+      return;
+    }
+    const scroller = getOutlineScrollContainer();
+    const activeLine = (scroller === window ? 0 : scroller.getBoundingClientRect().top) + OUTLINE_ACTIVE_OFFSET;
+    let best = null;
+    let bestY = -Infinity;
+    badges.forEach((badge) => {
+      const y = badge.getBoundingClientRect().top;
+      if (y <= activeLine && y > bestY) {
+        best = badge;
+        bestY = y;
+      }
+    });
+    if (!best) best = badges[0];
+    setActiveSidebarThread(best.dataset.threadId);
+  }
+
+  function findInlineThreadBadge(threadId) {
+    const preview = getCurrentPreviewContainer();
+    if (!preview) return null;
+    return preview.querySelector(`.adrc-thread-badge[data-thread-id="${escapeCssValue(threadId)}"]`);
+  }
+
+  function escapeCssValue(value) {
+    const text = String(value);
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+      return CSS.escape(text);
+    }
+    return text.replace(/[^a-zA-Z0-9_-]/g, (ch) => `\\${ch}`);
+  }
+
+  function scrollToInlineThread(threadId) {
+    const badge = findInlineThreadBadge(threadId);
+    if (!badge) return false;
+    const preview = getCurrentPreviewContainer();
+    if (!preview) return false;
+    const panel = preview.querySelector(
+      `.adrc-thread-panel[data-thread-id="${escapeCssValue(threadId)}"]`
+    );
+    if (!panel) badge.click();
+    setActiveSidebarThread(threadId);
+    scrollToWithStickyOffset(badge);
+    badge.classList.add('adrc-sidebar-target-pulse');
+    setTimeout(() => badge.classList.remove('adrc-sidebar-target-pulse'), 1400);
+    return true;
+  }
+
+  function savePendingThreadJump(item) {
+    resetPreviewRestoreState();
+    try {
+      sessionStorage.setItem(SIDEBAR_PENDING_THREAD_KEY, JSON.stringify({
+        id: item.id,
+        path: item.path,
+        requirePreview: true,
+        expiresAt: Date.now() + 30000
+      }));
+    } catch (_) { /* sessionStorage may be blocked */ }
+  }
+
+  function readPendingThreadJump() {
+    try {
+      const pending = JSON.parse(sessionStorage.getItem(SIDEBAR_PENDING_THREAD_KEY) || 'null');
+      if (!pending || pending.expiresAt < Date.now()) {
+        sessionStorage.removeItem(SIDEBAR_PENDING_THREAD_KEY);
+        return null;
+      }
+      return pending;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function clearPendingThreadJump() {
+    try { sessionStorage.removeItem(SIDEBAR_PENDING_THREAD_KEY); } catch (_) {}
+    resetPreviewRestoreState();
+  }
+
+  function hasVisibleMarkdownPreview() {
+    return Array.from(document.querySelectorAll('.markdown-preview-container'))
+      .some(isVisiblePreviewContainer);
+  }
+
+  function normalizedControlText(el) {
+    if (!el) return '';
+    return String(el.getAttribute?.('aria-label') || el.textContent || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
+  function isVisibleControl(el) {
+    if (!el || !el.isConnected) return false;
+    const style = getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden') return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  const ADO_VIEW_MODE_LABELS = ['side-by-side', 'inline', 'raw content', 'preview'];
+
+  function normalizedText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  function getAdoControlLabels(el) {
+    if (!el) return [];
+    const visibleCell = el.querySelector?.('.bolt-menuitem-cell-text');
+    return [
+      visibleCell && visibleCell.textContent,
+      el.textContent,
+      el.getAttribute?.('aria-label'),
+      el.getAttribute?.('title')
+    ].map(normalizedText).filter(Boolean);
+  }
+
+  function labelContainsAdoMode(label, mode) {
+    if (!label) return false;
+    if (label === mode || label.startsWith(mode + ' ') || label.endsWith(' ' + mode)) return true;
+    const escaped = mode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:$|[^a-z0-9])`).test(label);
+  }
+
+  function getAdoViewModeLabel(el) {
+    const labels = getAdoControlLabels(el);
+    for (const label of labels) {
+      const mode = ADO_VIEW_MODE_LABELS.find((candidate) => labelContainsAdoMode(label, candidate));
+      if (mode) return mode;
+    }
+    return '';
+  }
+
+  function getVisibleAdoModeMenuOptions() {
+    // Menu options are safe to click only when they have a menu/option role,
+    // are Bolt list rows, or live inside a visible popup/callout. We do NOT
+    // include arbitrary page buttons — doing so caused Side-by-side/Inline
+    // oscillation when an open menu option was mistaken for the split button.
+    const candidates = document.querySelectorAll([
+      '[role="menuitem"]',
+      '[role="menuitemradio"]',
+      '[role="option"]',
+      '.bolt-list-row',
+      '[role="menu"] button',
+      '.bolt-callout button',
+      '.ms-Callout button'
+    ].join(', '));
+    return Array.from(candidates).filter((el) => {
+      if (!isVisibleControl(el) || el.closest('.adrc-sidebar, .adrc-editor')) return false;
+      return !!getAdoViewModeLabel(el);
+    });
+  }
+
+  function findVisiblePreviewMenuOption() {
+    return getVisibleAdoModeMenuOptions()
+      .find((option) => getAdoViewModeLabel(option) === 'preview') || null;
+  }
+
+  function findAdoViewModeControls() {
+    const popupSelector = '[role="menu"], .bolt-callout, .ms-Callout, [role="listbox"]';
+    const groups = Array.from(document.querySelectorAll(
+      '.bolt-split-button, [class*="split-button"], [role="group"]'
+    ));
+
+    for (const group of groups) {
+      if (!isVisibleControl(group) || group.closest(popupSelector)) continue;
+      const buttons = Array.from(group.querySelectorAll('button')).filter(isVisibleControl);
+      const modeButton = buttons.find((button) => {
+        if (button.matches('.bolt-split-button-option') || button.closest(popupSelector)) return false;
+        return !!getAdoViewModeLabel(button);
+      });
+      if (!modeButton) continue;
+
+      // Only a documented split/dropdown affordance may open the menu.
+      // Never fall back to "some other button" or the mode button itself.
+      const optionNode = group.querySelector('.bolt-split-button-option');
+      const classTrigger = optionNode && (
+        optionNode.matches('button') ? optionNode : optionNode.querySelector('button')
+      );
+      const ariaTrigger = buttons.find((button) => {
+        if (button === modeButton) return false;
+        const hint = `${button.getAttribute('aria-label') || ''} ${button.title || ''}`.toLowerCase();
+        return button.getAttribute('aria-haspopup') === 'true' || /menu|options?|view|dropdown/.test(hint);
+      });
+      const trigger = classTrigger || ariaTrigger || null;
+      if (trigger && trigger !== modeButton && isVisibleControl(trigger)) {
+        return { group, modeButton, trigger };
+      }
+    }
+    return null;
+  }
+
+  const previewRestoreState = {
+    phase: 'idle',       // idle | opening | selecting | awaiting-preview
+    openedAt: 0,
+    selectedAt: 0,
+    lastControlLabel: '',
+    lastError: ''
+  };
+
+  function resetPreviewRestoreState() {
+    previewRestoreState.phase = 'idle';
+    previewRestoreState.openedAt = 0;
+    previewRestoreState.selectedAt = 0;
+    previewRestoreState.lastControlLabel = '';
+    previewRestoreState.lastError = '';
+  }
+
+  /**
+   * Ask ADO's four-option view-mode split button to switch the active file
+   * back to Preview. Returns true once a visible Preview exists; false while
+   * the control/menu is still settling. Safe to call repeatedly.
+   */
+  function ensureAdoPreviewMode() {
+    if (hasVisibleMarkdownPreview()) {
+      resetPreviewRestoreState();
+      return true;
+    }
+
+    const visibleOption = findVisiblePreviewMenuOption();
+    if (visibleOption) {
+      // Click Preview once, then wait for the rendered container. Repeated
+      // clicks during React re-render can select another option underneath.
+      if (previewRestoreState.phase !== 'selecting') {
+        previewRestoreState.phase = 'selecting';
+        previewRestoreState.selectedAt = Date.now();
+        visibleOption.click();
+      }
+      return false;
+    }
+
+    const now = Date.now();
+    // If any mode menu is open but Preview wasn't identified, do not click
+    // another control and risk choosing a neighboring option. Wait and expose
+    // the menu labels through ADORC_probe.viewMode() for diagnosis.
+    if (getVisibleAdoModeMenuOptions().length > 0) {
+      previewRestoreState.phase = 'opening';
+      return false;
+    }
+
+    if (previewRestoreState.phase === 'selecting') {
+      return false;
+    }
+
+    const controls = findAdoViewModeControls();
+    if (!controls) {
+      previewRestoreState.lastError = 'No safe ADO view-mode split-button found';
+      return false;
+    }
+    const modeLabel = getAdoViewModeLabel(controls.modeButton);
+    previewRestoreState.lastControlLabel = modeLabel;
+
+    // If ADO already labels the current mode Preview, its rendered content
+    // is probably still mounting; wait rather than reopening the menu.
+    if (modeLabel.startsWith('preview')) {
+      previewRestoreState.phase = 'awaiting-preview';
+      return false;
+    }
+
+    // Never toggle the trigger a second time for this pending jump. If the
+    // menu DOM is unfamiliar, fail safely rather than oscillating modes.
+    if (previewRestoreState.phase === 'opening') {
+      return false;
+    }
+
+    previewRestoreState.phase = 'opening';
+    previewRestoreState.openedAt = now;
+    previewRestoreState.lastError = '';
+    controls.trigger.click();
+    return false;
+  }
+
+  function continuePendingThreadNavigation() {
+    const pending = readPendingThreadJump();
+    if (!pending || pending.path !== currentFilePath()) return;
+    if (pending.requirePreview && !ensureAdoPreviewMode()) return;
+    schedulePreviewInit(50);
+    if (currentFilePathCached === pending.path) resumePendingThreadJump(0);
+  }
+
+  function resumePendingThreadJump(attempt) {
+    const pending = readPendingThreadJump();
+    if (!pending || pending.path !== currentFilePathCached) return;
+    if (pending.requirePreview && !hasVisibleMarkdownPreview()) {
+      ensureAdoPreviewMode();
+      return;
+    }
+    if (scrollToInlineThread(pending.id)) {
+      clearPendingThreadJump();
+      return;
+    }
+    const n = Number.isFinite(attempt) ? attempt : 0;
+    if (n < 20) {
+      setTimeout(() => resumePendingThreadJump(n + 1), 250);
+    } else {
+      clearPendingThreadJump();
+      showErrorToast(`Could not locate thread ${pending.id} in ${pending.path}.`);
+    }
+  }
+
+  function navigateToSidebarThread(item) {
+    showSidebar('threads');
+    if (item.path === (currentFilePathCached || currentFilePath())) {
+      clearPendingThreadJump();
+      if (!scrollToInlineThread(item.id)) {
+        showErrorToast(`Could not locate thread ${item.id} in the rendered file.`);
+      }
+      return;
+    }
+
+    const fileTarget = findBestAdoFileTreeTarget(item.path);
+    if (!fileTarget) {
+      clearPendingThreadJump();
+      console.warn(`${LOG} no native ADO file-tree row found for ${item.path}`);
+      showErrorToast(`Could not find ${item.path} in the visible ADO file tree.`);
+      return;
+    }
+
+    savePendingThreadJump(item);
+    console.log(`${LOG} navigating to ${item.path} through native ADO tree row`, {
+      rowId: fileTarget.row.id,
+      labels: fileTarget.labels,
+      score: fileTarget.score
+    });
+    fileTarget.target.click();
+    setTimeout(continuePendingThreadNavigation, 100);
+    // If native activation did not change the route, fail safely. Never
+    // fall back to a URL/anchor navigation — that remounts Inline mode.
+    setTimeout(() => {
+      const pending = readPendingThreadJump();
+      if (pending && pending.path === item.path && currentFilePath() !== item.path) {
+        clearPendingThreadJump();
+        console.warn(`${LOG} ADO tree row did not activate ${item.path}`, fileTarget);
+        showErrorToast(`ADO did not open ${item.path}; expand its folder in the file tree and retry.`);
+      }
+    }, 2000);
+  }
+
+  function getAdoFileTreeCandidates(path) {
+    const normalizedPath = normalizedText(String(path || '').replace(/^\//, ''));
+    const basename = normalizedPath.split('/').filter(Boolean).pop() || '';
+    const rows = Array.from(document.querySelectorAll('[role="treeitem"], .bolt-tree-row'));
+    const candidates = [];
+
+    rows.forEach((row, index) => {
+      if (!isVisibleControl(row) || row.closest('.adrc-sidebar')) return;
+      if (row.closest('.repos-changes-viewer, .bolt-card')) return;
+
+      const hrefPath = Array.from(row.querySelectorAll('a[href]')).map((link) => {
+        try { return new URL(link.href, window.location.href).searchParams.get('path'); }
+        catch (_) { return null; }
+      }).find(Boolean);
+      const labels = [
+        row.getAttribute('aria-label'),
+        row.getAttribute('title'),
+        row.querySelector('.bolt-tree-cell')?.textContent,
+        row.textContent,
+        hrefPath
+      ].map(normalizedText).filter(Boolean);
+
+      let score = 0;
+      if (hrefPath === path) score += 200;
+      if (labels.some((label) => label === normalizedPath || label.endsWith('/' + normalizedPath))) score += 140;
+      if (labels.some((label) => label === basename)) score += 100;
+      if (basename && labels.some((label) => label.endsWith('/' + basename) || label.includes(basename))) score += 50;
+      if (row.getAttribute('role') === 'treeitem') score += 20;
+      if (row.classList.contains('bolt-tree-row')) score += 20;
+      // Folder rows expose aria-expanded; prefer leaf rows for files.
+      if (row.getAttribute('aria-expanded') == null) score += 10;
+      if (score <= 0) return;
+
+      // Trigger from the cell content so Azure DevOps UI's delegated table
+      // activation sees a normal leaf-row click. Avoid the nested href.
+      const target = row.querySelector(
+        '.bolt-tree-cell .bolt-table-cell-content, .bolt-tree-cell, .bolt-table-cell-content'
+      ) || row;
+      candidates.push({ row, target, labels, score, index });
+    });
+
+    candidates.sort((a, b) => b.score - a.score || a.index - b.index);
+    return candidates;
+  }
+
+  function findBestAdoFileTreeTarget(path) {
+    return getAdoFileTreeCandidates(path)[0] || null;
   }
 
   function renderOutlineRows() {
@@ -1512,6 +2344,8 @@
     const body = outlinePanel.querySelector('.adrc-outline-body');
     if (!body) return;
     body.innerHTML = '';
+    const count = outlinePanel.querySelector('[data-count="outline"]');
+    if (count) count.textContent = String(outlineHeadings.length);
     if (outlineHeadings.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'adrc-outline-empty';
@@ -1590,7 +2424,10 @@
 
   function onOutlineScroll() {
     if (outlineScrollRaf) return;
-    outlineScrollRaf = requestAnimationFrame(updateActiveOutline);
+    outlineScrollRaf = requestAnimationFrame(() => {
+      updateActiveOutline();
+      updateActiveSidebarThread();
+    });
   }
 
   function attachOutlineScrollListener() {
@@ -1609,12 +2446,17 @@
 
   function detachOutlineScrollListener() {
     const container = outlineScrollListenerTarget;
-    if (!container) return;
-    container.removeEventListener('scroll', onOutlineScroll);
-    if (container !== window) {
-      window.removeEventListener('scroll', onOutlineScroll);
+    if (container) {
+      container.removeEventListener('scroll', onOutlineScroll);
+      if (container !== window) {
+        window.removeEventListener('scroll', onOutlineScroll);
+      }
     }
     outlineScrollListenerTarget = null;
+    if (outlineScrollRaf) {
+      cancelAnimationFrame(outlineScrollRaf);
+      outlineScrollRaf = null;
+    }
   }
 
   /**
@@ -1630,18 +2472,11 @@
   }
 
   function showOutlinePanel() {
-    buildOutlinePanel();
-    outlinePanel.classList.remove('adrc-outline-hidden');
-    refreshOutline();
-    attachOutlineScrollListener();
-    saveOutlineState({ visible: true });
+    showSidebar('outline');
   }
 
   function hideOutlinePanel() {
-    if (!outlinePanel) return;
-    outlinePanel.classList.add('adrc-outline-hidden');
-    detachOutlineScrollListener();
-    saveOutlineState({ visible: false });
+    hideSidebar();
   }
 
   function toggleOutlinePanel() {
@@ -1649,7 +2484,7 @@
     else showOutlinePanel();
   }
 
-  // Global keyboard shortcut: `b` toggles the outline (matches GitHub).
+  // Global keyboard shortcut: `b` opens / hides the sidebar Outline tab.
   // Ignored while typing in a form field or contenteditable region so we
   // don't hijack the editor.
   document.addEventListener('keydown', (e) => {
@@ -1667,7 +2502,7 @@
    * Remove injected UI and stale per-file state before initializing a new
    * SPA file/view. ADO commonly keeps the preview element itself while
    * replacing its children, so this cleanup must not rely on node removal.
-   * The floating outline panel is intentionally preserved.
+  * The floating Threads + Outline sidebar is intentionally preserved.
    */
   function resetPreviewContext(container, routeKey) {
     initGeneration++;
@@ -1705,7 +2540,9 @@
     collapsedHeadings = new WeakSet();
     outlineHeadings = [];
     outlineActiveId = null;
+    sidebarActiveThreadId = null;
     renderOutlineRows();
+    renderThreadsSidebar();
 
     if (container) {
       delete container.dataset.adrcInitialized;
@@ -1811,14 +2648,14 @@
       });
       container.dataset.adrcInitialized = routeKey;
       console.log(`${LOG} Initialized: ${attached} commentable blocks in ${filePath}`);
+      // The sidebar survives route changes; only its per-file Outline and
+      // current-file ordering are rebuilt here.
+      buildSidebarPanel();
+      refreshOutline();
+      renderThreadsSidebar();
       // Fire-and-forget — thread badge rendering shouldn't block the +
       // buttons showing up, and any error is already logged.
       refreshThreadBadges();
-      // Rebuild the outline for this file (whether or not the panel is
-      // currently visible — cheap, and keeps the next `b` toggle instant).
-      refreshOutline();
-      // Auto-restore the outline panel if the user had it open before.
-      if (readOutlineState().visible === true) showOutlinePanel();
     } catch (err) {
       if (generation === initGeneration) {
         console.error(`${LOG} init failed for ${filePath}:`, err);
@@ -1846,13 +2683,24 @@
     }, typeof delay === 'number' ? delay : 250);
   }
 
-  const mo = new MutationObserver(() => {
-    schedulePreviewInit(250);
+  const mo = new MutationObserver((records) => {
+    const relevant = records.some((record) => {
+      const target = record.target && record.target.nodeType === 1 ? record.target : null;
+      if (target && target.closest('.adrc-sidebar, .adrc-sidebar-launcher')) return false;
+      const changed = [...record.addedNodes, ...record.removedNodes];
+      if (changed.length === 0) return false;
+      return changed.some((node) => {
+        if (node.nodeType !== 1) return true;
+        return !isOurInjectedNode(node);
+      });
+    });
+    if (relevant) schedulePreviewInit(250);
   });
   mo.observe(document.body, { childList: true, subtree: true });
 
   let observedRouteKey = currentPreviewRouteKey();
   setInterval(() => {
+    continuePendingThreadNavigation();
     const nextRouteKey = currentPreviewRouteKey();
     if (nextRouteKey === observedRouteKey) return;
     observedRouteKey = nextRouteKey;
@@ -1973,7 +2821,7 @@
       return summary;
     },
 
-    // Inspect / toggle the outline panel.
+    // Inspect / toggle the Outline tab inside the combined sidebar.
     outline(action) {
       if (action === 'toggle') { toggleOutlinePanel(); return outlineIsVisible(); }
       if (action === 'show')   { showOutlinePanel();   return outlineIsVisible(); }
@@ -1998,6 +2846,69 @@
         scrollHeight: container === window ? document.documentElement.scrollHeight : container.scrollHeight,
         clientHeight: container === window ? window.innerHeight : container.clientHeight
       };
+    },
+
+    sidebar(action) {
+      buildSidebarPanel();
+      if (action === 'show') showSidebar();
+      else if (action === 'hide') hideSidebar();
+      else if (action === 'threads') showSidebar('threads');
+      else if (action === 'outline') showSidebar('outline');
+      else if (action === 'collapse') {
+        saveSidebarState({ visible: true, collapsed: true });
+        applySidebarState();
+      } else if (action === 'expand') {
+        saveSidebarState({ visible: true, collapsed: false });
+        applySidebarState();
+      } else if (action === 'filter') {
+        saveSidebarState({ unresolvedOnly: !sidebarState.unresolvedOnly });
+        updateSidebarFilterUI();
+        renderThreadsSidebar();
+      }
+      return {
+        state: Object.assign({}, sidebarState),
+        threadCount: sidebarThreadItems.length,
+        visibleThreadCount: getVisibleSidebarThreads().length,
+        activeThreadId: sidebarActiveThreadId,
+        outlineCount: outlineHeadings.length,
+        currentFile: currentFilePathCached
+      };
+    },
+
+    viewMode() {
+      const controls = findAdoViewModeControls();
+      const options = getVisibleAdoModeMenuOptions();
+      return {
+        previewVisible: hasVisibleMarkdownPreview(),
+        currentMode: controls ? getAdoViewModeLabel(controls.modeButton) : null,
+        currentModeLabels: controls ? getAdoControlLabels(controls.modeButton) : [],
+        modeButtonClass: controls ? controls.modeButton.className : null,
+        triggerLabel: controls ? normalizedControlText(controls.trigger) : null,
+        triggerClass: controls ? controls.trigger.className : null,
+        visibleMenuOptions: options.map((option) => ({
+          mode: getAdoViewModeLabel(option),
+          labels: getAdoControlLabels(option),
+          role: option.getAttribute('role'),
+          className: option.className
+        })),
+        restore: Object.assign({}, previewRestoreState),
+        pendingThreadJump: readPendingThreadJump()
+      };
+    },
+
+    fileTargets(path) {
+      const targetPath = path || currentFilePath();
+      return getAdoFileTreeCandidates(targetPath).map((candidate) => ({
+        path: targetPath,
+        score: candidate.score,
+        rowTag: candidate.row.tagName,
+        rowRole: candidate.row.getAttribute('role'),
+        rowId: candidate.row.id,
+        rowClass: candidate.row.className,
+        targetTag: candidate.target.tagName,
+        targetClass: candidate.target.className,
+        labels: candidate.labels
+      }));
     },
 
     // Diagnose a code block: source-range vs DOM-row geometry.

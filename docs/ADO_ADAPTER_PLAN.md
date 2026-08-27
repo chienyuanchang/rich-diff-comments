@@ -184,6 +184,44 @@ Compared to the GitHub extension's shipped feature set (see FEATURES.md § Shipp
 
 **v1 launch = everything marked P0 + P1.** ~14 features. Absent P2/P3.
 
+### 7.1 Iterations H + I — Threads sidebar + integrated Outline (complete, 2026-08-26)
+
+Build the navigation shell in one pass, then add Changes as a third tab in the
+next iteration. The standalone Outline proved heading collection, ADO's inner
+scroll-container behavior, and route-aware file switching; this iteration moves
+that working behavior into the durable sidebar instead of maintaining two panels.
+
+**Scope for this iteration:**
+
+- One fixed floating `.adrc-sidebar` with **Threads** and **Outline** tabs.
+- Header collapse toggle; collapsed mode keeps the header/tabs reachable.
+- Drag by the header and resize from the lower-right corner.
+- Persist position, size, collapsed state, active tab, visibility, and the
+  unresolved-only filter in `localStorage`, with viewport clamping on restore.
+- Threads pane is PR-wide: file path, source line/range, author, timestamp,
+  status, and an 80-character first-comment snippet per card.
+- Unresolved-only filter persists and affects only the Threads pane.
+- Current-file cards are grouped first; the card nearest the active reading
+  position is highlighted while scrolling.
+- Clicking a current-file card scrolls to and expands its inline thread.
+- Clicking a card for another file activates ADO's native file-tree row, then
+  resumes the pending thread jump after route-aware Preview initialization.
+  There is deliberately no generic-anchor or full-page URL fallback because
+  either can remount the target file in Inline / Side-by-side mode.
+- Existing standalone Outline rows move into the Outline tab unchanged:
+  hierarchy indentation, click-to-scroll, active-heading tracking, and SPA file
+  refresh. `b` shows the sidebar, expands it, and selects Outline.
+- Injecting or updating the sidebar must not trigger Preview reinitialization.
+
+**Explicitly deferred:** Changes tab/content, Changes counters, `[` / `]`
+navigation, full shortcut suite, and multi-file Outline aggregation.
+
+**Acceptance result:** state survives reload and ADO SPA file switches; no
+duplicate sidebars or stale heading/thread references; current-file and
+cross-file card clicks land on the intended inline thread without leaving
+Preview. Manually verified on the sandbox PR. Automated result: 324 / 324
+unit/static tests and 21 / 21 Playwright tests.
+
 ## 8. DOM adapter surface — what actually needs writing
 
 Per the audit from the previous session, the new work is:
@@ -396,6 +434,7 @@ Append as decisions get made / revised.
 - **2026-07-22** — **§12 step 3 (repo refactor) complete.** GitHub extension physically moved into `extensions/github/`; new `scripts/dev-sync.ps1` mirrors `src/lib/*.js` and `PRIVACY.md` into each target folder before packaging; `scripts/package.ps1`, `preflight.ps1`, `release-prep.ps1`, `github-release.ps1` all parameterized on `-Target github|ado` (default github) and updated to read from the new paths. Test files updated for the moved `styles.css` / `content.js` locations; e2e helper resolves shared `src/lib/*` from repo root and extension-specific files from `extensions/github/`. Verification: **284 / 284 unit tests pass**, **20 / 20 e2e tests pass in isolation** (1 pre-existing cross-file mouse-state flake in full-suite runs, not caused by the refactor), zip build at 127.5 KB with 20 correct top-level entries, preflight `-VerifyZip` green (also fixed a latent path-separator bug where `Compress-Archive` stores backslashes but manifest paths use forward slashes). Docs updated to point at the new layout in Batch 2. Batch 1 was a standalone commit with zero user-visible behavior change.
 - **2026-07-22** — **§12 step 5 (ADO adapter skeleton) complete + end-to-end validated.** `src/adapters/ado.js` implements the P0+P1 endpoint surface (parsePRUrl, resolveIds, listThreads, createThread, reply, resolveThread/unresolveThread, editComment, deleteComment) with cookie-authenticated fetches. `extensions/ado/` loads on `dev.azure.com/*/_git/*/pullrequest/*` and legacy `*.visualstudio.com` URLs. **No UI yet** — `content.js` is a thin bootstrap that parses the PR context and exposes `window.ADORC_probe` for DevTools testing. Manifest declares `"world": "MAIN"` so the probe is visible in the console's default context without users having to change context (chrome.* APIs unavailable in MAIN world, but skeleton doesn't use them — revisit if we later need `chrome.storage` or messaging). `scripts/dev-sync.ps1` extended to also mirror `src/adapters/<target>.js`. Tests: 300 unit tests passing (16 new adapter tests covering URL parsing, path normalization, system-thread filter, URL builders). Package: 43 KB zip, 21 correct top-level entries. **Manual smoke test on the sandbox PR**: `probe.ready()` resolved the repo GUID via the org's repos API; `probe.list()` returned 4 threads and correctly filtered 2 system RefUpdate threads out to leave 2 user threads; `probe.create()` created a new thread (id 5) on `/README.md:3`; `probe.resolve(5)` flipped it to `status: "fixed"`; `probe.delete(5, 1)` soft-deleted its root comment. Full adapter path is production-viable — ready to layer UI on top.
 - **2026-07-22** — **Line-mapping validated on ADO with zero `src/lib/` changes.** Added `getPullRequest()` and `getFileSource()` to the adapter plus `pullRequestUrl()` / `itemUrl()` builders (project-scoped items endpoint with `versionDescriptor.version=<branch>` + `includeContent=true`). Wired `src/lib/textMatch.js` + `tableRows.js` + `lineMap.js` into the ADO manifest so `window.GRDC.mapBlocksToSourceLines` is available in-page. New `probe.detectLines(filePath)` fetches the file source at the PR's source branch, runs the block→line matcher against the visible `.markdown-preview-container`, and `console.table`s the result. **Sandbox test result**: **14/14 blocks mapped to correct source lines** on the sandbox PR's README.md — including the modified list item (line 8 "test replace"), a newly added H1 heading (line 17 "Section to Add"), and its new paragraph (line 18). Log: `[GRDC] Mapped 14 elements for /README.md (source-matched: true, text-hits: 13)`. This proves the entire pure-logic port from the audit works on ADO's DOM without modification — same forward-scan text matcher, same edge-case handling. Tests: 305 passing (5 new URL-builder tests for `pullRequestUrl` and `itemUrl` covering project scope, missing-project fallback, versionDescriptor, path normalization). Ready to start P0 UI (`+` button + comment box).
+- **2026-08-26** — **Iterations H + I complete: Threads sidebar + integrated Outline.** Replaced the standalone Outline panel with one draggable, resizable, persistent sidebar containing PR-wide Threads and current-file Outline tabs. Threads support file grouping, unresolved-only filtering, active-thread tracking, same-file scroll/expand, and cross-file pending jumps. Live testing exposed that generic `?path=` anchors / `window.location.assign()` remount ADO and reset Preview to Inline or Side-by-side (visible as a second MSAL/content-script initialization). Final architecture activates the native `[role="treeitem"]` / `.bolt-tree-row` cell instead, retains a one-shot safe Preview-menu restoration fallback, and intentionally fails with a toast when no materialized tree row exists rather than abandoning Preview. Manual sandbox result: same-file and cross-file thread navigation work while staying in Preview; Outline remains route-aware. Validation: 324 / 324 unit/static tests and 21 / 21 Playwright tests.
 
 ## 15. Appendix — ADO thread response shape (redacted)
 

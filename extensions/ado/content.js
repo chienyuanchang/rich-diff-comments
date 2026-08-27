@@ -1,27 +1,13 @@
 /**
  * Markdown PR Comments for Azure DevOps
  *
- * v0.1.0 — first UI iteration.
+ * Maps rendered Preview blocks back to Markdown source lines, adds inline
+ * comment / thread UI, supports range comments and section folding, and
+ * renders a standalone Outline panel. ADO's PR file viewer is an SPA that
+ * may reuse the same Preview element across file changes, so initialization
+ * is keyed by both the route and active Preview DOM.
  *
- *   • Detects the rendered-markdown Preview container on ADO PR pages.
- *   • Fetches the file's raw source at the PR's source branch.
- *   • Runs the shared `mapBlocksToSourceLines` (see src/lib/lineMap.js)
- *     to figure out which DOM block belongs to which source line.
- *   • Adds a `+` button that hovers into every commentable block.
- *   • Click → opens an inline comment box → submit → creates a real PR
- *     review thread via ADORC.createThread.
- *
- * NOT YET DONE (P1 / next iteration):
- *   • Rendering existing threads as 💬 badges.
- *   • Reply / resolve / edit / delete from the UI.
- *   • Threads sidebar / Outline / Changes tabs.
- *   • SPA route detection is intentionally minimal — a MutationObserver
- *     watches for the preview container appearing so switching files
- *     re-initializes. Full route hooks land when we start juggling
- *     multiple files at once.
- *
- * The `window.ADORC_probe` DevTools helper from v0.0.x is still exposed
- * so you can exercise the adapter directly from the console.
+ * `window.ADORC_probe` exposes diagnostics from the DevTools console.
  */
 
 (function () {
@@ -86,6 +72,42 @@
   function currentFilePath() {
     return new URLSearchParams(window.location.search).get('path') || null;
   }
+
+  /**
+   * Route identity for the currently selected PR file. ADO uses SPA
+   * navigation and can reuse the same `.markdown-preview-container` while
+   * changing only `location.search`, so DOM identity alone is insufficient.
+   */
+  function currentPreviewRouteKey() {
+    const params = new URLSearchParams(window.location.search);
+    return `${window.location.pathname}|${params.get('path') || ''}|${params.get('_a') || ''}`;
+  }
+
+  function isVisiblePreviewContainer(el) {
+    if (!el || !el.isConnected) return false;
+    if (el.closest('[aria-hidden="true"]')) return false;
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  /**
+   * ADO may retain an old preview in the DOM while displaying a newer one.
+   * Prefer the last visible, non-empty candidate; fall back to the last
+   * non-empty candidate while a route transition is still laying out.
+   */
+  function getCurrentPreviewContainer() {
+    const candidates = Array.from(document.querySelectorAll('.markdown-preview-container'));
+    const nonEmpty = candidates.filter((el) => (el.textContent || '').trim().length > 0);
+    const visible = nonEmpty.filter(isVisiblePreviewContainer);
+    return visible[visible.length - 1] || nonEmpty[nonEmpty.length - 1] || null;
+  }
+
+  let currentPreviewContainerCached = null;
+  let currentPreviewRouteKeyCached = '';
+  let initGeneration = 0;
+  let initInFlight = null; // { container, routeKey }
 
   /**
    * The PR source branch (stripped of the refs/heads/ prefix). Cached on
@@ -254,7 +276,8 @@
     dragState.lastHighlighted.forEach(b => b.classList.remove('adrc-range-hover'));
     // Walk the current preview's hoverable blocks and mark the inclusive
     // range between anchor and drop target (in DOM order).
-    const all = Array.from(document.querySelectorAll('.markdown-preview-container .adrc-hoverable'));
+    const preview = getCurrentPreviewContainer();
+    const all = preview ? Array.from(preview.querySelectorAll('.adrc-hoverable')) : [];
     const si = all.indexOf(startHost);
     const ei = all.indexOf(endHost);
     if (si < 0 || ei < 0) return;
@@ -1207,7 +1230,7 @@
 
   // In-memory only — collapsed state is lost on page reload. A typical
   // review session is short and persisting to storage would be over-kill.
-  const collapsedHeadings = new WeakSet();
+  let collapsedHeadings = new WeakSet();
 
   function isOurInjectedNode(el) {
     if (!el || el.nodeType !== 1) return false;
@@ -1348,12 +1371,353 @@
     }, 5000);
   }
 
+  // ── Outline panel (standalone floating heading tree) ─────────────────
+  //
+  // A small floating panel top-right that lists every H1–H6 in the current
+  // file with click-to-scroll and current-heading tracking as the user
+  // scrolls. Toggled by pressing `b`. Position + visibility persist in
+  // localStorage across page loads.
+  //
+  // Deliberately kept standalone (not part of a sidebar shell yet) — see
+  // Iteration G in the ADO port plan.
+
+  const OUTLINE_STORAGE_KEY = 'adrc-outline-state-v1';
+  const OUTLINE_STICKY_OFFSET = 100;         // px above heading during scroll-to
+  const OUTLINE_ACTIVE_OFFSET = 140;         // px below viewport top where the "reading line" sits
+
+  let outlinePanel = null;
+  let outlineHeadings = [];
+  let outlineActiveId = null;
+  let outlineScrollRaf = null;
+  let outlineScrollListenerTarget = null;
+  // The element that actually scrolls the file content. ADO's PR page
+  // usually scrolls an inner container instead of the document/window, so
+  // window.scrollTo and window.addEventListener('scroll') don't work on
+  // its own. We cache the detected container so click-to-scroll and
+  // scroll-tracking both target the right thing.
+  let outlineScrollContainer = null;
+
+  /**
+   * Walk from a starting element up through its ancestors and return the
+   * nearest scrollable one (or `window` if none of the ancestors scroll).
+   * "Scrollable" = computed overflow-y is auto/scroll/overlay AND the
+   * element actually has vertical overflow (scrollHeight > clientHeight).
+   */
+  function findScrollContainer(startEl) {
+    let node = startEl && startEl.parentElement;
+    while (node && node !== document.body && node !== document.documentElement) {
+      const cs = getComputedStyle(node);
+      const oy = cs.overflowY;
+      if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') &&
+          node.scrollHeight > node.clientHeight + 1) {
+        return node;
+      }
+      node = node.parentElement;
+    }
+    // Fall back to whichever of document.documentElement / body is
+    // actually scrolling, else window.
+    const de = document.documentElement;
+    if (de && de.scrollHeight > de.clientHeight + 1) return de;
+    if (document.body && document.body.scrollHeight > document.body.clientHeight + 1) return document.body;
+    return window;
+  }
+
+  function getOutlineScrollContainer() {
+    // Re-detect if we don't have one yet, if the cached one is gone from
+    // the DOM (SPA nav replaced it), or if it stopped being scrollable.
+    if (outlineScrollContainer &&
+        outlineScrollContainer !== window &&
+        !document.contains(outlineScrollContainer)) {
+      outlineScrollContainer = null;
+    }
+    if (!outlineScrollContainer) {
+      const container = getCurrentPreviewContainer();
+      if (container) outlineScrollContainer = findScrollContainer(container);
+    }
+    return outlineScrollContainer || window;
+  }
+
+  function outlineIsVisible() {
+    return !!outlinePanel && !outlinePanel.classList.contains('adrc-outline-hidden');
+  }
+
+  function saveOutlineState(patch) {
+    try {
+      const prev = JSON.parse(localStorage.getItem(OUTLINE_STORAGE_KEY) || '{}');
+      localStorage.setItem(OUTLINE_STORAGE_KEY, JSON.stringify(Object.assign(prev, patch)));
+    } catch (_) { /* localStorage may be blocked in some contexts */ }
+  }
+
+  function readOutlineState() {
+    try {
+      return JSON.parse(localStorage.getItem(OUTLINE_STORAGE_KEY) || '{}');
+    } catch (_) { return {}; }
+  }
+
+  function collectHeadingsForOutline() {
+    const container = getCurrentPreviewContainer();
+    if (!container) return [];
+    return Array.from(container.querySelectorAll('h1, h2, h3, h4, h5, h6')).map((el, i) => {
+      // Strip any injected chevron text from the section-collapse toggle
+      // so the outline label reads cleanly.
+      let text = '';
+      el.childNodes.forEach((child) => {
+        if (child.nodeType === 1 && child.classList && child.classList.contains('adrc-collapse-toggle')) return;
+        text += child.textContent || '';
+      });
+      text = text.trim() || '(untitled)';
+      return {
+        el,
+        id: `adrc-outline-${i}`,
+        level: parseInt(el.tagName.slice(1), 10),
+        text
+      };
+    });
+  }
+
+  function scrollToWithStickyOffset(el) {
+    if (!el) return;
+    const container = getOutlineScrollContainer();
+    if (container === window) {
+      const top = window.scrollY + el.getBoundingClientRect().top - OUTLINE_STICKY_OFFSET;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      return;
+    }
+    // Element-scroll: convert viewport-relative rects to container-relative.
+    const cRect = container.getBoundingClientRect();
+    const eRect = el.getBoundingClientRect();
+    const top = container.scrollTop + (eRect.top - cRect.top) - OUTLINE_STICKY_OFFSET;
+    container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  }
+
+  function buildOutlinePanel() {
+    if (outlinePanel) return outlinePanel;
+    const panel = document.createElement('div');
+    panel.className = 'adrc-outline-panel adrc-outline-hidden';
+    panel.innerHTML = [
+      '<div class="adrc-outline-header">',
+      '  <span class="adrc-outline-title">Outline</span>',
+      '  <button type="button" class="adrc-outline-close" title="Close (b)">\u00d7</button>',
+      '</div>',
+      '<div class="adrc-outline-body"></div>'
+    ].join('\n');
+    document.body.appendChild(panel);
+    panel.querySelector('.adrc-outline-close').addEventListener('click', hideOutlinePanel);
+    outlinePanel = panel;
+    return panel;
+  }
+
+  function renderOutlineRows() {
+    if (!outlinePanel) return;
+    const body = outlinePanel.querySelector('.adrc-outline-body');
+    if (!body) return;
+    body.innerHTML = '';
+    if (outlineHeadings.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'adrc-outline-empty';
+      empty.textContent = 'No headings in this file.';
+      body.appendChild(empty);
+      return;
+    }
+    outlineHeadings.forEach((h) => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = `adrc-outline-row adrc-outline-level-${h.level}`;
+      row.style.paddingLeft = `${8 + (h.level - 1) * 14}px`;
+      row.dataset.headingId = h.id;
+      row.textContent = h.text;
+      row.title = h.text;
+      row.addEventListener('click', () => {
+        setActiveOutlineRow(h.id);
+        scrollToWithStickyOffset(h.el);
+      });
+      body.appendChild(row);
+    });
+    // Re-apply active state after rebuild.
+    updateActiveOutline();
+  }
+
+  function setActiveOutlineRow(id) {
+    outlineActiveId = id;
+    if (!outlinePanel) return;
+    outlinePanel.querySelectorAll('.adrc-outline-row.adrc-outline-active')
+      .forEach((r) => r.classList.remove('adrc-outline-active'));
+    if (!id) return;
+    const row = outlinePanel.querySelector(`.adrc-outline-row[data-heading-id="${id}"]`);
+    if (row) {
+      row.classList.add('adrc-outline-active');
+      // Keep the active row visible in the panel's own scroll container.
+      const body = outlinePanel.querySelector('.adrc-outline-body');
+      if (body) {
+        const rowRect = row.getBoundingClientRect();
+        const bodyRect = body.getBoundingClientRect();
+        if (rowRect.top < bodyRect.top || rowRect.bottom > bodyRect.bottom) {
+          row.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+        }
+      }
+    }
+  }
+
+  function pickActiveHeading() {
+    // The active reading line sits below the container top. Choose the
+    // heading whose top is closest to (but not below) that line. Uses
+    // viewport-relative coordinates because getBoundingClientRect() is
+    // viewport-relative regardless of what element is scrolling.
+    const container = getOutlineScrollContainer();
+    const topOfScrollArea = container === window
+      ? 0
+      : container.getBoundingClientRect().top;
+    const activeLine = topOfScrollArea + OUTLINE_ACTIVE_OFFSET;
+    let best = null;
+    let bestY = -Infinity;
+    for (const h of outlineHeadings) {
+      const y = h.el.getBoundingClientRect().top;
+      if (y <= activeLine && y > bestY) {
+        bestY = y;
+        best = h;
+      }
+    }
+    if (!best && outlineHeadings.length > 0) best = outlineHeadings[0];
+    return best;
+  }
+
+  function updateActiveOutline() {
+    outlineScrollRaf = null;
+    if (!outlineIsVisible()) return;
+    const active = pickActiveHeading();
+    setActiveOutlineRow(active ? active.id : null);
+  }
+
+  function onOutlineScroll() {
+    if (outlineScrollRaf) return;
+    outlineScrollRaf = requestAnimationFrame(updateActiveOutline);
+  }
+
+  function attachOutlineScrollListener() {
+    const container = getOutlineScrollContainer();
+    if (outlineScrollListenerTarget === container) return;
+    detachOutlineScrollListener();
+    // Listen on BOTH the detected container AND window — harmless
+    // duplication when they're the same target, and defensive if ADO's
+    // layout ever changes so that scroll events bubble to window instead.
+    container.addEventListener('scroll', onOutlineScroll, { passive: true });
+    if (container !== window) {
+      window.addEventListener('scroll', onOutlineScroll, { passive: true });
+    }
+    outlineScrollListenerTarget = container;
+  }
+
+  function detachOutlineScrollListener() {
+    const container = outlineScrollListenerTarget;
+    if (!container) return;
+    container.removeEventListener('scroll', onOutlineScroll);
+    if (container !== window) {
+      window.removeEventListener('scroll', onOutlineScroll);
+    }
+    outlineScrollListenerTarget = null;
+  }
+
+  /**
+   * Rebuild the outline from the current preview's headings. Called after
+   * init (button attachment finished) and whenever the file changes.
+   * Idempotent when the panel is hidden — it just refreshes the internal
+   * heading list so a subsequent show is instant.
+   */
+  function refreshOutline() {
+    outlineHeadings = collectHeadingsForOutline();
+    renderOutlineRows();
+    updateActiveOutline();
+  }
+
+  function showOutlinePanel() {
+    buildOutlinePanel();
+    outlinePanel.classList.remove('adrc-outline-hidden');
+    refreshOutline();
+    attachOutlineScrollListener();
+    saveOutlineState({ visible: true });
+  }
+
+  function hideOutlinePanel() {
+    if (!outlinePanel) return;
+    outlinePanel.classList.add('adrc-outline-hidden');
+    detachOutlineScrollListener();
+    saveOutlineState({ visible: false });
+  }
+
+  function toggleOutlinePanel() {
+    if (outlineIsVisible()) hideOutlinePanel();
+    else showOutlinePanel();
+  }
+
+  // Global keyboard shortcut: `b` toggles the outline (matches GitHub).
+  // Ignored while typing in a form field or contenteditable region so we
+  // don't hijack the editor.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'b' && e.key !== 'B') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const active = document.activeElement;
+    const tag = active && active.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (active && active.isContentEditable) return;
+    e.preventDefault();
+    toggleOutlinePanel();
+  });
+
+  /**
+   * Remove injected UI and stale per-file state before initializing a new
+   * SPA file/view. ADO commonly keeps the preview element itself while
+   * replacing its children, so this cleanup must not rely on node removal.
+   * The floating outline panel is intentionally preserved.
+   */
+  function resetPreviewContext(container, routeKey) {
+    initGeneration++;
+    initInFlight = null;
+    detachOutlineScrollListener();
+    outlineScrollContainer = null;
+
+    document.querySelectorAll(
+      '.adrc-comment-btn, .adrc-editor, .adrc-thread-badge, .adrc-thread-panel, .adrc-collapse-toggle'
+    ).forEach((el) => el.remove());
+
+    document.querySelectorAll('[data-adrc-has-button]').forEach((el) => {
+      delete el.dataset.adrcHasButton;
+      delete el.dataset.adrcLine;
+      delete el.dataset.adrcPath;
+    });
+    document.querySelectorAll(
+      '.adrc-hoverable, .adrc-collapsible, .adrc-section-collapsed, .adrc-collapsed-hidden, .adrc-range-permanent, .adrc-range-hover'
+    ).forEach((el) => {
+      el.classList.remove(
+        'adrc-hoverable',
+        'adrc-collapsible',
+        'adrc-section-collapsed',
+        'adrc-collapsed-hidden',
+        'adrc-range-permanent',
+        'adrc-range-hover'
+      );
+    });
+
+    currentPreviewContainerCached = container;
+    currentPreviewRouteKeyCached = routeKey;
+    currentFilePathCached = null;
+    currentLineToBlock = new Map();
+    currentSource = null;
+    collapsedHeadings = new WeakSet();
+    outlineHeadings = [];
+    outlineActiveId = null;
+    renderOutlineRows();
+
+    if (container) {
+      delete container.dataset.adrcInitialized;
+      delete container.dataset.adrcInitializing;
+    }
+  }
+
   // ── Init flow ────────────────────────────────────────────────────────
 
   async function initButtonsForCurrentPreview() {
-    const container = document.querySelector('.markdown-preview-container');
+    const container = getCurrentPreviewContainer();
     if (!container) return;
-    if (container.dataset.adrcInitialized) return;
     // Wait until ADO has actually filled the container. On a fresh load
     // the div appears empty before the markdown renders.
     if ((container.textContent || '').trim().length === 0) return;
@@ -1364,9 +1728,57 @@
       return;
     }
 
-    container.dataset.adrcInitialized = '1';
+    const routeKey = currentPreviewRouteKey();
+    const contextChanged =
+      container !== currentPreviewContainerCached ||
+      routeKey !== currentPreviewRouteKeyCached;
+
+    if (contextChanged) {
+      resetPreviewContext(container, routeKey);
+    }
+
+    // ADO sometimes replaces only the preview's children while preserving
+    // both route and container. Our injected button marker disappears in
+    // that case, which is the signal to rebuild against the new children.
+    const hasCommentableContent = !!container.querySelector('p, h1, h2, h3, h4, h5, h6, li, tr, pre');
+    const hasInjectedButton = !!container.querySelector('[data-adrc-has-button]');
+    if (container.dataset.adrcInitialized === routeKey && hasCommentableContent && !hasInjectedButton) {
+      resetPreviewContext(container, routeKey);
+    }
+
+    if (container.dataset.adrcInitialized === routeKey && currentFilePathCached === filePath) {
+      // The outline rows can be rebuilt independently if another ADO
+      // component replaced heading nodes without replacing the preview.
+      const outlineIsStale = outlineHeadings.some((h) => !h.el.isConnected || !container.contains(h.el));
+      if (outlineIsStale) refreshOutline();
+      if (outlineIsVisible()) attachOutlineScrollListener();
+      return;
+    }
+
+    if (initInFlight && initInFlight.container === container && initInFlight.routeKey === routeKey) {
+      return;
+    }
+
+    const generation = ++initGeneration;
+    initInFlight = { container, routeKey, generation };
+    container.dataset.adrcInitializing = routeKey;
     try {
       const map = await buildFileLineMap(container, filePath);
+
+      // Ignore stale async work if the user switched files while source or
+      // PR metadata was being fetched. Also reject maps whose DOM elements
+      // were replaced during the fetch; schedule a clean retry instead.
+      const mappedBlocks = Array.from(map.keys());
+      const stillCurrent =
+        generation === initGeneration &&
+        routeKey === currentPreviewRouteKey() &&
+        container === getCurrentPreviewContainer();
+      const mapStillConnected = mappedBlocks.every((block) => block.isConnected && container.contains(block));
+      if (!stillCurrent || !mapStillConnected) {
+        schedulePreviewInit(100);
+        return;
+      }
+
       let attached = 0;
       currentLineToBlock = new Map();
       currentFilePathCached = filePath;
@@ -1397,33 +1809,58 @@
           ensureCollapseToggle(block);
         }
       });
+      container.dataset.adrcInitialized = routeKey;
       console.log(`${LOG} Initialized: ${attached} commentable blocks in ${filePath}`);
       // Fire-and-forget — thread badge rendering shouldn't block the +
       // buttons showing up, and any error is already logged.
       refreshThreadBadges();
+      // Rebuild the outline for this file (whether or not the panel is
+      // currently visible — cheap, and keeps the next `b` toggle instant).
+      refreshOutline();
+      // Auto-restore the outline panel if the user had it open before.
+      if (readOutlineState().visible === true) showOutlinePanel();
     } catch (err) {
-      console.error(`${LOG} init failed for ${filePath}:`, err);
-      // Clear the guard so a subsequent mutation retries.
-      delete container.dataset.adrcInitialized;
+      if (generation === initGeneration) {
+        console.error(`${LOG} init failed for ${filePath}:`, err);
+        delete container.dataset.adrcInitialized;
+      }
+    } finally {
+      if (initInFlight && initInFlight.generation === generation) {
+        initInFlight = null;
+      }
+      if (container.dataset.adrcInitializing === routeKey) {
+        delete container.dataset.adrcInitializing;
+      }
     }
   }
 
-  // Simple SPA-nav handling: watch for the preview container appearing
-  // (or being replaced when the user switches files). The idempotency
-  // guard on `container.dataset.adrcInitialized` keeps this cheap even
-  // though the observer fires often.
+  // SPA navigation handling: watch both DOM mutations and the route key.
+  // ADO sometimes changes `?path=` with history.replaceState before any
+  // preview DOM mutation, and sometimes reuses the same preview element.
   let debounceTimer = null;
-  const mo = new MutationObserver(() => {
-    if (debounceTimer) return;
+  function schedulePreviewInit(delay) {
+    if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
       initButtonsForCurrentPreview();
-    }, 250);
+    }, typeof delay === 'number' ? delay : 250);
+  }
+
+  const mo = new MutationObserver(() => {
+    schedulePreviewInit(250);
   });
   mo.observe(document.body, { childList: true, subtree: true });
 
+  let observedRouteKey = currentPreviewRouteKey();
+  setInterval(() => {
+    const nextRouteKey = currentPreviewRouteKey();
+    if (nextRouteKey === observedRouteKey) return;
+    observedRouteKey = nextRouteKey;
+    schedulePreviewInit(100);
+  }, 250);
+
   // Also try once shortly after load in case the preview is already there.
-  setTimeout(initButtonsForCurrentPreview, 500);
+  schedulePreviewInit(500);
 
   // ── DevTools probe (unchanged from v0.0.x) ───────────────────────────
 
@@ -1522,7 +1959,7 @@
     },
 
     async detectLines(filePath) {
-      const container = document.querySelector('.markdown-preview-container');
+      const container = getCurrentPreviewContainer();
       if (!container) {
         throw new Error('probe.detectLines: no .markdown-preview-container in the DOM — switch the file to "Preview" mode');
       }
@@ -1536,12 +1973,40 @@
       return summary;
     },
 
+    // Inspect / toggle the outline panel.
+    outline(action) {
+      if (action === 'toggle') { toggleOutlinePanel(); return outlineIsVisible(); }
+      if (action === 'show')   { showOutlinePanel();   return outlineIsVisible(); }
+      if (action === 'hide')   { hideOutlinePanel();   return outlineIsVisible(); }
+      if (action === 'refresh') { refreshOutline(); }
+      const container = getOutlineScrollContainer();
+      const preview = getCurrentPreviewContainer();
+      return {
+        visible: outlineIsVisible(),
+        filePath: currentFilePath(),
+        cachedFilePath: currentFilePathCached,
+        routeKey: currentPreviewRouteKey(),
+        cachedRouteKey: currentPreviewRouteKeyCached,
+        previewInitializedFor: preview ? preview.dataset.adrcInitialized || null : null,
+        staleHeadingCount: outlineHeadings.filter((h) => !h.el.isConnected || !preview || !preview.contains(h.el)).length,
+        headings: outlineHeadings.map((h) => ({ level: h.level, text: h.text })),
+        activeId: outlineActiveId,
+        scrollContainer: container === window
+          ? 'window'
+          : `${container.tagName.toLowerCase()}${container.id ? '#' + container.id : ''}${container.className ? '.' + String(container.className).trim().replace(/\s+/g, '.') : ''}`,
+        scrollTop: container === window ? window.scrollY : container.scrollTop,
+        scrollHeight: container === window ? document.documentElement.scrollHeight : container.scrollHeight,
+        clientHeight: container === window ? window.innerHeight : container.clientHeight
+      };
+    },
+
     // Diagnose a code block: source-range vs DOM-row geometry.
     // Call `ADORC_probe.codeBlock(N)` where N is a 0-based index of the
     // <pre> in the current preview (or omit to use the first).
     codeBlock(index) {
       const idx = typeof index === 'number' ? index : 0;
-      const pres = Array.from(document.querySelectorAll('.markdown-preview-container pre'));
+      const preview = getCurrentPreviewContainer();
+      const pres = preview ? Array.from(preview.querySelectorAll('pre')) : [];
       const pre = pres[idx];
       if (!pre) {
         console.warn(`${LOG} codeBlock probe: no <pre> at index ${idx} (found ${pres.length})`);
@@ -1592,13 +2057,8 @@
      * initialization guard and all injected elements first.
      */
     async reinit() {
-      const container = document.querySelector('.markdown-preview-container');
-      if (container) delete container.dataset.adrcInitialized;
-      document.querySelectorAll('.adrc-comment-btn, .adrc-editor, .adrc-thread-badge, .adrc-thread-panel').forEach(el => el.remove());
-      document.querySelectorAll('[data-adrc-has-button]').forEach(el => {
-        delete el.dataset.adrcHasButton;
-        el.classList.remove('adrc-hoverable');
-      });
+      const container = getCurrentPreviewContainer();
+      resetPreviewContext(container, currentPreviewRouteKey());
       await initButtonsForCurrentPreview();
     }
   };

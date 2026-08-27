@@ -165,6 +165,41 @@ Linear interpolation across the block: row 0 → sourceStart, last DOM row → s
 
 **Fix in `initButtonsForCurrentPreview`:** after each `<pre>` is attached, loop over its stored range and add `currentLineToBlock[line] = <pre>` for every interior line so any thread inside the fence renders under the same block.
 
+## SPA file navigation reuses Preview DOM
+
+ADO file navigation does **not** guarantee a new `.markdown-preview-container`.
+When users switch files, ADO can:
+
+1. update only `location.search` (`?path=/next.md`),
+2. preserve the same Preview container element, and
+3. replace only that container's heading/content children.
+
+An element-only idempotency guard such as `container.dataset.adrcInitialized`
+therefore goes stale: the next file inherits the prior file's initialized flag,
+the outline keeps references to detached headings, click-to-scroll stops, and
+scroll tracking remains bound to the prior file's content.
+
+The ADO lifecycle is now keyed by **both**:
+
+```js
+routeKey = `${location.pathname}|${path}|${_a}`;
+activePreviewContainer = getCurrentPreviewContainer();
+```
+
+On either route or active-container change, `resetPreviewContext()` removes
+per-file injected UI, clears line/source/heading caches, invalidates in-flight
+async initialization, re-detects the actual inner scroll container, and rebinds
+the Outline scroll listener. A 250 ms route-key watcher complements the
+`MutationObserver` because History API URL changes do not themselves emit DOM
+mutations or `popstate` events.
+
+Initialization also rejects stale async results if the route, Preview element,
+or mapped child elements change while source is being fetched. This prevents a
+slow response for file A from attaching buttons or outline rows to file B.
+
+**Debug helper:** `ADORC_probe.outline()` reports the current headings and the
+detected scroll container. After a file switch, both must reflect the new file.
+
 ## URL parsing
 
 **PR URL** (browser): `/{org}/{project}/_git/{repo}/pullrequest/{id}[?path=/README.md]`

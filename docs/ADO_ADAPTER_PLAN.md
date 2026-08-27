@@ -309,6 +309,45 @@ usable; reset recovers an off-screen/tiny sidebar while retaining tab/filter;
 and typing is never hijacked. Manually verified on the sandbox PR. Automated
 result: 349 / 349 unit/static tests and 21 / 21 Playwright tests.
 
+### 7.4 Iteration L — ADO-specific browser regression suite (complete, 2026-08-26)
+
+Add a separate, credential-free Playwright suite for the ADO target. The
+existing browser suite loads only the GitHub manifest against GitHub-shaped
+fixtures, so it cannot catch regressions in ADO selectors, REST orchestration,
+Fluent styling, native file-tree activation, or the route-aware Preview
+lifecycle.
+
+**Scope for this iteration:**
+
+- Serve a captured ADO Preview-shaped page at a syntactically valid
+  `dev.azure.com` pull-request URL.
+- Inject the ADO manifest scripts in production order and load its real CSS.
+- Mock repository resolution, connection data, PR metadata, head/base file
+  content, thread listing, and every thread mutation with a stateful in-process
+  ADO REST fixture. No live organization, cookie, PAT, or network is required.
+- Cover real Chromium layout and interaction for comment-button visibility,
+  source-line mapping, table anchoring, compose/Preview, create, reply,
+  resolve, edit, delete, thread badges, Changes, Threads, Outline, folding,
+  keyboard guards/navigation, collapsed header controls, dragging, and nested
+  scrolling.
+- Cover ADO-specific SPA behavior: a reused Preview container, native file-tree
+  cross-file thread navigation that preserves Preview, and rejection of a slow
+  stale source response after a rapid file switch.
+- Keep `npm run test:e2e` as the existing GitHub-only compatibility command;
+  add `test:e2e:ado` and `test:e2e:all`, and make `test:all` run Node plus both
+  browser targets.
+
+**Acceptance:** both browser suites are independently runnable and fully green;
+the combined command runs Node, GitHub Playwright, and ADO Playwright; failures
+retain a target-specific trace/screenshot; and the ADO tests perform no external
+network requests. Because this is developer infrastructure rather than a
+user-visible extension change, it does not receive a CHANGELOG entry.
+
+**Acceptance result:** the stateful REST fixture and 18 ADO Chromium scenarios
+cover the planned review surface, navigation, mutation, and SPA lifecycle paths.
+Full validation passed: 349 / 349 unit/static tests, 21 / 21 GitHub Playwright
+tests, and 18 / 18 ADO Playwright tests. No extension runtime files changed.
+
 ## 8. DOM adapter surface — what actually needs writing
 
 Per the audit from the previous session, the new work is:
@@ -384,9 +423,14 @@ The forward-scan matcher in `src/lib/textMatch.js` and `src/lib/lineMap.js` does
 Match FEATURES.md's convention:
 
 - **Unit tests** (Node:test, in `tests/`) — any adapter logic that's pure (URL parsing, response-shape normalization) gets tests. Naming: `tests/adoAdapter.test.js`, `tests/adoResponses.test.js`, etc.
-- **Playwright e2e** (in `tests/e2e/`) — capture ADO rich-diff HTML fixtures (§11 will provide the raw pages), test `+` button visibility, click behavior, line mapping. New fixtures in `tests/e2e/fixtures/ado-*.html`.
-- **`npm test:all`** stays the single command; preflight adds an `-Adapter ado` flag or runs both by default.
-- Don't add tests for the adapter's HTTP layer until §11.B settles auth — mocking the wrong shape wastes work.
+- **GitHub Playwright e2e** (in `tests/e2e/`) — `npm run test:e2e` or
+  `npm run test:e2e:github` runs the original GitHub-rich-diff fixtures.
+- **ADO Playwright e2e** (in `tests/e2e-ado/`) — `npm run test:e2e:ado`
+  injects the ADO target against ADO Preview fixtures and a stateful REST mock.
+- **`npm run test:e2e:all`** runs both browser targets; **`npm run test:all`**
+  remains the single full-validation command and runs Node plus both targets.
+- Browser fixtures never call a live GitHub or ADO service and need no account,
+  cookie, PAT, or other credential.
 
 ## 11. Open questions — probes to run before writing code
 

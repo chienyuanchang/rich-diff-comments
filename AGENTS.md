@@ -37,9 +37,11 @@ The repository is a monorepo with per-target extension folders sharing a single 
 
 ### Tests
 
-- `npm test` — 284 Node:test unit tests (~2s, no browser). Run before every commit touching JS.
-- `npm run test:e2e` — 20 Playwright tests in headless Chromium (~12s). Run when touching DOM-coupled code (`content.js`, `src/lib/lineMap.js`, `styles.css`).
-- `npm run test:all` — both suites.
+- `npm test` — 349 Node:test unit/static tests (~2s, no browser). Run before every commit touching JS.
+- `npm run test:e2e` / `npm run test:e2e:github` — 21 GitHub fixture tests in headless Chromium.
+- `npm run test:e2e:ado` — 18 ADO Preview + mocked REST fixture tests in headless Chromium.
+- `npm run test:e2e:all` — both browser targets.
+- `npm run test:all` — Node tests plus both browser targets.
 - Preflight (`.github/skills/rdc-publish-check/scripts/preflight.ps1`) runs `npm test` only — add `test:e2e` to your manual flow when DOM behavior changed.
 
 ### What ships vs. what stays local

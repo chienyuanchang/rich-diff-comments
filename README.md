@@ -80,24 +80,26 @@ docs/PUBLISHING.md     Store submission and release workflow
 
 ## Tests
 
-Two suites, both local — no live github.com calls.
+All suites are local — no live GitHub or Azure DevOps calls.
 
 ```bash
 npm install         # one-time: fetches jsdom + @playwright/test (devDeps only)
 npx playwright install chromium    # one-time: ~150 MB Chromium for e2e tests
 
-npm test            # 284 fast unit tests (Node:test + jsdom), ~2s
-npm run test:e2e    # 20 Playwright e2e tests in headless Chromium, ~12s
-npm run test:all    # both
+npm test                  # 349 fast unit/static tests (Node:test + jsdom), ~2s
+npm run test:e2e          # 21 GitHub Playwright fixtures
+npm run test:e2e:ado      # 18 ADO Preview + mocked REST Playwright fixtures
+npm run test:e2e:all      # both browser targets
+npm run test:all          # Node tests plus both browser targets
 ```
 
 **Unit tests** (`tests/*.test.js`) cover the pure helpers (line matching, response parsing, table arithmetic, code-block fence detection, anchor-key encoding) and DOM-coupled glue (per-file block→line mapping, `+`-button anchor selection, `styles.css` coverage).
 
-**E2E tests** (`tests/e2e/*.spec.js`) drive the extension end-to-end against captured rich-diff HTML fixtures — covers what jsdom can't: real CSS layout (is the `+` actually visible?), real `:hover` semantics, real keydown events. Catches the class of bug that passes unit tests but fails in a browser.
+**GitHub E2E tests** (`tests/e2e/*.spec.js`) drive the GitHub extension against captured rich-diff HTML fixtures. **ADO E2E tests** (`tests/e2e-ado/*.spec.js`) drive the separate ADO manifest against Preview-shaped fixtures and a stateful mocked ADO REST API. Both cover what jsdom cannot: real CSS layout, `:hover`, keyboard events, scrolling, and SPA timing.
 
 The extension itself ships zero runtime npm dependencies — `jsdom` and `@playwright/test` are devDependencies only. The published zip contains no `node_modules`, no `package.json`, no test files.
 
-The network layer (posting comments to GitHub) and drag-range tinting aren't unit-tested — they're covered by the [manual test checklist](docs/DEV_NOTES.md#manual-test-checklist).
+GitHub network mutations remain covered by the [manual test checklist](docs/DEV_NOTES.md#manual-test-checklist). The ADO fixture suite covers create, reply, status, edit, and delete requests without contacting a live organization.
 
 ## Packaging a release
 

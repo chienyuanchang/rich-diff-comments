@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>ADO PR Preview fixture</title>
+  <style>
+    html, body { height: 100%; margin: 0; font-family: "Segoe UI", sans-serif; }
+    .fixture-shell { display: flex; height: 100%; background: #f3f2f1; }
+    .fixture-tree { width: 220px; padding: 12px 8px; background: #fff; border-right: 1px solid #ddd; }
+    .bolt-tree-row { min-height: 32px; display: flex; align-items: center; cursor: pointer; border-radius: 3px; }
+    .bolt-tree-row:hover, .bolt-tree-row.fixture-active { background: #deecf9; }
+    .bolt-tree-cell, .bolt-table-cell-content { width: 100%; }
+    .bolt-table-cell-content { padding: 6px 10px; }
+    .repos-changes-viewer { flex: 1; min-width: 0; padding: 12px; }
+    .bolt-card { height: calc(100vh - 24px); background: #fff; border: 1px solid #ddd; }
+    .fixture-toolbar { height: 40px; display: flex; align-items: center; justify-content: flex-end; padding: 0 12px; border-bottom: 1px solid #ddd; }
+    .bolt-split-button { display: inline-flex; }
+    .bolt-split-button button { height: 28px; }
+    #preview-scroll { height: calc(100% - 41px); overflow-y: auto; overflow-x: hidden; }
+     /* Real ADO layouts leave a reading column beside the floating sidebar.
+       Keep that separation here so actionability failures indicate a product
+       regression rather than the deliberately stripped fixture geometry. */
+     .markdown-preview-container { box-sizing: border-box; max-width: 560px; min-height: 1500px; padding: 24px 48px 300px 48px; }
+    .markdown-preview-container h2 { margin-top: 240px; }
+    .markdown-preview-container h1 { margin-top: 12px; }
+    .markdown-preview-container p, .markdown-preview-container li { line-height: 24px; }
+    .markdown-preview-container pre { box-sizing: border-box; padding: 12px; line-height: 20px; background: #f5f5f5; }
+    .markdown-preview-container pre span { display: block; height: 20px; }
+    .markdown-preview-container table { border-collapse: collapse; }
+    .markdown-preview-container th, .markdown-preview-container td { min-width: 120px; padding: 8px; border: 1px solid #ccc; }
+  </style>
+</head>
+<body>
+  <div class="fixture-shell">
+    <nav class="fixture-tree" aria-label="Changed files">
+      <div id="tree-design" class="bolt-tree-row fixture-active" role="treeitem" aria-label="docs/design.md" data-path="/docs/design.md">
+        <div class="bolt-tree-cell"><div class="bolt-table-cell-content">design.md</div></div>
+      </div>
+      <div id="tree-other" class="bolt-tree-row" role="treeitem" aria-label="docs/other.md" data-path="/docs/other.md">
+        <div class="bolt-tree-cell"><div class="bolt-table-cell-content">other.md</div></div>
+      </div>
+    </nav>
+
+    <main class="repos-changes-viewer">
+      <section class="bolt-card">
+        <div class="fixture-toolbar">
+          <div class="bolt-split-button" role="group" aria-label="File view mode">
+            <button type="button" class="fixture-view-mode">Preview</button>
+            <button type="button" class="bolt-split-button-option" aria-label="View options" aria-haspopup="true">▾</button>
+          </div>
+        </div>
+        <div id="preview-scroll">
+          <div id="ado-preview" class="markdown-content markdown-editor-preview flex-grow markdown-preview-container scroll-hidden markdown-preview-checkbox-indent" data-fixture-preview="stable"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      const fragments = {
+        '/docs/design.md': [
+          '<h1 id="user-content-design-review">Design Review<a class="shareHeaderAnchor" href="#design-review"></a></h1>',
+          '<p>This document explains the queue worker.</p>',
+          '<h2 id="user-content-architecture">Architecture<a class="shareHeaderAnchor" href="#architecture"></a></h2>',
+          '<p>The worker uses a durable queue.</p>',
+          '<ul><li>Retry failed work</li><li>Emit delivery metrics</li></ul>',
+          '<h2 id="user-content-implementation">Implementation<a class="shareHeaderAnchor" href="#implementation"></a></h2>',
+          '<p>The worker starts with three attempts.</p>',
+          '<pre><code><span>const retries = 3;</span><span>enqueue(job);</span></code></pre>',
+          '<h2 id="user-content-ownership">Ownership<a class="shareHeaderAnchor" href="#ownership"></a></h2>',
+          '<table><thead><tr><th>Area</th><th>Owner</th></tr></thead><tbody><tr><td>API</td><td>Platform</td></tr><tr><td>UI</td><td>Experience</td></tr></tbody></table>'
+        ].join(''),
+        '/docs/other.md': [
+          '<h1 id="user-content-other-document">Other Document<a class="shareHeaderAnchor" href="#other-document"></a></h1>',
+          '<p>Cross-file review target.</p>',
+          '<h2 id="user-content-notes">Notes<a class="shareHeaderAnchor" href="#notes"></a></h2>',
+          '<p>This page proves Preview-preserving navigation.</p>'
+        ].join('')
+      };
+
+      const preview = document.getElementById('ado-preview');
+      const rows = Array.from(document.querySelectorAll('.bolt-tree-row[data-path]'));
+
+      function openPath(path) {
+        if (!fragments[path]) throw new Error('Unknown fixture path: ' + path);
+        history.pushState({}, '', location.pathname + '?_a=files&path=' + encodeURIComponent(path));
+        preview.innerHTML = fragments[path];
+        rows.forEach((row) => row.classList.toggle('fixture-active', row.dataset.path === path));
+        document.querySelector('.fixture-view-mode').textContent = 'Preview';
+        document.getElementById('preview-scroll').scrollTop = 0;
+      }
+
+      rows.forEach((row) => row.addEventListener('click', () => openPath(row.dataset.path)));
+      window.__ADO_FIXTURE__ = { fragments, openPath, preview };
+
+      const initialPath = new URLSearchParams(location.search).get('path') || '/docs/design.md';
+      openPath(initialPath);
+    })();
+  </script>
+</body>
+</html>

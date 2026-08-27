@@ -7,7 +7,10 @@
   "scripts": {
     "test": "node --test tests/*.test.js",
     "test:e2e": "playwright test",
-    "test:all": "npm test && npm run test:e2e"
+    "test:e2e:github": "playwright test",
+    "test:e2e:ado": "playwright test --config=playwright.ado.config.js",
+    "test:e2e:all": "npm run test:e2e:github && npm run test:e2e:ado",
+    "test:all": "npm test && npm run test:e2e:all"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

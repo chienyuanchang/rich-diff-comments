@@ -113,10 +113,16 @@
    * The PR source branch (stripped of the refs/heads/ prefix). Cached on
    * the ctx object because it's stable across file switches.
    */
+  let _pullRequestPromise = null;
   let _sourceBranchPromise = null;
+  function getPullRequestMetadata() {
+    if (!_pullRequestPromise) _pullRequestPromise = adapter.getPullRequest(ctx);
+    return _pullRequestPromise;
+  }
+
   function getSourceBranch() {
     if (!_sourceBranchPromise) {
-      _sourceBranchPromise = adapter.getPullRequest(ctx).then(pr => {
+      _sourceBranchPromise = getPullRequestMetadata().then(pr => {
         const branch = (pr.sourceRefName || '').replace(/^refs\/heads\//, '');
         if (!branch) throw new Error('Could not derive source branch from PR');
         return branch;
@@ -125,18 +131,47 @@
     return _sourceBranchPromise;
   }
 
+  let _targetVersionPromise = null;
+  function getTargetVersion() {
+    if (!_targetVersionPromise) {
+      _targetVersionPromise = getPullRequestMetadata().then((pr) => {
+        const commit = pr.lastMergeTargetCommit && pr.lastMergeTargetCommit.commitId;
+        if (commit) return { version: commit, versionType: 'commit' };
+        const branch = (pr.targetRefName || '').replace(/^refs\/heads\//, '');
+        if (!branch) throw new Error('Could not derive target version from PR');
+        return { version: branch, versionType: 'branch' };
+      });
+    }
+    return _targetVersionPromise;
+  }
+
+  async function getBaseFileSource(filePath) {
+    await adapter.resolveIds(ctx);
+    const version = await getTargetVersion();
+    try {
+      return await adapter.getFileSource(ctx, filePath, version);
+    } catch (err) {
+      // The current path does not exist in the target commit: treat it as a
+      // newly added file so every mapped rendered block becomes an addition.
+      if (err && err.status === 404) {
+        console.info(`${LOG} Changes: ${filePath} is absent from the target commit; treating it as a new file`);
+        return '';
+      }
+      throw err;
+    }
+  }
+
   /**
-   * Fetch + line-map the current file. Returns Map<Element, {path, line}>.
-   * Also caches the raw source string so downstream helpers
-   * (`wireCodeBlockLineTracking`, `refreshThreadBadges`) can look up
-   * fence ranges via `GRDC.findFenceRangeAroundLine`.
+  * Fetch + line-map the current file. Returns
+  * `{map: Map<Element, {path, line}>, source}`. The caller publishes the
+  * source only after confirming this async result still belongs to the active
+  * SPA route, preventing a slow prior-file fetch from overwriting state.
    */
   async function buildFileLineMap(container, filePath) {
     await adapter.resolveIds(ctx);
     const branch = await getSourceBranch();
     const source = await adapter.getFileSource(ctx, filePath, { version: branch, versionType: 'branch' });
     const sourceLines = source.split('\n');
-    currentSource = source;
 
     const GRDC = window.GRDC || {};
     const { mapBlocksToSourceLines, buildSourceIndex, findTextInSource, findFrontmatterRange, computeTableRowLine } = GRDC;
@@ -144,13 +179,14 @@
       throw new Error('window.GRDC.mapBlocksToSourceLines missing — check manifest content_scripts.js order');
     }
 
-    return mapBlocksToSourceLines(
+    const map = mapBlocksToSourceLines(
       container,
       sourceLines,
       filePath,
       { buildSourceIndex, findTextInSource, findFrontmatterRange, computeTableRowLine },
       console.log.bind(console)
     );
+    return { map, source };
   }
 
   // ── + button attachment ──────────────────────────────────────────────
@@ -551,6 +587,7 @@
 
   // Cached per-file so we can rebuild badges without re-running lineMap.
   let currentLineToBlock = new Map();
+  let currentBlockInfo = new Map();
   let currentFilePathCached = null;
   // Raw source string for the current file. Cached by buildFileLineMap
   // so `wireCodeBlockLineTracking` can look up fence ranges via
@@ -1403,6 +1440,11 @@
   let sidebarState = null;
   let sidebarThreadItems = [];
   let sidebarActiveThreadId = null;
+  let sidebarChangeStops = [];
+  let sidebarActiveChangeIndex = -1;
+  let sidebarChangesStatus = 'idle'; // idle | loading | ready | error
+  let sidebarChangesError = '';
+  let changesGeneration = 0;
   let sidebarResizeObserver = null;
   let sidebarResizeTimer = null;
   // Alias retained for the established Outline row renderer. It points to
@@ -1471,7 +1513,7 @@
     return {
       visible: true,
       collapsed: false,
-      tab: 'threads',
+      tab: 'changes',
       unresolvedOnly: false,
       left: null,
       top: 80,
@@ -1486,7 +1528,9 @@
       const raw = localStorage.getItem(SIDEBAR_STORAGE_KEY);
       const parsed = raw ? JSON.parse(raw) : {};
       const next = Object.assign(defaults, parsed || {});
-      if (next.tab !== 'threads' && next.tab !== 'outline') next.tab = 'threads';
+      if (next.tab !== 'changes' && next.tab !== 'threads' && next.tab !== 'outline') {
+        next.tab = 'changes';
+      }
       const GRDC = window.GRDC || {};
       if (typeof GRDC.clampSize === 'function') {
         const size = GRDC.clampSize(
@@ -1535,19 +1579,96 @@
     });
   }
 
+  let lastScrollNavigation = null;
+
+  function describeElement(el) {
+    if (!el) return null;
+    if (el === window) return 'window';
+    const tag = (el.tagName || '').toLowerCase();
+    const id = el.id ? `#${el.id}` : '';
+    const classes = typeof el.className === 'string' && el.className.trim()
+      ? '.' + el.className.trim().replace(/\s+/g, '.')
+      : '';
+    return `${tag}${id}${classes}`;
+  }
+
+  function readScrollerTop(scroller) {
+    return scroller === window ? window.scrollY : scroller.scrollTop;
+  }
+
+  /**
+   * Scroll a target into view across ADO's nested scroll containers.
+   *
+   * ADO can place Preview under more than one overflow ancestor. Computing a
+   * `scrollTop` for only the nearest inferred container works in some files
+   * but does nothing in others. Native `scrollIntoView` walks every required
+   * ancestor. A temporary `scroll-margin-top` preserves the sticky-header
+   * offset. If smooth scrolling has not moved either the target or inferred
+   * scroller after two animation frames, retry immediately with `auto`.
+   */
   function scrollToWithStickyOffset(el) {
-    if (!el) return;
-    const container = getOutlineScrollContainer();
-    if (container === window) {
-      const top = window.scrollY + el.getBoundingClientRect().top - OUTLINE_STICKY_OFFSET;
-      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
-      return;
-    }
-    // Element-scroll: convert viewport-relative rects to container-relative.
-    const cRect = container.getBoundingClientRect();
-    const eRect = el.getBoundingClientRect();
-    const top = container.scrollTop + (eRect.top - cRect.top) - OUTLINE_STICKY_OFFSET;
-    container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    if (!el || !el.isConnected) return false;
+    const scroller = getOutlineScrollContainer();
+    const beforeRect = el.getBoundingClientRect();
+    const beforeScrollTop = readScrollerTop(scroller);
+    const priorMargin = el.style.scrollMarginTop;
+    el.style.scrollMarginTop = OUTLINE_STICKY_OFFSET + 'px';
+
+    lastScrollNavigation = {
+      target: describeElement(el),
+      scroller: describeElement(scroller),
+      before: { top: beforeRect.top, width: beforeRect.width, height: beforeRect.height, scrollTop: beforeScrollTop },
+      fallbackUsed: false,
+      after: null
+    };
+
+    const invoke = (behavior) => {
+      if (typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ behavior, block: 'start', inline: 'nearest' });
+      } else if (scroller === window) {
+        window.scrollTo({
+          top: Math.max(0, window.scrollY + el.getBoundingClientRect().top - OUTLINE_STICKY_OFFSET),
+          behavior
+        });
+      } else {
+        const cRect = scroller.getBoundingClientRect();
+        const eRect = el.getBoundingClientRect();
+        scroller.scrollTo({
+          top: Math.max(0, scroller.scrollTop + eRect.top - cRect.top - OUTLINE_STICKY_OFFSET),
+          behavior
+        });
+      }
+    };
+
+    invoke('smooth');
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (!el.isConnected) return;
+      const interimRect = el.getBoundingClientRect();
+      const interimScrollTop = readScrollerTop(scroller);
+      const moved =
+        Math.abs(interimRect.top - beforeRect.top) > 1 ||
+        Math.abs(interimScrollTop - beforeScrollTop) > 1;
+      if (!moved && Math.abs(interimRect.top - OUTLINE_STICKY_OFFSET) > 8) {
+        lastScrollNavigation.fallbackUsed = true;
+        invoke('auto');
+      }
+    }));
+
+    setTimeout(() => {
+      if (el.isConnected && lastScrollNavigation) {
+        const rect = el.getBoundingClientRect();
+        lastScrollNavigation.after = {
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+          scrollTop: readScrollerTop(scroller)
+        };
+      }
+      if (el.style.scrollMarginTop === OUTLINE_STICKY_OFFSET + 'px') {
+        el.style.scrollMarginTop = priorMargin;
+      }
+    }, 1000);
+    return true;
   }
 
   function clampSidebarPosition(left, top, width) {
@@ -1622,6 +1743,7 @@
       '<div class="adrc-sidebar-header">',
       '  <button type="button" class="adrc-sidebar-icon adrc-sidebar-collapse" aria-label="Collapse sidebar"></button>',
       '  <div class="adrc-sidebar-tabs" role="tablist">',
+      '    <button type="button" class="adrc-sidebar-tab" data-tab="changes" role="tab">Changes <span class="adrc-sidebar-tab-count" data-count="changes">0</span></button>',
       '    <button type="button" class="adrc-sidebar-tab" data-tab="threads" role="tab">Threads <span class="adrc-sidebar-tab-count" data-count="threads">0</span></button>',
       '    <button type="button" class="adrc-sidebar-tab" data-tab="outline" role="tab">Outline <span class="adrc-sidebar-tab-count" data-count="outline">0</span></button>',
       '  </div>',
@@ -1631,6 +1753,10 @@
       '  <button type="button" class="adrc-sidebar-icon adrc-sidebar-hide" aria-label="Hide sidebar" title="Hide sidebar">\u00d7</button>',
       '</div>',
       '<div class="adrc-sidebar-body">',
+      '  <section class="adrc-sidebar-pane adrc-sidebar-pane-changes" data-pane="changes" role="tabpanel">',
+      '    <div class="adrc-sidebar-pane-header"><span class="adrc-sidebar-pane-title">Changed blocks</span><span class="adrc-sidebar-changes-summary"></span></div>',
+      '    <div class="adrc-sidebar-change-list"></div>',
+      '  </section>',
       '  <section class="adrc-sidebar-pane adrc-sidebar-pane-threads" data-pane="threads" role="tabpanel">',
       '    <div class="adrc-sidebar-pane-header"><span class="adrc-sidebar-pane-title">Pull request threads</span><span class="adrc-sidebar-pane-summary"></span></div>',
       '    <div class="adrc-sidebar-thread-list"></div>',
@@ -1718,26 +1844,32 @@
 
   function wireSidebarResize(panel) {
     if (typeof ResizeObserver === 'undefined') return;
-    sidebarResizeObserver = new ResizeObserver(() => {
-      if (!sidebarState || sidebarState.collapsed || sidebarState.visible === false) return;
-      clearTimeout(sidebarResizeTimer);
-      sidebarResizeTimer = setTimeout(() => {
-        const rect = panel.getBoundingClientRect();
-        const GRDC = window.GRDC || {};
-        const size = typeof GRDC.clampSize === 'function'
-          ? GRDC.clampSize(rect.width, rect.height, SIDEBAR_MIN_WIDTH, SIDEBAR_MIN_HEIGHT)
-          : { width: rect.width, height: rect.height };
-        if (size.width && size.height) {
-          saveSidebarState({ width: size.width, height: size.height });
-        }
-      }, 150);
-    });
-    sidebarResizeObserver.observe(panel);
+    try {
+      sidebarResizeObserver = new ResizeObserver(() => {
+        if (!sidebarState || sidebarState.collapsed || sidebarState.visible === false) return;
+        clearTimeout(sidebarResizeTimer);
+        sidebarResizeTimer = setTimeout(() => {
+          const rect = panel.getBoundingClientRect();
+          const GRDC = window.GRDC || {};
+          const size = typeof GRDC.clampSize === 'function'
+            ? GRDC.clampSize(rect.width, rect.height, SIDEBAR_MIN_WIDTH, SIDEBAR_MIN_HEIGHT)
+            : { width: rect.width, height: rect.height };
+          if (size.width && size.height) {
+            saveSidebarState({ width: size.width, height: size.height });
+          }
+          updateActiveOutline();
+          updateActiveSidebarChange();
+        }, 150);
+      });
+      sidebarResizeObserver.observe(panel);
+    } catch (err) {
+      console.warn(`${LOG} ResizeObserver unavailable; sidebar resize persistence disabled:`, err);
+    }
   }
 
   function setSidebarTab(tab, persist) {
     if (!sidebarPanel) return;
-    const target = tab === 'outline' ? 'outline' : 'threads';
+    const target = tab === 'outline' ? 'outline' : tab === 'threads' ? 'threads' : 'changes';
     sidebarState.tab = target;
     if (persist !== false) saveSidebarState({ tab: target });
     sidebarPanel.querySelectorAll('.adrc-sidebar-tab').forEach((button) => {
@@ -1753,9 +1885,12 @@
     if (target === 'outline') {
       refreshOutline();
       updateActiveOutline();
-    } else {
+    } else if (target === 'threads') {
       renderThreadsSidebar();
       updateActiveSidebarThread();
+    } else {
+      renderChangesSidebar();
+      updateActiveSidebarChange();
     }
   }
 
@@ -1764,7 +1899,9 @@
     saveSidebarState({
       visible: true,
       collapsed: false,
-      tab: tab === 'outline' ? 'outline' : (tab === 'threads' ? 'threads' : sidebarState.tab)
+      tab: tab === 'outline' || tab === 'threads' || tab === 'changes'
+        ? tab
+        : sidebarState.tab
     });
     applySidebarState();
   }
@@ -2339,6 +2476,272 @@
     return getAdoFileTreeCandidates(path)[0] || null;
   }
 
+  function getMappedBlocksForChanges() {
+    const out = [];
+    currentBlockInfo.forEach((info, block) => {
+      if (!block || !info || !Number.isFinite(info.line)) return;
+      const entry = { block, line: info.line };
+      if (block.tagName === 'PRE') {
+        const rangeEnd = parseInt(block.dataset.adrcRangeEnd, 10);
+        if (Number.isFinite(rangeEnd) && rangeEnd >= info.line) entry.endLine = rangeEnd;
+      }
+      out.push(entry);
+    });
+    return out;
+  }
+
+  async function refreshChangesSidebar(filePath, routeKey, initVersion) {
+    const requestVersion = ++changesGeneration;
+    sidebarChangesStatus = 'loading';
+    sidebarChangesError = '';
+    sidebarChangeStops = [];
+    sidebarActiveChangeIndex = -1;
+    renderChangesSidebar();
+
+    try {
+      const baseSource = await getBaseFileSource(filePath);
+      const stillCurrent =
+        requestVersion === changesGeneration &&
+        initVersion === initGeneration &&
+        routeKey === currentPreviewRouteKeyCached &&
+        filePath === currentFilePathCached &&
+        typeof currentSource === 'string';
+      if (!stillCurrent) return;
+
+      const GRDC = window.GRDC || {};
+      if (typeof GRDC.diffLineHunks !== 'function' ||
+          typeof GRDC.mapDiffHunksToBlocks !== 'function') {
+        throw new Error('Changes helpers are unavailable — check ADO manifest script order');
+      }
+      const hunks = GRDC.diffLineHunks(baseSource, currentSource);
+      const headLineCount = typeof GRDC.splitSourceLines === 'function'
+        ? GRDC.splitSourceLines(currentSource).length
+        : currentSource.split(/\r?\n/).length;
+      sidebarChangeStops = GRDC.mapDiffHunksToBlocks(
+        hunks,
+        getMappedBlocksForChanges(),
+        headLineCount
+      );
+      sidebarChangesStatus = 'ready';
+      sidebarActiveChangeIndex = sidebarChangeStops.length > 0 ? 0 : -1;
+      renderChangesSidebar();
+      updateActiveSidebarChange();
+      console.log(`${LOG} Changes: ${sidebarChangeStops.length} rendered block${sidebarChangeStops.length === 1 ? '' : 's'} from ${hunks.length} source hunk${hunks.length === 1 ? '' : 's'} in ${filePath}`);
+    } catch (err) {
+      if (requestVersion !== changesGeneration || initVersion !== initGeneration) return;
+      sidebarChangesStatus = 'error';
+      sidebarChangesError = String(err && (err.message || err)).slice(0, 200);
+      sidebarChangeStops = [];
+      sidebarActiveChangeIndex = -1;
+      renderChangesSidebar();
+      console.warn(`${LOG} Changes unavailable for ${filePath}:`, err);
+    }
+  }
+
+  function changeKindGlyph(kind) {
+    if (kind === 'added') return '+';
+    if (kind === 'removed') return '\u2212';
+    return '\u00b1';
+  }
+
+  function buildSidebarChangeSnippet(stop) {
+    const GRDC = window.GRDC || {};
+    let snippet = '';
+    if (stop.kind !== 'removed' && typeof GRDC.buildChangeSnippet === 'function') {
+      snippet = GRDC.buildChangeSnippet(stop.block, 90);
+    }
+    if (!snippet) {
+      const lines = stop.kind === 'removed' ? stop.baseLines : stop.headLines;
+      const raw = (Array.isArray(lines) ? lines : []).join(' ');
+      snippet = typeof GRDC.buildSnippet === 'function'
+        ? GRDC.buildSnippet(raw, 90)
+        : raw.replace(/\s+/g, ' ').trim().slice(0, 90);
+    }
+    return snippet || '(No visible text)';
+  }
+
+  function renderChangesSidebar() {
+    if (!sidebarPanel) return;
+    const list = sidebarPanel.querySelector('.adrc-sidebar-change-list');
+    if (!list) return;
+    list.innerHTML = '';
+    const count = sidebarPanel.querySelector('[data-count="changes"]');
+    if (count) count.textContent = String(sidebarChangeStops.length);
+    const summary = sidebarPanel.querySelector('.adrc-sidebar-changes-summary');
+    if (summary) {
+      if (sidebarChangesStatus === 'loading') summary.textContent = 'Comparing\u2026';
+      else if (sidebarChangesStatus === 'error') summary.textContent = 'Unavailable';
+      else summary.textContent = sidebarChangeStops.length === 1
+        ? '1 changed block'
+        : `${sidebarChangeStops.length} changed blocks`;
+    }
+
+    if (sidebarChangesStatus === 'loading') {
+      const loading = document.createElement('div');
+      loading.className = 'adrc-sidebar-empty';
+      loading.textContent = 'Comparing target and source\u2026';
+      list.appendChild(loading);
+      return;
+    }
+    if (sidebarChangesStatus === 'error') {
+      const error = document.createElement('div');
+      error.className = 'adrc-sidebar-empty adrc-sidebar-changes-error';
+      error.textContent = `Changes unavailable: ${sidebarChangesError}`;
+      list.appendChild(error);
+      return;
+    }
+    if (sidebarChangeStops.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'adrc-sidebar-empty';
+      empty.textContent = sidebarChangesStatus === 'idle'
+        ? 'Open a Markdown file in Preview to compare changes.'
+        : 'No source changes in this file.';
+      list.appendChild(empty);
+      return;
+    }
+
+    const GRDC = window.GRDC || {};
+    sidebarChangeStops.forEach((stop, index) => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = `adrc-sidebar-change-card adrc-sidebar-change-${stop.kind}`;
+      card.dataset.changeIndex = String(index);
+
+      const top = document.createElement('span');
+      top.className = 'adrc-sidebar-change-top';
+      const glyph = document.createElement('span');
+      glyph.className = 'adrc-sidebar-change-kind';
+      glyph.textContent = changeKindGlyph(stop.kind);
+      glyph.title = stop.kind === 'mixed' ? 'Modified' : stop.kind[0].toUpperCase() + stop.kind.slice(1);
+      const location = document.createElement('span');
+      location.className = 'adrc-sidebar-change-location';
+      const range = typeof GRDC.formatLineRange === 'function'
+        ? GRDC.formatLineRange(stop.line, stop.endLine)
+        : `line ${stop.line}`;
+      location.textContent = `${currentFilePathCached || currentFilePath()} \u00b7 ${range}`;
+      top.append(glyph, location);
+
+      const snippet = document.createElement('span');
+      snippet.className = 'adrc-sidebar-change-snippet';
+      snippet.textContent = buildSidebarChangeSnippet(stop);
+      card.append(top, snippet);
+      card.addEventListener('click', () => navigateToSidebarChange(index));
+      list.appendChild(card);
+    });
+    setActiveSidebarChange(sidebarActiveChangeIndex, false);
+  }
+
+  function setActiveSidebarChange(index, ensureVisible) {
+    if (!Number.isFinite(index) || index < 0 || index >= sidebarChangeStops.length) {
+      sidebarActiveChangeIndex = -1;
+    } else {
+      sidebarActiveChangeIndex = index;
+    }
+    if (!sidebarPanel) return;
+    sidebarPanel.querySelectorAll('.adrc-sidebar-change-card.adrc-sidebar-change-active')
+      .forEach((card) => card.classList.remove('adrc-sidebar-change-active'));
+    if (sidebarActiveChangeIndex < 0) return;
+    const card = sidebarPanel.querySelector(
+      `.adrc-sidebar-change-card[data-change-index="${sidebarActiveChangeIndex}"]`
+    );
+    if (!card) return;
+    card.classList.add('adrc-sidebar-change-active');
+    if (ensureVisible && sidebarState?.tab === 'changes') {
+      const list = sidebarPanel.querySelector('.adrc-sidebar-change-list');
+      const cardRect = card.getBoundingClientRect();
+      const listRect = list && list.getBoundingClientRect();
+      if (list && listRect) {
+        if (cardRect.top < listRect.top) list.scrollTop -= listRect.top - cardRect.top;
+        else if (cardRect.bottom > listRect.bottom) list.scrollTop += cardRect.bottom - listRect.bottom;
+      }
+    }
+  }
+
+  function sectionContainsBlock(heading, block) {
+    return sectionRoots(heading).some((root) =>
+      root === block || (root.contains && root.contains(block))
+    );
+  }
+
+  /**
+   * A mapped changed block can still be invisible because one or more
+   * heading sections are folded. Expand every containing fold from outer to
+   * inner before measuring geometry; otherwise getBoundingClientRect() is
+   * zero and the scroll appears to do nothing.
+   */
+  function revealChangedBlock(block) {
+    if (!block || !block.isConnected) return false;
+    const preview = getCurrentPreviewContainer();
+    if (!preview) return false;
+    const collapsed = Array.from(
+      preview.querySelectorAll('h1.adrc-section-collapsed, h2.adrc-section-collapsed, h3.adrc-section-collapsed, h4.adrc-section-collapsed, h5.adrc-section-collapsed, h6.adrc-section-collapsed')
+    );
+    collapsed.forEach((heading) => {
+      if (!sectionContainsBlock(heading, block)) return;
+      collapsedHeadings.delete(heading);
+      const toggle = ensureCollapseToggle(heading);
+      if (toggle) applyCollapseVisuals(heading, toggle, false);
+    });
+    const style = getComputedStyle(block);
+    const rect = block.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+  }
+
+  function resolveCurrentChangeBlock(stop) {
+    if (!stop) return null;
+    // Exact source-line lookup is the strongest signal and is refreshed on
+    // every route-aware Preview init. It also resolves interior code lines to
+    // their shared <pre> host.
+    const exact = currentLineToBlock.get(stop.line);
+    if (exact && exact.isConnected && getCurrentPreviewContainer()?.contains(exact)) return exact;
+    if (stop.block && stop.block.isConnected && getCurrentPreviewContainer()?.contains(stop.block)) {
+      return stop.block;
+    }
+    return null;
+  }
+
+  function navigateToSidebarChange(index) {
+    const stop = sidebarChangeStops[index];
+    const block = resolveCurrentChangeBlock(stop);
+    if (!block) {
+      schedulePreviewInit(50);
+      showErrorToast('This changed block is no longer in the active Preview.');
+      return;
+    }
+    stop.block = block;
+    if (!revealChangedBlock(block)) {
+      showErrorToast('This changed block is currently hidden in the rendered Preview.');
+      return;
+    }
+    setActiveSidebarChange(index, true);
+    scrollToWithStickyOffset(block);
+    const GRDC = window.GRDC || {};
+    const host = (typeof GRDC.buttonAnchor === 'function' ? GRDC.buttonAnchor(block) : block) || block;
+    host.classList.remove('adrc-change-target-pulse');
+    // Restart animation even when the same card is clicked repeatedly.
+    void host.offsetWidth;
+    host.classList.add('adrc-change-target-pulse');
+    setTimeout(() => host.classList.remove('adrc-change-target-pulse'), 1400);
+  }
+
+  function updateActiveSidebarChange() {
+    if (!sidebarPanel || sidebarState?.visible === false || sidebarState?.collapsed ||
+        sidebarState?.tab !== 'changes' || sidebarChangeStops.length === 0) return;
+    const scroller = getOutlineScrollContainer();
+    const activeLine = (scroller === window ? 0 : scroller.getBoundingClientRect().top) + OUTLINE_ACTIVE_OFFSET;
+    let bestIndex = 0;
+    let bestY = -Infinity;
+    sidebarChangeStops.forEach((stop, index) => {
+      if (!stop.block || !stop.block.isConnected) return;
+      const y = stop.block.getBoundingClientRect().top;
+      if (y <= activeLine && y > bestY) {
+        bestIndex = index;
+        bestY = y;
+      }
+    });
+    setActiveSidebarChange(bestIndex, true);
+  }
+
   function renderOutlineRows() {
     if (!outlinePanel) return;
     const body = outlinePanel.querySelector('.adrc-outline-body');
@@ -2427,6 +2830,7 @@
     outlineScrollRaf = requestAnimationFrame(() => {
       updateActiveOutline();
       updateActiveSidebarThread();
+      updateActiveSidebarChange();
     });
   }
 
@@ -2536,13 +2940,20 @@
     currentPreviewRouteKeyCached = routeKey;
     currentFilePathCached = null;
     currentLineToBlock = new Map();
+    currentBlockInfo = new Map();
     currentSource = null;
     collapsedHeadings = new WeakSet();
     outlineHeadings = [];
     outlineActiveId = null;
     sidebarActiveThreadId = null;
+    changesGeneration++;
+    sidebarChangeStops = [];
+    sidebarActiveChangeIndex = -1;
+    sidebarChangesStatus = 'idle';
+    sidebarChangesError = '';
     renderOutlineRows();
     renderThreadsSidebar();
+    renderChangesSidebar();
 
     if (container) {
       delete container.dataset.adrcInitialized;
@@ -2600,7 +3011,7 @@
     initInFlight = { container, routeKey, generation };
     container.dataset.adrcInitializing = routeKey;
     try {
-      const map = await buildFileLineMap(container, filePath);
+      const { map, source } = await buildFileLineMap(container, filePath);
 
       // Ignore stale async work if the user switched files while source or
       // PR metadata was being fetched. Also reject maps whose DOM elements
@@ -2617,6 +3028,8 @@
       }
 
       let attached = 0;
+      currentSource = source;
+      currentBlockInfo = new Map(map);
       currentLineToBlock = new Map();
       currentFilePathCached = filePath;
       map.forEach((info, block) => {
@@ -2653,6 +3066,7 @@
       buildSidebarPanel();
       refreshOutline();
       renderThreadsSidebar();
+      refreshChangesSidebar(filePath, routeKey, generation);
       // Fire-and-forget — thread badge rendering shouldn't block the +
       // buttons showing up, and any error is already logged.
       refreshThreadBadges();
@@ -2811,7 +3225,7 @@
       if (!container) {
         throw new Error('probe.detectLines: no .markdown-preview-container in the DOM — switch the file to "Preview" mode');
       }
-      const map = await buildFileLineMap(container, filePath);
+      const { map } = await buildFileLineMap(container, filePath);
       const summary = [];
       map.forEach((info, el) => {
         summary.push({ tag: el.tagName, line: info.line, snippet: (el.textContent || '').trim().slice(0, 60) });
@@ -2870,8 +3284,41 @@
         threadCount: sidebarThreadItems.length,
         visibleThreadCount: getVisibleSidebarThreads().length,
         activeThreadId: sidebarActiveThreadId,
+        changesStatus: sidebarChangesStatus,
+        changeCount: sidebarChangeStops.length,
+        activeChangeIndex: sidebarActiveChangeIndex,
         outlineCount: outlineHeadings.length,
         currentFile: currentFilePathCached
+      };
+    },
+
+    changes(index) {
+      if (Number.isFinite(index)) navigateToSidebarChange(index);
+      return {
+        filePath: currentFilePathCached,
+        status: sidebarChangesStatus,
+        error: sidebarChangesError || null,
+        activeIndex: sidebarActiveChangeIndex,
+        lastScroll: lastScrollNavigation ? Object.assign({}, lastScrollNavigation) : null,
+        stops: sidebarChangeStops.map((stop, stopIndex) => {
+          const block = resolveCurrentChangeBlock(stop);
+          const rect = block ? block.getBoundingClientRect() : null;
+          return {
+            index: stopIndex,
+            kind: stop.kind,
+            line: stop.line,
+            endLine: stop.endLine,
+            snippet: buildSidebarChangeSnippet(stop),
+            tag: block ? block.tagName : null,
+            display: block ? getComputedStyle(block).display : null,
+            rect: rect ? { top: rect.top, width: rect.width, height: rect.height } : null,
+            collapsed: !!(block && (
+              block.classList.contains('adrc-collapsed-hidden') ||
+              block.closest('.adrc-collapsed-hidden')
+            )),
+            connected: !!(block && block.isConnected)
+          };
+        })
       };
     },
 

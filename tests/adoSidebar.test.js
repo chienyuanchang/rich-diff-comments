@@ -19,22 +19,73 @@ function ruleBody(selector) {
   return match ? match[1] : '';
 }
 
-test('ADO manifest loads shared sidebar helpers before content.js', () => {
+test('ADO manifest loads shared sidebar and Changes helpers before content.js', () => {
   const scripts = manifest.content_scripts[0].js;
-  const helperIndex = scripts.indexOf('src/lib/sidebar.js');
+  const sidebarIndex = scripts.indexOf('src/lib/sidebar.js');
+  const changesIndex = scripts.indexOf('src/lib/changes.js');
   const contentIndex = scripts.indexOf('content.js');
-  assert.ok(helperIndex >= 0, 'Expected src/lib/sidebar.js in ADO manifest');
+  assert.ok(sidebarIndex >= 0, 'Expected src/lib/sidebar.js in ADO manifest');
+  assert.ok(changesIndex >= 0, 'Expected src/lib/changes.js in ADO manifest');
   assert.ok(contentIndex >= 0, 'Expected content.js in ADO manifest');
-  assert.ok(helperIndex < contentIndex, 'Sidebar helpers must load before content.js');
+  assert.ok(sidebarIndex < contentIndex, 'Sidebar helpers must load before content.js');
+  assert.ok(changesIndex < contentIndex, 'Changes helpers must load before content.js');
 });
 
-test('ADO sidebar renders Threads and Outline tabs with separate scoped panes', () => {
+test('ADO sidebar renders Changes, Threads, Outline tabs in GitHub parity order', () => {
+  const re = /data-tab="(changes|threads|outline)"[^>]*role="tab"/g;
+  assert.deepEqual(Array.from(content.matchAll(re), (match) => match[1]), [
+    'changes', 'threads', 'outline'
+  ]);
+  assert.match(content, /data-pane="changes"[^>]*role="tabpanel"/);
   assert.match(content, /data-tab="threads"[^>]*role="tab"/);
   assert.match(content, /data-tab="outline"[^>]*role="tab"/);
   assert.match(content, /data-pane="threads"[^>]*role="tabpanel"/);
   assert.match(content, /data-pane="outline"[^>]*role="tabpanel"/);
+  assert.match(content, /class="adrc-sidebar-change-list"/);
   assert.match(content, /class="adrc-sidebar-thread-list"/);
   assert.match(content, /class="adrc-outline-body"/);
+});
+
+test('ADO Changes compares target commit source to active head source', () => {
+  assert.match(content, /lastMergeTargetCommit/);
+  assert.match(content, /versionType:\s*'commit'/);
+  assert.match(content, /function getBaseFileSource\(filePath\)/);
+  assert.match(content, /GRDC\.diffLineHunks\(baseSource, currentSource\)/);
+  assert.match(content, /GRDC\.mapDiffHunksToBlocks/);
+});
+
+test('ADO Changes rejects stale async comparisons after SPA file switches', () => {
+  assert.match(content, /requestVersion === changesGeneration/);
+  assert.match(content, /initVersion === initGeneration/);
+  assert.match(content, /routeKey === currentPreviewRouteKeyCached/);
+  assert.match(content, /filePath === currentFilePathCached/);
+});
+
+test('ADO Changes cards support kind styling, click navigation, active tracking, and pulse', () => {
+  assert.match(content, /adrc-sidebar-change-\$\{stop\.kind\}/);
+  assert.match(content, /navigateToSidebarChange\(index\)/);
+  assert.match(content, /function updateActiveSidebarChange\(\)/);
+  assert.match(content, /adrc-change-target-pulse/);
+  assert.match(css, /\.adrc-sidebar-change-added/);
+  assert.match(css, /\.adrc-sidebar-change-removed/);
+  assert.match(css, /\.adrc-sidebar-change-mixed/);
+});
+
+test('ADO Changes navigation reveals folded sections and re-resolves its current block', () => {
+  assert.match(content, /function revealChangedBlock\(block\)/);
+  assert.match(content, /adrc-section-collapsed/);
+  assert.match(content, /applyCollapseVisuals\(heading, toggle, false\)/);
+  assert.match(content, /function resolveCurrentChangeBlock\(stop\)/);
+  assert.match(content, /currentLineToBlock\.get\(stop\.line\)/);
+  assert.match(content, /const block = resolveCurrentChangeBlock\(stop\)/);
+});
+
+test('ADO navigation crosses nested scroll containers with verified scrollIntoView fallback', () => {
+  assert.match(content, /el\.scrollIntoView\(\{ behavior, block: 'start', inline: 'nearest' \}\)/);
+  assert.match(content, /el\.style\.scrollMarginTop = OUTLINE_STICKY_OFFSET \+ 'px'/);
+  assert.match(content, /if \(!moved && Math\.abs\(interimRect\.top - OUTLINE_STICKY_OFFSET\) > 8\)/);
+  assert.match(content, /invoke\('auto'\)/);
+  assert.match(content, /lastScrollNavigation/);
 });
 
 test('ADO sidebar replaced the standalone Outline panel builder', () => {

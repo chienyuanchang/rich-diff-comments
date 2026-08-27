@@ -8,6 +8,9 @@ const {
   classifyChangeKind,
   buildChangeSnippet,
   nextChangeIndex,
+  splitSourceLines,
+  diffLineHunks,
+  mapDiffHunksToBlocks,
 } = require('../src/lib/changes.js');
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -416,6 +419,213 @@ test('classifyChangeKind — <li class="removed"> self-marker → removed', () =
 test('classifyChangeKind — plain <p> with no markers → null', () => {
   const p = el('p', {}, 'unchanged');
   assert.equal(classifyChangeKind(p), null);
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// ADO source diff helpers — Preview has no ins/del DOM markers
+// ───────────────────────────────────────────────────────────────────────────
+
+test('splitSourceLines — normalizes CRLF and ignores one conventional final newline', () => {
+  assert.deepEqual(splitSourceLines('one\r\ntwo\r\n'), ['one', 'two']);
+  assert.deepEqual(splitSourceLines('one\n\n'), ['one', '']);
+  assert.deepEqual(splitSourceLines(''), []);
+});
+
+test('diffLineHunks — identical sources have no hunks', () => {
+  assert.deepEqual(diffLineHunks('one\ntwo\n', 'one\ntwo'), []);
+});
+
+test('diffLineHunks — middle insertion is an added head-line hunk', () => {
+  assert.deepEqual(diffLineHunks('one\nthree', 'one\ntwo\nthree'), [{
+    baseStart: 2,
+    headStart: 2,
+    baseLines: [],
+    headLines: ['two'],
+    baseEnd: 1,
+    headEnd: 2,
+    kind: 'added',
+  }]);
+});
+
+test('diffLineHunks — middle deletion is a removed insertion-point hunk', () => {
+  assert.deepEqual(diffLineHunks('one\ntwo\nthree', 'one\nthree'), [{
+    baseStart: 2,
+    headStart: 2,
+    baseLines: ['two'],
+    headLines: [],
+    baseEnd: 2,
+    headEnd: 1,
+    kind: 'removed',
+  }]);
+});
+
+test('diffLineHunks — replacement is one mixed hunk', () => {
+  const hunks = diffLineHunks('one\nold\nthree', 'one\nnew\nthree');
+  assert.equal(hunks.length, 1);
+  assert.deepEqual(hunks[0], {
+    baseStart: 2,
+    headStart: 2,
+    baseLines: ['old'],
+    headLines: ['new'],
+    baseEnd: 2,
+    headEnd: 2,
+    kind: 'mixed',
+  });
+});
+
+test('diffLineHunks — added and deleted files produce one whole-file hunk', () => {
+  assert.deepEqual(diffLineHunks('', 'one\ntwo'), [{
+    baseStart: 1, headStart: 1, baseLines: [], headLines: ['one', 'two'],
+    baseEnd: 0, headEnd: 2, kind: 'added',
+  }]);
+  assert.deepEqual(diffLineHunks('one\ntwo', ''), [{
+    baseStart: 1, headStart: 1, baseLines: ['one', 'two'], headLines: [],
+    baseEnd: 2, headEnd: 0, kind: 'removed',
+  }]);
+});
+
+test('diffLineHunks — repeated lines retain the unchanged occurrence', () => {
+  const hunks = diffLineHunks('same\nremove me\nsame\nend', 'same\nsame\nend');
+  assert.equal(hunks.length, 1);
+  assert.equal(hunks[0].kind, 'removed');
+  assert.deepEqual(hunks[0].baseLines, ['remove me']);
+  assert.equal(hunks[0].headStart, 2);
+});
+
+test('diffLineHunks — low edit-distance safety limit degrades to one mixed rewrite', () => {
+  const hunks = diffLineHunks('a\nb\nc', 'x\ny\nz', { maxEditDistance: 1 });
+  assert.equal(hunks.length, 1);
+  assert.equal(hunks[0].kind, 'mixed');
+  assert.deepEqual(hunks[0].baseLines, ['a', 'b', 'c']);
+  assert.deepEqual(hunks[0].headLines, ['x', 'y', 'z']);
+});
+
+test('diffLineHunks — exhaustive small sequences reconstruct the exact head', () => {
+  const sequences = [[]];
+  const alphabet = ['a', 'b'];
+  for (let length = 1; length <= 4; length++) {
+    const count = Math.pow(alphabet.length, length);
+    for (let mask = 0; mask < count; mask++) {
+      let n = mask;
+      const sequence = [];
+      for (let i = 0; i < length; i++) {
+        sequence.push(alphabet[n % alphabet.length]);
+        n = Math.floor(n / alphabet.length);
+      }
+      sequences.push(sequence);
+    }
+  }
+
+  function applyHunks(base, hunks) {
+    const result = base.slice();
+    let offset = 0;
+    hunks.forEach((hunk) => {
+      const index = hunk.baseStart - 1 + offset;
+      result.splice(index, hunk.baseLines.length, ...hunk.headLines);
+      offset += hunk.headLines.length - hunk.baseLines.length;
+    });
+    return result;
+  }
+
+  for (const base of sequences) {
+    for (const head of sequences) {
+      const hunks = diffLineHunks(base.join('\n'), head.join('\n'));
+      assert.deepEqual(
+        applyHunks(base, hunks),
+        head,
+        `failed reconstruction: ${JSON.stringify(base)} -> ${JSON.stringify(head)}`
+      );
+    }
+  }
+});
+
+test('mapDiffHunksToBlocks — maps changed interior lines to inferred block ranges', () => {
+  const p1 = { id: 'p1' };
+  const p2 = { id: 'p2' };
+  const p3 = { id: 'p3' };
+  const hunks = diffLineHunks(
+    'a\nb\nc\nd\ne\nf',
+    'a\nb\nCHANGED\nd\ne\nf'
+  );
+  const stops = mapDiffHunksToBlocks(hunks, [
+    { block: p1, line: 1 },
+    { block: p2, line: 2 },
+    { block: p3, line: 5 },
+  ], 6);
+  assert.equal(stops.length, 1);
+  assert.equal(stops[0].block, p2);
+  assert.equal(stops[0].line, 3);
+  assert.equal(stops[0].kind, 'mixed');
+});
+
+test('mapDiffHunksToBlocks — one wide hunk creates one stop per affected reading block', () => {
+  const h = { id: 'h' };
+  const p = { id: 'p' };
+  const li = { id: 'li' };
+  const hunks = [{
+    baseStart: 2, baseEnd: 4, headStart: 2, headEnd: 6,
+    baseLines: ['old'], headLines: ['a', 'b', 'c', 'd', 'e'], kind: 'mixed',
+  }];
+  const stops = mapDiffHunksToBlocks(hunks, [
+    { block: h, line: 1 },
+    { block: p, line: 3 },
+    { block: li, line: 6 },
+  ], 8);
+  assert.deepEqual(stops.map((s) => s.block), [h, p, li]);
+  assert.deepEqual(stops.map((s) => [s.line, s.endLine]), [[2, 2], [3, 5], [6, 6]]);
+});
+
+test('mapDiffHunksToBlocks — deletion anchors next block or previous block at EOF', () => {
+  const first = { id: 'first' };
+  const last = { id: 'last' };
+  const mapped = [{ block: first, line: 1 }, { block: last, line: 5 }];
+
+  const middle = mapDiffHunksToBlocks([{
+    baseStart: 3, baseEnd: 3, headStart: 3, headEnd: 2,
+    baseLines: ['gone'], headLines: [], kind: 'removed',
+  }], mapped, 6);
+  assert.equal(middle[0].block, first);
+  assert.equal(middle[0].line, 3);
+
+  const eof = mapDiffHunksToBlocks([{
+    baseStart: 7, baseEnd: 7, headStart: 7, headEnd: 6,
+    baseLines: ['gone at eof'], headLines: [], kind: 'removed',
+  }], mapped, 6);
+  assert.equal(eof[0].block, last);
+  assert.equal(eof[0].line, 6);
+});
+
+test('mapDiffHunksToBlocks — explicit code-block range prevents duplicate stops', () => {
+  const pre = { id: 'pre' };
+  const after = { id: 'after' };
+  const hunks = [{
+    baseStart: 11, baseEnd: 13, headStart: 11, headEnd: 13,
+    baseLines: ['a'], headLines: ['b'], kind: 'mixed',
+  }];
+  const stops = mapDiffHunksToBlocks(hunks, [
+    { block: pre, line: 10, endLine: 20 },
+    { block: after, line: 21 },
+  ], 25);
+  assert.equal(stops.length, 1);
+  assert.equal(stops[0].block, pre);
+  assert.deepEqual([stops[0].line, stops[0].endLine], [11, 13]);
+});
+
+test('mapDiffHunksToBlocks — merges multiple hunks landing on one block', () => {
+  const p = { id: 'p' };
+  const stops = mapDiffHunksToBlocks([
+    { headStart: 2, headEnd: 2, headLines: ['new'], baseLines: [], kind: 'added' },
+    { headStart: 4, headEnd: 3, headLines: [], baseLines: ['gone'], kind: 'removed' },
+  ], [{ block: p, line: 1, endLine: 6 }], 6);
+  assert.equal(stops.length, 1);
+  assert.equal(stops[0].kind, 'mixed');
+  assert.deepEqual([stops[0].line, stops[0].endLine], [2, 4]);
+});
+
+test('mapDiffHunksToBlocks — defensive invalid inputs return empty arrays', () => {
+  assert.deepEqual(mapDiffHunksToBlocks(null, [], 1), []);
+  assert.deepEqual(mapDiffHunksToBlocks([], null, 1), []);
+  assert.deepEqual(mapDiffHunksToBlocks([], [{ line: 1 }], 1), []);
 });
 
 test('classifyChangeKind — null / invalid input → null', () => {

@@ -222,6 +222,55 @@ cross-file card clicks land on the intended inline thread without leaving
 Preview. Manually verified on the sandbox PR. Automated result: 324 / 324
 unit/static tests and 21 / 21 Playwright tests.
 
+### 7.2 Iteration J — Changes tab (complete, 2026-08-26)
+
+ADO Preview renders only the final document and exposes no `<ins>` / `<del>` /
+`.added` / `.removed` markers. Therefore the GitHub Changes detector cannot be
+ported directly. Build ADO Changes from a source comparison instead:
+
+1. reuse the head source already fetched for line mapping,
+2. fetch the same path at `lastMergeTargetCommit.commitId` (preferred) or the
+   PR target branch as a fallback,
+3. compute dependency-free line diff hunks in `src/lib/changes.js`, and
+4. map each hunk's head-line range to reading blocks using the existing
+   block→source-line map.
+
+**Scope for this iteration:**
+
+- Add **Changes** as the first sidebar tab, matching GitHub tab order:
+  Changes / Threads / Outline. New installs default to Changes; existing saved
+  tab state remains respected.
+- Current-file Changes only. Cross-file aggregation waits until we cache line
+  maps / sources for files that have not been opened.
+- One card per affected rendered reading block, source ordered and deduplicated.
+- Cards show `+` added, `−` removed, or `±` mixed; source line/range; and an
+  80–90 character snippet.
+- Clicking a card smooth-scrolls to the rendered block, highlights the active
+  card, and briefly pulses the target block.
+- Active card follows the actual ADO inner scroll container.
+- Recompute after each route-aware Preview initialization; reject stale async
+  base-source results when the user switches files during fetch.
+- Added file / base-path 404: compare against empty source (all rendered blocks
+  are additions). Deletion-only hunk: anchor to the next rendered block, or the
+  previous block at EOF, and use deleted base text for the snippet.
+- Base-source failure other than not-found: show a non-blocking Changes error;
+  Threads, Outline, and inline comments continue working.
+- No runtime diff dependency. Pure line-diff / block-mapping algorithms receive
+  unit coverage in `tests/changes.test.js`.
+
+**Explicitly deferred:** PR-wide Changes aggregation, deleted-file summary
+cards, rename-aware old-path lookup, `[` / `]` shortcuts and header prev/next
+cluster (full keyboard/navigation iteration), and semantic suppression of
+Markdown syntax-only changes.
+
+**Acceptance result:** changed headings, paragraphs, lists, table rows, and code
+blocks appear once in source order; added/removed/mixed labels are correct;
+card click and scroll tracking work through ADO's nested scrolling; file
+switches rebuild without stale cards; and failure states do not affect Threads
+or Outline. Manually verified on both a wholly new document and a partially
+modified README. Automated result: 344 / 344 unit/static tests and 21 / 21
+Playwright tests.
+
 ## 8. DOM adapter surface — what actually needs writing
 
 Per the audit from the previous session, the new work is:
@@ -435,6 +484,7 @@ Append as decisions get made / revised.
 - **2026-07-22** — **§12 step 5 (ADO adapter skeleton) complete + end-to-end validated.** `src/adapters/ado.js` implements the P0+P1 endpoint surface (parsePRUrl, resolveIds, listThreads, createThread, reply, resolveThread/unresolveThread, editComment, deleteComment) with cookie-authenticated fetches. `extensions/ado/` loads on `dev.azure.com/*/_git/*/pullrequest/*` and legacy `*.visualstudio.com` URLs. **No UI yet** — `content.js` is a thin bootstrap that parses the PR context and exposes `window.ADORC_probe` for DevTools testing. Manifest declares `"world": "MAIN"` so the probe is visible in the console's default context without users having to change context (chrome.* APIs unavailable in MAIN world, but skeleton doesn't use them — revisit if we later need `chrome.storage` or messaging). `scripts/dev-sync.ps1` extended to also mirror `src/adapters/<target>.js`. Tests: 300 unit tests passing (16 new adapter tests covering URL parsing, path normalization, system-thread filter, URL builders). Package: 43 KB zip, 21 correct top-level entries. **Manual smoke test on the sandbox PR**: `probe.ready()` resolved the repo GUID via the org's repos API; `probe.list()` returned 4 threads and correctly filtered 2 system RefUpdate threads out to leave 2 user threads; `probe.create()` created a new thread (id 5) on `/README.md:3`; `probe.resolve(5)` flipped it to `status: "fixed"`; `probe.delete(5, 1)` soft-deleted its root comment. Full adapter path is production-viable — ready to layer UI on top.
 - **2026-07-22** — **Line-mapping validated on ADO with zero `src/lib/` changes.** Added `getPullRequest()` and `getFileSource()` to the adapter plus `pullRequestUrl()` / `itemUrl()` builders (project-scoped items endpoint with `versionDescriptor.version=<branch>` + `includeContent=true`). Wired `src/lib/textMatch.js` + `tableRows.js` + `lineMap.js` into the ADO manifest so `window.GRDC.mapBlocksToSourceLines` is available in-page. New `probe.detectLines(filePath)` fetches the file source at the PR's source branch, runs the block→line matcher against the visible `.markdown-preview-container`, and `console.table`s the result. **Sandbox test result**: **14/14 blocks mapped to correct source lines** on the sandbox PR's README.md — including the modified list item (line 8 "test replace"), a newly added H1 heading (line 17 "Section to Add"), and its new paragraph (line 18). Log: `[GRDC] Mapped 14 elements for /README.md (source-matched: true, text-hits: 13)`. This proves the entire pure-logic port from the audit works on ADO's DOM without modification — same forward-scan text matcher, same edge-case handling. Tests: 305 passing (5 new URL-builder tests for `pullRequestUrl` and `itemUrl` covering project scope, missing-project fallback, versionDescriptor, path normalization). Ready to start P0 UI (`+` button + comment box).
 - **2026-08-26** — **Iterations H + I complete: Threads sidebar + integrated Outline.** Replaced the standalone Outline panel with one draggable, resizable, persistent sidebar containing PR-wide Threads and current-file Outline tabs. Threads support file grouping, unresolved-only filtering, active-thread tracking, same-file scroll/expand, and cross-file pending jumps. Live testing exposed that generic `?path=` anchors / `window.location.assign()` remount ADO and reset Preview to Inline or Side-by-side (visible as a second MSAL/content-script initialization). Final architecture activates the native `[role="treeitem"]` / `.bolt-tree-row` cell instead, retains a one-shot safe Preview-menu restoration fallback, and intentionally fails with a toast when no materialized tree row exists rather than abandoning Preview. Manual sandbox result: same-file and cross-file thread navigation work while staying in Preview; Outline remains route-aware. Validation: 324 / 324 unit/static tests and 21 / 21 Playwright tests.
+- **2026-08-26** — **Iteration J complete: current-file Changes tab.** Because ADO Preview exposes no diff markers, Changes compares the already-fetched head Markdown with the same path at `lastMergeTargetCommit`, computes dependency-free Myers line hunks, and maps those hunks to the existing rendered block→line map. Cards show added / removed / mixed kind, line range, and snippet; active cards follow ADO's real scroll surface. A target-commit `404` is expected for a newly added file and is treated as an empty base (all rendered blocks added). Live testing also proved that one inferred scroll container is insufficient on some modified-file layouts; final navigation re-resolves the current block, expands containing folded sections, uses native `scrollIntoView()` to traverse nested ADO scrollers, preserves sticky offset with `scroll-margin-top`, and verifies/falls back when smooth scrolling does not start. Manually verified on a new 155-block design document and three modified README blocks. Validation: 344 / 344 unit/static tests and 21 / 21 Playwright tests.
 
 ## 15. Appendix — ADO thread response shape (redacted)
 

@@ -247,6 +247,62 @@ The restore flow is one-shot per pending navigation: open only the documented
 the rendered container. Unknown menu DOM fails safely and is exposed through
 `ADORC_probe.viewMode()`.
 
+## Changes tab — source diff, not DOM markers
+
+ADO Preview renders only the final document. Unlike GitHub rich diff, it does
+not include `<ins>`, `<del>`, `.added`, or `.removed` markers, so the Changes tab
+cannot discover edits by walking the rendered DOM.
+
+The ADO flow is:
+
+1. reuse the head Markdown already fetched for block→line mapping,
+2. fetch the same path at `lastMergeTargetCommit.commitId` (target-branch
+  fallback only when that commit is absent),
+3. compute dependency-free Myers line hunks with `diffLineHunks()`, and
+4. map head ranges / deletion insertion points to rendered reading blocks with
+  `mapDiffHunksToBlocks()`.
+
+The mapper infers a block's source interval from its line and the next mapped
+block. Fenced code blocks provide an explicit end line. A deletion-only hunk has
+no rendered head content, so it anchors to adjacent surviving context and uses
+the deleted base text as its sidebar snippet. Multiple hunks landing on one
+reading block merge into one card.
+
+### Target-commit 404 means “new file”
+
+A request such as:
+
+```text
+GET .../items?path=/new.md&versionDescriptor.version=<target-commit>
+→ 404 Not Found
+```
+
+is expected when the path exists only on the PR source side. Chrome still
+prints the handled request in red. `getBaseFileSource()` catches status 404,
+logs that the path is absent from the target commit, returns an empty base, and
+Changes marks every rendered block as added. Other failures remain isolated to
+the Changes pane.
+
+### Navigation must cross nested ADO scrollers
+
+Some ADO file layouts require more than the nearest inferred overflow element
+to move. Setting only that element's `scrollTop` worked for wholly new files but
+could leave a valid, visible modified-file target stationary.
+
+Changes, Threads, and Outline navigation now use native `scrollIntoView()`,
+which traverses all required scroll ancestors. A temporary `scroll-margin-top`
+preserves the sticky-header offset. Navigation checks for movement after two
+animation frames and retries with immediate behavior if smooth scrolling never
+starts. Before scrolling a Changes target, it also:
+
+- re-resolves the block from the current line→block map (partial Preview
+  rerenders can stale an earlier element reference), and
+- expands every folded heading section containing the target.
+
+**Debug helper:** `ADORC_probe.changes()` returns each stop's kind, lines,
+snippet, tag, display, geometry, folded/connected state, and `lastScroll`
+before/after diagnostics. `ADORC_probe.changes(index)` invokes a specific card.
+
 ## URL parsing
 
 **PR URL** (browser): `/{org}/{project}/_git/{repo}/pullrequest/{id}[?path=/README.md]`

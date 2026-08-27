@@ -29,6 +29,7 @@
         "src/lib/codeBlocks.js",
         "src/lib/sectionCollapse.js",
         "src/lib/sidebar.js",
+        "src/lib/changes.js",
         "src/lib/lineMap.js",
         "src/adapters/ado.js",
         "content.js"

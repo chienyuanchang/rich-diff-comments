@@ -22,12 +22,15 @@ function ruleBody(selector) {
 test('ADO manifest loads shared sidebar and Changes helpers before content.js', () => {
   const scripts = manifest.content_scripts[0].js;
   const sidebarIndex = scripts.indexOf('src/lib/sidebar.js');
+  const outlineIndex = scripts.indexOf('src/lib/outline.js');
   const changesIndex = scripts.indexOf('src/lib/changes.js');
   const contentIndex = scripts.indexOf('content.js');
   assert.ok(sidebarIndex >= 0, 'Expected src/lib/sidebar.js in ADO manifest');
+  assert.ok(outlineIndex >= 0, 'Expected src/lib/outline.js in ADO manifest');
   assert.ok(changesIndex >= 0, 'Expected src/lib/changes.js in ADO manifest');
   assert.ok(contentIndex >= 0, 'Expected content.js in ADO manifest');
   assert.ok(sidebarIndex < contentIndex, 'Sidebar helpers must load before content.js');
+  assert.ok(outlineIndex < contentIndex, 'Outline helpers must load before content.js');
   assert.ok(changesIndex < contentIndex, 'Changes helpers must load before content.js');
 });
 
@@ -252,5 +255,46 @@ test('ADO cross-file thread navigation activates a scored native tree row withou
 test('ADO `b` shortcut opens the integrated Outline tab without hijacking editors', () => {
   assert.match(content, /function showOutlinePanel\(\)\s*\{\s*showSidebar\('outline'\)/);
   assert.match(content, /tag === 'INPUT' \|\| tag === 'TEXTAREA' \|\| tag === 'SELECT'/);
-  assert.match(content, /row\.addEventListener\('click',[\s\S]*?revealChangedBlock\(h\.el\)[\s\S]*?scrollToWithStickyOffset\(h\.el\)/);
+  assert.match(content, /label\.addEventListener\('click', \(\) => navigateToOutlineTarget/);
+  assert.match(content, /function scrollToLiveOutlineHeading\(heading\)[\s\S]*?revealChangedBlock\(heading\.el\)[\s\S]*?scrollToWithStickyOffset\(heading\.el\)/);
+});
+
+test('ADO Outline builds a DOM-free PR-wide catalog from cached Markdown sources', () => {
+  assert.match(content, /let prOutlineCatalog = new Map\(\)/);
+  assert.match(content, /function ensurePrOutlineCatalog\(\)/);
+  assert.match(content, /GRDC\.extractMarkdownHeadings\(source, path\)/);
+  assert.match(content, /snapshotOutlineHeading/);
+  assert.match(content, /getPrOutlineFileOrder\(\)/);
+  assert.match(content, /prOutlineCatalog\.set\(path/);
+});
+
+test('ADO Outline renders stable file groups, heading thread counts, and lifecycle states', () => {
+  assert.match(content, /className = 'adrc-outline-file'/);
+  assert.match(content, /attributeThreadsToHeadings\(allHeadings, sidebarThreadItems\)/);
+  assert.match(content, /className = 'adrc-outline-thread-count'/);
+  assert.match(content, /Deleted file — no Preview outline/);
+  assert.match(content, /NO HEADINGS/);
+  assert.match(css, /\.adrc-outline-file-current/);
+  assert.match(css, /\.adrc-outline-thread-count/);
+});
+
+test('ADO Outline cross-file rows preserve Preview and resume by stable heading key', () => {
+  assert.match(content, /SIDEBAR_PENDING_OUTLINE_KEY/);
+  assert.match(content, /function navigateToOutlineTarget\(target\)/);
+  assert.match(content, /savePendingOutlineJump\(target\)/);
+  assert.match(content, /function continuePendingOutlineNavigation\(\)/);
+  assert.match(content, /function resumePendingOutlineJump\(attempt\)/);
+  assert.match(content, /outlineHeadings\.find\(\(heading\) => heading\.key === pending\.key\)/);
+});
+
+test('ADO Outline has per-row and bulk fold controls backed by stable source keys', () => {
+  assert.match(content, /class="adrc-outline-toolbar"/);
+  assert.match(content, />Fold H1</);
+  assert.match(content, />Fold H2</);
+  assert.match(content, />Fold H3</);
+  assert.match(content, />Expand all</);
+  assert.match(content, /function setOutlineHeadingCollapsed\(heading, collapsed\)/);
+  assert.match(content, /function foldOutlineAtLevel\(level\)/);
+  assert.match(content, /function expandAllOutlineSections\(\)/);
+  assert.match(content, /outlineCollapsedKeys/);
 });

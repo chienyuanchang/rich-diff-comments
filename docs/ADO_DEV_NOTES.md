@@ -335,6 +335,25 @@ starts. Before scrolling a Changes target, it also:
 snippet, tag, display, geometry, folded/connected state, and `lastScroll`
 before/after diagnostics. `ADORC_probe.changes(index)` invokes a specific card.
 
+## PR-wide Outline — source catalog, live active-file binding
+
+ADO renders one Markdown Preview at a time, but Iteration M already fetches the
+head source for every changed Markdown file. `extractMarkdownHeadings()` parses
+ATX and Setext headings from those cached sources while ignoring fenced code.
+The resulting PR-wide catalog stores only path, line, level, text, and a stable
+`path::line::level` key—never a DOM node.
+
+When a file is active, its rendered headings are matched back to the exact
+source descriptors and gain the same stable key. Cross-file Outline clicks save
+that key, activate the native ADO file-tree row, preserve/restore Preview, and
+resolve the key against the newly mounted live headings before scrolling.
+
+Per-heading thread counts use the shared source-line attribution helper and are
+file-scoped. Per-row folds can be requested before a file is opened; the stable
+fold-key set applies that intent when its live Preview mounts. Bulk Fold H1/H2/
+H3 and Expand all intentionally affect only the active rendered file. Deleted,
+no-heading, and source-error files remain as compact file-level states.
+
 ## URL parsing
 
 **PR URL** (browser): `/{org}/{project}/_git/{repo}/pullrequest/{id}[?path=/README.md]`

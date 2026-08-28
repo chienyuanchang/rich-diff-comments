@@ -7,6 +7,8 @@ const {
   buildOutlineTree,
   attributeThreadsToHeadings,
   collapseHeadingsAtLevel,
+  outlineHeadingKey,
+  extractMarkdownHeadings,
 } = require('../src/lib/outline.js');
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -209,4 +211,54 @@ test('collapseHeadingsAtLevel — invalid input returns empty set', () => {
 test('collapseHeadingsAtLevel — non-finite level returns empty set ("no-op")', () => {
   const headings = [{ id: 'a', level: 1 }, { id: 'b', level: 2 }];
   assert.equal(collapseHeadingsAtLevel(headings, NaN).size, 0);
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Source-based PR-wide heading snapshots
+// ───────────────────────────────────────────────────────────────────────────
+
+test('outlineHeadingKey — stable across source and live DOM descriptors', () => {
+  assert.equal(outlineHeadingKey('/docs/a.md', 12, 2), '/docs/a.md::12::2');
+  assert.equal(outlineHeadingKey(null, NaN, null), '::0::0');
+});
+
+test('extractMarkdownHeadings — extracts ATX headings with source lines', () => {
+  const headings = extractMarkdownHeadings('# One\nbody\n\n### Three ###', '/a.md');
+  assert.deepEqual(headings, [
+    { id: '/a.md::1::1', key: '/a.md::1::1', level: 1, text: 'One', line: 1, file: '/a.md' },
+    { id: '/a.md::4::3', key: '/a.md::4::3', level: 3, text: 'Three', line: 4, file: '/a.md' },
+  ]);
+});
+
+test('extractMarkdownHeadings — cleans common inline Markdown in labels', () => {
+  const headings = extractMarkdownHeadings(
+    '## **Bold** [link](https://example.test) `code` ![icon](x.png)',
+    '/a.md'
+  );
+  assert.equal(headings[0].text, 'Bold link code icon');
+});
+
+test('extractMarkdownHeadings — supports Setext headings', () => {
+  const headings = extractMarkdownHeadings('Document\n========\n\nSection\n-------', '/a.md');
+  assert.deepEqual(headings.map((heading) => [heading.level, heading.text, heading.line]), [
+    [1, 'Document', 1],
+    [2, 'Section', 4],
+  ]);
+});
+
+test('extractMarkdownHeadings — ignores heading examples inside fenced code', () => {
+  const headings = extractMarkdownHeadings(
+    '# Real\n```md\n## Not a heading\nFake\n----\n```\n## Also real',
+    '/a.md'
+  );
+  assert.deepEqual(headings.map((heading) => heading.text), ['Real', 'Also real']);
+});
+
+test('extractMarkdownHeadings — rejects horizontal rules and list-like Setext titles', () => {
+  assert.deepEqual(extractMarkdownHeadings('Paragraph\n\n---\n- list\n---', '/a.md'), []);
+});
+
+test('extractMarkdownHeadings — defensive empty input', () => {
+  assert.deepEqual(extractMarkdownHeadings(null, '/a.md'), []);
+  assert.deepEqual(extractMarkdownHeadings('', '/a.md'), []);
 });

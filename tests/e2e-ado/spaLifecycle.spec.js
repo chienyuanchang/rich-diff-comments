@@ -39,7 +39,7 @@ test.describe('ADO SPA lifecycle and cross-file navigation', () => {
     await expect(page.locator('.markdown-preview-container h1')).toContainText('Other Document');
     await expect(page.locator('.markdown-preview-container .adrc-comment-btn')).toHaveCount(4);
     await expect(page.locator('.adrc-thread-badge')).toHaveCount(1);
-    expect((await page.evaluate(() => window.ADORC_probe.sidebar())).outlineCount).toBe(2);
+    expect((await page.evaluate(() => window.ADORC_probe.sidebar())).outlineCount).toBe(8);
 
     await page.evaluate((path) => window.__ADO_FIXTURE__.openPath(path), fixtures.DESIGN_PATH);
     await waitForAdoReady(page, fixtures.DESIGN_PATH, userThreadCount(server.threads));

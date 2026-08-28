@@ -86,9 +86,9 @@ All suites are local — no live GitHub or Azure DevOps calls.
 npm install         # one-time: fetches jsdom + @playwright/test (devDeps only)
 npx playwright install chromium    # one-time: ~150 MB Chromium for e2e tests
 
-npm test                  # 367 unit/static tests (Node:test + jsdom)
+npm test                  # 378 unit/static tests (Node:test + jsdom)
 npm run test:e2e          # 21 GitHub Playwright fixtures
-npm run test:e2e:ado      # 27 ADO Preview + mocked REST Playwright fixtures
+npm run test:e2e:ado      # 35 ADO Preview + mocked REST Playwright fixtures
 npm run test:e2e:all      # both browser targets
 npm run test:all          # Node tests plus both browser targets
 ```

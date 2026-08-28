@@ -404,7 +404,7 @@ Manual sandbox confirmation covered PR-wide grouping, corrected file order, and
 stable navigation. Automated validation: 367 / 367 unit/static tests, 21 / 21
 GitHub Chromium scenarios, and 27 / 27 ADO Chromium scenarios.
 
-### 7.6 Iteration N — PR-wide Outline, thread counts, and fold controls
+### 7.6 Iteration N — PR-wide Outline, thread counts, and fold controls (complete, 2026-08-27)
 
 ADO renders one Preview file at a time, so accumulate a session-scoped outline
 snapshot whenever a Markdown file is opened. The authoritative changed-file
@@ -433,6 +433,14 @@ cached heading clicks preserve Preview and land after initialization; counts do
 not leak across files; per-row and bulk folding stay synchronized; scroll
 tracking highlights the correct file/heading; no detached heading references
 survive a file switch.
+
+**Acceptance result:** all changed Markdown
+head sources are parsed into a stable, native-order, DOM-free file/heading
+catalog; thread counts are file-scoped; current headings bind back to live DOM;
+cross-file rows resume through native Preview navigation; fold intent works
+before or after opening a file; deleted/no-heading/error files remain visible.
+Validation: 378 / 378 unit/static tests, 21 / 21 GitHub Chromium scenarios, and
+35 / 35 ADO Chromium scenarios. Manually confirmed in the live ADO sandbox.
 
 ### 7.7 Iteration O — ADO theme integration
 

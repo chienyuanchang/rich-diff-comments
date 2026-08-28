@@ -46,7 +46,7 @@ test.describe('ADO rendered review surface', () => {
     const state = await page.evaluate(() => window.ADORC_probe.sidebar());
     expect(state.currentFile).toBe(fixtures.DESIGN_PATH);
     expect(state.threadCount).toBe(3);
-    expect(state.outlineCount).toBe(4);
+    expect(state.outlineCount).toBe(8);
     expect(state.changeCount).toBeGreaterThanOrEqual(2);
     expect(state.changesStatus).toBe('ready');
     await expect(page.locator('.adrc-sidebar-change-card')).toHaveCount(state.changeCount);

@@ -295,6 +295,20 @@ async function waitForAdoReady(page, expectedPath, expectedThreadCount) {
   );
 }
 
+async function waitForOutlineReady(page, expectedFileCount, expectedHeadingCount) {
+  await page.waitForFunction(
+    ({ fileCount, headingCount }) => {
+      if (!window.ADORC_probe) return false;
+      const outline = window.ADORC_probe.outline();
+      return outline.status === 'ready' &&
+        outline.files.length === fileCount &&
+        outline.totalHeadingCount === headingCount;
+    },
+    { fileCount: expectedFileCount, headingCount: expectedHeadingCount },
+    { timeout: 8000 }
+  );
+}
+
 async function setupAdoExtensionPage(page, options) {
   const opts = options || {};
   const server = await installAdoRoutes(page, opts);
@@ -347,6 +361,7 @@ module.exports = {
   COMMON_COMMIT,
   setupAdoExtensionPage,
   waitForAdoReady,
+  waitForOutlineReady,
   matchingRequests,
   userThreadCount,
 };

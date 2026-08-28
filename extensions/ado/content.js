@@ -1358,8 +1358,10 @@
     element.classList.add('adrc-collapsible');
     element.prepend(toggle);
 
-    // Restore collapsed state on re-init.
-    if (collapsedHeadings.has(element)) {
+    // Restore collapsed state on re-init from the stable source heading key.
+    const outlineKey = element.dataset.adrcOutlineKey;
+    if (collapsedHeadings.has(element) || (outlineKey && outlineCollapsedKeys.has(outlineKey))) {
+      collapsedHeadings.add(element);
       applyCollapseVisuals(element, toggle, true);
     }
     return toggle;
@@ -1424,10 +1426,17 @@
   }
 
   function toggleSection(heading, toggle) {
-    const willCollapse = !collapsedHeadings.has(heading);
-    if (willCollapse) collapsedHeadings.add(heading);
-    else collapsedHeadings.delete(heading);
+    const willCollapse = !heading.classList.contains('adrc-section-collapsed');
+    const outlineKey = heading.dataset.adrcOutlineKey;
+    if (willCollapse) {
+      collapsedHeadings.add(heading);
+      if (outlineKey) outlineCollapsedKeys.add(outlineKey);
+    } else {
+      collapsedHeadings.delete(heading);
+      if (outlineKey) outlineCollapsedKeys.delete(outlineKey);
+    }
     applyCollapseVisuals(heading, toggle, willCollapse);
+    renderOutlineRows();
   }
 
   // ── Error toast ──────────────────────────────────────────────────────
@@ -1457,6 +1466,7 @@
   const LEGACY_OUTLINE_STORAGE_KEY = 'adrc-outline-state-v1';
   const SIDEBAR_PENDING_THREAD_KEY = 'adrc-pending-thread-jump-v1';
   const SIDEBAR_PENDING_CHANGE_KEY = 'adrc-pending-change-jump-v1';
+  const SIDEBAR_PENDING_OUTLINE_KEY = 'adrc-pending-outline-jump-v1';
   const SIDEBAR_MIN_WIDTH = 300;
   const SIDEBAR_MIN_HEIGHT = 180;
   const SIDEBAR_DEFAULT_WIDTH = 340;
@@ -1486,8 +1496,15 @@
   // Alias retained for the established Outline row renderer. It points to
   // the sidebar shell, whose Outline pane owns `.adrc-outline-body`.
   let outlinePanel = null;
+  // `outlineHeadings` is active-file-only and may hold live DOM references.
+  // `prOutlineCatalog` is PR-wide and strictly DOM-free.
   let outlineHeadings = [];
   let outlineActiveId = null;
+  let prOutlineCatalog = new Map();
+  let prOutlinePromise = null;
+  let prOutlineStatus = 'idle'; // idle | loading | ready | error
+  let prOutlineError = '';
+  const outlineCollapsedKeys = new Set();
   let outlineScrollRaf = null;
   let outlineScrollListenerTarget = null;
   // The element that actually scrolls the file content. ADO's PR page
@@ -1597,6 +1614,12 @@
   function collectHeadingsForOutline() {
     const container = getCurrentPreviewContainer();
     if (!container) return [];
+    const file = currentFilePathCached || currentFilePath() || '';
+    const GRDC = window.GRDC || {};
+    const sourceHeadings = typeof GRDC.extractMarkdownHeadings === 'function'
+      ? GRDC.extractMarkdownHeadings(currentSource || '', file)
+      : [];
+    let sourceCursor = 0;
     return Array.from(container.querySelectorAll('h1, h2, h3, h4, h5, h6')).map((el, i) => {
       // Strip any injected chevron text from the section-collapse toggle
       // so the outline label reads cleanly.
@@ -1606,11 +1629,35 @@
         text += child.textContent || '';
       });
       text = text.trim() || '(untitled)';
+      const level = parseInt(el.tagName.slice(1), 10);
+      const info = currentBlockInfo.get(el);
+      const normalizedText = text.replace(/\s+/g, ' ').trim().toLowerCase();
+      let sourceHeading = null;
+      for (let index = sourceCursor; index < sourceHeadings.length; index++) {
+        const candidate = sourceHeadings[index];
+        if (candidate.level !== level) continue;
+        if (String(candidate.text || '').replace(/\s+/g, ' ').trim().toLowerCase() !== normalizedText) continue;
+        sourceHeading = candidate;
+        sourceCursor = index + 1;
+        break;
+      }
+      if (!sourceHeading && sourceHeadings[i] && sourceHeadings[i].level === level) {
+        sourceHeading = sourceHeadings[i];
+        sourceCursor = Math.max(sourceCursor, i + 1);
+      }
+      const line = sourceHeading?.line || (info && Number.isFinite(info.line) ? info.line : i + 1);
+      const key = typeof GRDC.outlineHeadingKey === 'function'
+        ? GRDC.outlineHeadingKey(file, line, level)
+        : `${file}::${line}::${level}`;
+      el.dataset.adrcOutlineKey = key;
       return {
         el,
-        id: `adrc-outline-${i}`,
-        level: parseInt(el.tagName.slice(1), 10),
-        text
+        id: key,
+        key,
+        level,
+        text,
+        line,
+        file
       };
     });
   }
@@ -1811,6 +1858,12 @@
       '    <div class="adrc-sidebar-thread-list"></div>',
       '  </section>',
       '  <section class="adrc-sidebar-pane adrc-sidebar-pane-outline" data-pane="outline" role="tabpanel">',
+      '    <div class="adrc-outline-toolbar" aria-label="Outline fold controls">',
+      '      <button type="button" class="adrc-outline-fold-level" data-level="1" title="Fold H1 sections in the active file">Fold H1</button>',
+      '      <button type="button" class="adrc-outline-fold-level" data-level="2" title="Fold H2 sections in the active file">Fold H2</button>',
+      '      <button type="button" class="adrc-outline-fold-level" data-level="3" title="Fold H3 sections in the active file">Fold H3</button>',
+      '      <button type="button" class="adrc-outline-expand-all" title="Expand every section in the active file">Expand all</button>',
+      '    </div>',
       '    <div class="adrc-outline-body"></div>',
       '  </section>',
       '</div>'
@@ -1850,6 +1903,10 @@
         showSidebar(tab.dataset.tab);
       });
     });
+    panel.querySelectorAll('.adrc-outline-fold-level').forEach((button) => {
+      button.addEventListener('click', () => foldOutlineAtLevel(parseInt(button.dataset.level, 10)));
+    });
+    panel.querySelector('.adrc-outline-expand-all').addEventListener('click', expandAllOutlineSections);
     launcher.addEventListener('click', () => showSidebar('threads'));
 
     wireSidebarDrag(panel);
@@ -2138,6 +2195,7 @@
       .map(normalizeSidebarThread)
       .filter(Boolean);
     renderThreadsSidebar();
+    renderOutlineRows();
   }
 
   function getVisibleSidebarThreads() {
@@ -2326,6 +2384,7 @@
 
   function savePendingThreadJump(item) {
     clearPendingChangeJump();
+    clearPendingOutlineJump();
     resetPreviewRestoreState();
     try {
       sessionStorage.setItem(SIDEBAR_PENDING_THREAD_KEY, JSON.stringify({
@@ -2357,6 +2416,7 @@
 
   function savePendingChangeJump(stop) {
     clearPendingThreadJump();
+    clearPendingOutlineJump();
     resetPreviewRestoreState();
     try {
       sessionStorage.setItem(SIDEBAR_PENDING_CHANGE_KEY, JSON.stringify({
@@ -2383,6 +2443,38 @@
 
   function clearPendingChangeJump() {
     try { sessionStorage.removeItem(SIDEBAR_PENDING_CHANGE_KEY); } catch (_) {}
+    resetPreviewRestoreState();
+  }
+
+  function savePendingOutlineJump(target) {
+    clearPendingThreadJump();
+    clearPendingChangeJump();
+    resetPreviewRestoreState();
+    try {
+      sessionStorage.setItem(SIDEBAR_PENDING_OUTLINE_KEY, JSON.stringify({
+        key: target.key || null,
+        path: target.path,
+        requirePreview: true,
+        expiresAt: Date.now() + 30000
+      }));
+    } catch (_) { /* sessionStorage may be blocked */ }
+  }
+
+  function readPendingOutlineJump() {
+    try {
+      const pending = JSON.parse(sessionStorage.getItem(SIDEBAR_PENDING_OUTLINE_KEY) || 'null');
+      if (!pending || pending.expiresAt < Date.now()) {
+        sessionStorage.removeItem(SIDEBAR_PENDING_OUTLINE_KEY);
+        return null;
+      }
+      return pending;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function clearPendingOutlineJump() {
+    try { sessionStorage.removeItem(SIDEBAR_PENDING_OUTLINE_KEY); } catch (_) {}
     resetPreviewRestoreState();
   }
 
@@ -2595,6 +2687,14 @@
     if (currentFilePathCached === pending.path) resumePendingChangeJump(0);
   }
 
+  function continuePendingOutlineNavigation() {
+    const pending = readPendingOutlineJump();
+    if (!pending || pending.path !== currentFilePath()) return;
+    if (pending.requirePreview && !ensureAdoPreviewMode()) return;
+    schedulePreviewInit(50);
+    if (currentFilePathCached === pending.path) resumePendingOutlineJump(0);
+  }
+
   function resumePendingThreadJump(attempt) {
     const pending = readPendingThreadJump();
     if (!pending || pending.path !== currentFilePathCached) return;
@@ -2633,6 +2733,36 @@
     } else {
       clearPendingChangeJump();
       showErrorToast(`Could not locate the selected change in ${pending.path}.`);
+    }
+  }
+
+  function resumePendingOutlineJump(attempt) {
+    const pending = readPendingOutlineJump();
+    if (!pending || pending.path !== currentFilePathCached) return;
+    if (pending.requirePreview && !hasVisibleMarkdownPreview()) {
+      ensureAdoPreviewMode();
+      return;
+    }
+    const descriptor = pending.key
+      ? outlineHeadings.find((heading) => heading.key === pending.key)
+      : outlineHeadings[0];
+    if (descriptor && scrollToLiveOutlineHeading(descriptor)) {
+      clearPendingOutlineJump();
+      return;
+    }
+    if (!pending.key) {
+      const preview = getCurrentPreviewContainer();
+      if (preview && scrollToWithStickyOffset(preview)) {
+        clearPendingOutlineJump();
+        return;
+      }
+    }
+    const n = Number.isFinite(attempt) ? attempt : 0;
+    if (n < 20) {
+      setTimeout(() => resumePendingOutlineJump(n + 1), 250);
+    } else {
+      clearPendingOutlineJump();
+      showErrorToast(`Could not locate the selected heading in ${pending.path}.`);
     }
   }
 
@@ -2749,6 +2879,101 @@
       sensitivity: 'base',
       numeric: true
     }));
+  }
+
+  function snapshotOutlineHeading(heading) {
+    return {
+      id: heading.id,
+      key: heading.key || heading.id,
+      level: heading.level,
+      text: heading.text,
+      line: heading.line,
+      file: heading.file
+    };
+  }
+
+  function syncCurrentFileOutlineSnapshot() {
+    const path = currentFilePathCached;
+    if (!path) return;
+    const change = prMarkdownChanges.find((item) => item.path === path);
+    const prior = prOutlineCatalog.get(path);
+    prOutlineCatalog.set(path, {
+      path,
+      lifecycle: change?.type || prior?.lifecycle || 'edit',
+      status: outlineHeadings.length > 0 ? 'ready' : 'empty',
+      error: '',
+      headings: outlineHeadings.map(snapshotOutlineHeading)
+    });
+  }
+
+  function getPrOutlineFileOrder() {
+    return getStableAdoFileOrder([
+      ...prMarkdownFileOrder,
+      ...Array.from(prOutlineCatalog.keys()),
+      currentFilePathCached
+    ]);
+  }
+
+  async function buildPrOutlineEntry(change) {
+    const path = change.path;
+    if (change.type === 'delete') {
+      return { path, lifecycle: 'delete', status: 'deleted', error: '', headings: [] };
+    }
+    try {
+      const source = await retryableHeadFileSource(path);
+      const GRDC = window.GRDC || {};
+      if (typeof GRDC.extractMarkdownHeadings !== 'function') {
+        throw new Error('Outline source helpers are unavailable — check ADO manifest script order');
+      }
+      const headings = GRDC.extractMarkdownHeadings(source, path);
+      return {
+        path,
+        lifecycle: change.type,
+        status: headings.length > 0 ? 'ready' : 'empty',
+        error: '',
+        headings
+      };
+    } catch (err) {
+      return {
+        path,
+        lifecycle: change.type,
+        status: 'error',
+        error: String(err && (err.message || err)).slice(0, 160),
+        headings: []
+      };
+    }
+  }
+
+  function ensurePrOutlineCatalog() {
+    if (prOutlinePromise) return prOutlinePromise;
+    prOutlineStatus = 'loading';
+    prOutlineError = '';
+    renderOutlineRows();
+    prOutlinePromise = ensurePrChangesCatalog()
+      .then(async () => {
+        const entries = await mapWithConcurrency(prMarkdownChanges, 4, buildPrOutlineEntry);
+        const next = new Map(entries.map((entry) => [entry.path, entry]));
+        // Preserve a current Markdown file that is not in the cumulative
+        // inventory (defensive for unusual ADO context-only file routes).
+        prOutlineCatalog.forEach((entry, path) => {
+          if (!next.has(path)) next.set(path, entry);
+        });
+        prOutlineCatalog = next;
+        prOutlineStatus = 'ready';
+        syncCurrentFileOutlineSnapshot();
+        renderOutlineRows();
+        updateActiveOutline();
+        resumePendingOutlineJump(0);
+        return prOutlineCatalog;
+      })
+      .catch((err) => {
+        prOutlineStatus = 'error';
+        prOutlineError = String(err && (err.message || err)).slice(0, 160);
+        prOutlinePromise = null;
+        renderOutlineRows();
+        return prOutlineCatalog;
+      });
+    return prOutlinePromise;
   }
 
   function getMappedBlocksForChanges() {
@@ -3055,6 +3280,8 @@
     collapsed.forEach((heading) => {
       if (!sectionContainsBlock(heading, block)) return;
       collapsedHeadings.delete(heading);
+      const outlineKey = heading.dataset.adrcOutlineKey;
+      if (outlineKey) outlineCollapsedKeys.delete(outlineKey);
       const toggle = ensureCollapseToggle(heading);
       if (toggle) applyCollapseVisuals(heading, toggle, false);
     });
@@ -3198,32 +3425,221 @@
     const body = outlinePanel.querySelector('.adrc-outline-body');
     if (!body) return;
     body.innerHTML = '';
+    const fileOrder = getPrOutlineFileOrder();
+    const entries = fileOrder.map((path) => prOutlineCatalog.get(path)).filter(Boolean);
+    const allHeadings = entries.flatMap((entry) => entry.headings || []);
     const count = outlinePanel.querySelector('[data-count="outline"]');
-    if (count) count.textContent = String(outlineHeadings.length);
-    if (outlineHeadings.length === 0) {
+    if (count) count.textContent = String(allHeadings.length);
+
+    if (entries.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'adrc-outline-empty';
-      empty.textContent = 'No headings in this file.';
+      if (prOutlineStatus === 'loading') empty.textContent = 'Loading pull request outline\u2026';
+      else if (prOutlineStatus === 'error') empty.textContent = `Outline unavailable: ${prOutlineError}`;
+      else empty.textContent = 'No Markdown headings in this pull request.';
       body.appendChild(empty);
       return;
     }
-    outlineHeadings.forEach((h) => {
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = `adrc-outline-row adrc-outline-level-${h.level}`;
-      row.style.paddingLeft = `${8 + (h.level - 1) * 14}px`;
-      row.dataset.headingId = h.id;
-      row.textContent = h.text;
-      row.title = h.text;
-      row.addEventListener('click', () => {
-        revealChangedBlock(h.el);
-        setActiveOutlineRow(h.id);
-        scrollToWithStickyOffset(h.el);
-      });
-      body.appendChild(row);
+
+    const GRDC = window.GRDC || {};
+    const rawCounts = typeof GRDC.attributeThreadsToHeadings === 'function'
+      ? GRDC.attributeThreadsToHeadings(allHeadings, sidebarThreadItems)
+      : new Map();
+    const countsByKey = new Map();
+    rawCounts.forEach((value, heading) => countsByKey.set(heading.key || heading.id, value));
+    const activePath = currentFilePath() || currentFilePathCached;
+
+    entries.forEach((entry) => {
+      const fileButton = document.createElement('button');
+      fileButton.type = 'button';
+      fileButton.className = 'adrc-outline-file';
+      fileButton.dataset.path = entry.path;
+      if (entry.path === activePath) fileButton.classList.add('adrc-outline-file-current');
+      const fileText = document.createElement('span');
+      fileText.className = 'adrc-outline-file-text';
+      fileText.textContent = entry.path.replace(/^\//, '') || entry.path;
+      fileButton.appendChild(fileText);
+      if (entry.status === 'deleted' || entry.status === 'error' || entry.status === 'empty') {
+        const badge = document.createElement('span');
+        badge.className = `adrc-outline-file-badge adrc-outline-file-badge-${entry.status}`;
+        badge.textContent = entry.status === 'deleted'
+          ? 'DELETED'
+          : entry.status === 'error' ? 'UNAVAILABLE' : 'NO HEADINGS';
+        fileButton.appendChild(badge);
+      }
+      fileButton.title = entry.path;
+      fileButton.addEventListener('click', () => navigateToOutlineTarget({
+        path: entry.path,
+        key: entry.headings?.[0]?.key || null,
+        lifecycle: entry.lifecycle,
+        status: entry.status
+      }));
+      body.appendChild(fileButton);
+
+      if (entry.status !== 'ready' || !entry.headings?.length) {
+        const state = document.createElement('div');
+        state.className = 'adrc-outline-file-state';
+        if (entry.status === 'deleted') state.textContent = 'Deleted file — no Preview outline.';
+        else if (entry.status === 'error') state.textContent = entry.error || 'Could not load headings.';
+        else state.textContent = 'No headings in this file.';
+        body.appendChild(state);
+        return;
+      }
+
+      const tree = typeof GRDC.buildOutlineTree === 'function'
+        ? GRDC.buildOutlineTree(entry.headings)
+        : entry.headings.map((heading) => ({ ...heading, children: [] }));
+
+      function renderNode(node, indent) {
+        const key = node.key || node.id;
+        const collapsed = outlineCollapsedKeys.has(key);
+        const row = document.createElement('div');
+        row.className = `adrc-outline-row adrc-outline-level-${node.level}`;
+        if (key === outlineActiveId) row.classList.add('adrc-outline-active');
+        row.style.paddingLeft = `${8 + indent * 14}px`;
+        row.dataset.headingId = key;
+        row.dataset.path = entry.path;
+
+        const chevron = document.createElement('button');
+        chevron.type = 'button';
+        chevron.className = 'adrc-outline-chevron';
+        chevron.textContent = collapsed ? '\u25b8' : '\u25be';
+        chevron.setAttribute('aria-label', `${collapsed ? 'Expand' : 'Collapse'} section ${node.text}`);
+        chevron.setAttribute('aria-expanded', String(!collapsed));
+        chevron.addEventListener('click', (event) => {
+          event.stopPropagation();
+          setOutlineHeadingCollapsed(node, !outlineCollapsedKeys.has(key));
+        });
+
+        const label = document.createElement('button');
+        label.type = 'button';
+        label.className = 'adrc-outline-label';
+        label.title = `${entry.path}:${node.line} — ${node.text}`;
+        const text = document.createElement('span');
+        text.className = 'adrc-outline-text';
+        text.textContent = node.text;
+        label.appendChild(text);
+        const threadCount = countsByKey.get(key) || 0;
+        if (threadCount > 0) {
+          const pill = document.createElement('span');
+          pill.className = 'adrc-outline-thread-count';
+          pill.textContent = `${threadCount} \ud83d\udcac`;
+          label.appendChild(pill);
+        }
+        label.addEventListener('click', () => navigateToOutlineTarget({
+          path: entry.path,
+          key,
+          lifecycle: entry.lifecycle,
+          status: entry.status
+        }));
+
+        row.append(chevron, label);
+        body.appendChild(row);
+        if (!collapsed) {
+          (node.children || []).forEach((child) => renderNode(child, indent + 1));
+        }
+      }
+
+      tree.forEach((node) => renderNode(node, 0));
     });
-    // Re-apply active state after rebuild.
     updateActiveOutline();
+  }
+
+  function resolveLiveOutlineHeading(key) {
+    if (!key) return null;
+    return outlineHeadings.find((heading) => heading.key === key && heading.el?.isConnected) || null;
+  }
+
+  function setOutlineHeadingCollapsed(heading, collapsed) {
+    const key = heading && (heading.key || heading.id);
+    if (!key) return;
+    if (collapsed) outlineCollapsedKeys.add(key);
+    else outlineCollapsedKeys.delete(key);
+
+    const live = resolveLiveOutlineHeading(key);
+    if (live) {
+      const toggle = ensureCollapseToggle(live.el);
+      if (collapsed) collapsedHeadings.add(live.el);
+      else collapsedHeadings.delete(live.el);
+      if (toggle) applyCollapseVisuals(live.el, toggle, collapsed);
+    }
+    renderOutlineRows();
+  }
+
+  function foldOutlineAtLevel(level) {
+    if (!Number.isFinite(level)) return;
+    const path = currentFilePathCached;
+    const entry = path && prOutlineCatalog.get(path);
+    if (!entry) return;
+    (entry.headings || []).forEach((heading) => {
+      if (heading.level !== level) return;
+      outlineCollapsedKeys.add(heading.key || heading.id);
+      const live = resolveLiveOutlineHeading(heading.key || heading.id);
+      if (!live) return;
+      collapsedHeadings.add(live.el);
+      const toggle = ensureCollapseToggle(live.el);
+      if (toggle) applyCollapseVisuals(live.el, toggle, true);
+    });
+    renderOutlineRows();
+  }
+
+  function expandAllOutlineSections() {
+    const path = currentFilePathCached;
+    const entry = path && prOutlineCatalog.get(path);
+    if (!entry) return;
+    (entry.headings || []).forEach((heading) => {
+      outlineCollapsedKeys.delete(heading.key || heading.id);
+      const live = resolveLiveOutlineHeading(heading.key || heading.id);
+      if (!live) return;
+      collapsedHeadings.delete(live.el);
+      const toggle = ensureCollapseToggle(live.el);
+      if (toggle) applyCollapseVisuals(live.el, toggle, false);
+    });
+    renderOutlineRows();
+  }
+
+  function scrollToLiveOutlineHeading(heading) {
+    if (!heading || !heading.el?.isConnected) return false;
+    revealChangedBlock(heading.el);
+    outlineActiveId = heading.key || heading.id;
+    setActiveOutlineRow(outlineActiveId);
+    sidebarFollowSuppressedUntil = Date.now() + 1500;
+    return scrollToWithStickyOffset(heading.el);
+  }
+
+  function navigateToOutlineTarget(target) {
+    if (!target || !target.path) return false;
+    if (target.path === currentFilePath() && target.path === currentFilePathCached) {
+      clearPendingOutlineJump();
+      const live = target.key ? resolveLiveOutlineHeading(target.key) : outlineHeadings[0];
+      if (live) return scrollToLiveOutlineHeading(live);
+      const preview = getCurrentPreviewContainer();
+      return !!(preview && scrollToWithStickyOffset(preview));
+    }
+
+    const fileTarget = findBestAdoFileTreeTarget(target.path);
+    if (!fileTarget) {
+      clearPendingOutlineJump();
+      showErrorToast(`Could not find ${target.path} in the visible ADO file tree.`);
+      return false;
+    }
+    if (target.lifecycle === 'delete' || target.status === 'deleted') {
+      clearPendingOutlineJump();
+      fileTarget.target.click();
+      return true;
+    }
+
+    savePendingOutlineJump(target);
+    fileTarget.target.click();
+    setTimeout(continuePendingOutlineNavigation, 100);
+    setTimeout(() => {
+      const pending = readPendingOutlineJump();
+      if (pending && pending.path === target.path && currentFilePath() !== target.path) {
+        clearPendingOutlineJump();
+        showErrorToast(`ADO did not open ${target.path}; expand its folder in the file tree and retry.`);
+      }
+    }, 2000);
+    return true;
   }
 
   function setActiveOutlineRow(id) {
@@ -3232,7 +3648,9 @@
     outlinePanel.querySelectorAll('.adrc-outline-row.adrc-outline-active')
       .forEach((r) => r.classList.remove('adrc-outline-active'));
     if (!id) return;
-    const row = outlinePanel.querySelector(`.adrc-outline-row[data-heading-id="${id}"]`);
+    const row = outlinePanel.querySelector(
+      `.adrc-outline-row[data-heading-id="${escapeCssValue(id)}"]`
+    );
     if (row) {
       row.classList.add('adrc-outline-active');
       // Keep the active row visible in the panel's own scroll container.
@@ -3273,6 +3691,7 @@
   function updateActiveOutline() {
     outlineScrollRaf = null;
     if (!outlineIsVisible()) return;
+    if (Date.now() < sidebarFollowSuppressedUntil) return;
     const active = pickActiveHeading();
     setActiveOutlineRow(active ? active.id : null);
   }
@@ -3323,8 +3742,21 @@
    */
   function refreshOutline() {
     outlineHeadings = collectHeadingsForOutline();
+    outlineHeadings.forEach((heading) => {
+      const collapsed = outlineCollapsedKeys.has(heading.key);
+      if (collapsed) collapsedHeadings.add(heading.el);
+      else collapsedHeadings.delete(heading.el);
+      const toggle = ensureCollapseToggle(heading.el);
+      if (toggle) applyCollapseVisuals(heading.el, toggle, collapsed);
+    });
+    syncCurrentFileOutlineSnapshot();
     renderOutlineRows();
     updateActiveOutline();
+    ensurePrOutlineCatalog().then(() => {
+      syncCurrentFileOutlineSnapshot();
+      renderOutlineRows();
+      resumePendingOutlineJump(0);
+    });
   }
 
   function showOutlinePanel() {
@@ -3411,6 +3843,7 @@
       delete el.dataset.adrcHasButton;
       delete el.dataset.adrcLine;
       delete el.dataset.adrcPath;
+      delete el.dataset.adrcOutlineKey;
     });
     document.querySelectorAll(
       '.adrc-hoverable, .adrc-collapsible, .adrc-section-collapsed, .adrc-collapsed-hidden, .adrc-range-permanent, .adrc-range-hover'
@@ -3603,10 +4036,12 @@
   setInterval(() => {
     continuePendingThreadNavigation();
     continuePendingChangeNavigation();
+    continuePendingOutlineNavigation();
     const nextRouteKey = currentPreviewRouteKey();
     if (nextRouteKey === observedRouteKey) return;
     observedRouteKey = nextRouteKey;
     renderChangesSidebar();
+    renderOutlineRows();
     updateSidebarNavigation();
     schedulePreviewInit(100);
   }, 250);
@@ -3742,6 +4177,27 @@
         previewInitializedFor: preview ? preview.dataset.adrcInitialized || null : null,
         staleHeadingCount: outlineHeadings.filter((h) => !h.el.isConnected || !preview || !preview.contains(h.el)).length,
         headings: outlineHeadings.map((h) => ({ level: h.level, text: h.text })),
+        status: prOutlineStatus,
+        error: prOutlineError || null,
+        fileOrder: getPrOutlineFileOrder(),
+        totalHeadingCount: Array.from(prOutlineCatalog.values())
+          .reduce((total, entry) => total + (entry.headings || []).length, 0),
+        files: getPrOutlineFileOrder().map((path) => {
+          const entry = prOutlineCatalog.get(path);
+          return entry ? {
+            path,
+            lifecycle: entry.lifecycle,
+            status: entry.status,
+            headingCount: (entry.headings || []).length,
+            headings: (entry.headings || []).map((heading) => ({
+              key: heading.key,
+              level: heading.level,
+              text: heading.text,
+              line: heading.line,
+              collapsed: outlineCollapsedKeys.has(heading.key)
+            }))
+          } : null;
+        }).filter(Boolean),
         activeId: outlineActiveId,
         scrollContainer: container === window
           ? 'window'
@@ -3779,7 +4235,10 @@
         changedMarkdownFileCount: prMarkdownChanges.length,
         changesIterationId: prChangesIterationId,
         activeChangeIndex: sidebarActiveChangeIndex,
-        outlineCount: outlineHeadings.length,
+        outlineStatus: prOutlineStatus,
+        outlineFileCount: prOutlineCatalog.size,
+        outlineCount: Array.from(prOutlineCatalog.values())
+          .reduce((total, entry) => total + (entry.headings || []).length, 0),
         currentFile: currentFilePathCached
       };
     },
@@ -3844,7 +4303,8 @@
         })),
         restore: Object.assign({}, previewRestoreState),
         pendingThreadJump: readPendingThreadJump(),
-        pendingChangeJump: readPendingChangeJump()
+        pendingChangeJump: readPendingChangeJump(),
+        pendingOutlineJump: readPendingOutlineJump()
       };
     },
 

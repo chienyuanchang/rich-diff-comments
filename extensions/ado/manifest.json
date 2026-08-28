@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Markdown PR Comments for Azure DevOps",
-  "version": "0.0.1",
-  "description": "Comment, reply, resolve, and collapse sections directly in Azure DevOps PR Preview (rendered markdown) view.",
+  "version": "1.0.0",
+  "description": "Comment on rendered Markdown in Azure DevOps PRs with inline threads, Changes, Outline, and keyboard navigation.",
   "author": "chienyuanchang",
 
   "homepage_url": "https://github.com/chienyuanchang/rich-diff-comments",

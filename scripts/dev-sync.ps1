@@ -1,11 +1,11 @@
 ﻿# scripts/dev-sync.ps1
 #
-# Copies the shared source-of-truth files into an extension target folder
+# Copies shared source-of-truth files into an extension target folder
 # so Chrome / Edge can load the folder directly. Runs before package.ps1
 # and any time you edit src/lib/* while an extension is dev-loaded.
 #
 # Why: Chromium requires all files a manifest references to live at or
-# below the manifest's folder. Our shared src/lib/*.js and PRIVACY.md
+# below the manifest's folder. Our shared src/lib/*.js, target adapters, and privacy policies
 # live at the repo root as the single source of truth. This script
 # mirrors them into extensions/<target>/ at build/dev time. The mirrored
 # copies are git-ignored via .gitignore.
@@ -13,7 +13,7 @@
 # Usage:
 #   .\scripts\dev-sync.ps1                    # syncs the github target (default)
 #   .\scripts\dev-sync.ps1 -Target github
-#   .\scripts\dev-sync.ps1 -Target ado        # (future - target folder must exist)
+#   .\scripts\dev-sync.ps1 -Target ado
 #
 # Exit codes: 0 on success, non-zero on failure.
 
@@ -70,13 +70,16 @@ try {
     Write-Host "[dev-sync] $Target : src/adapters/$Target.js copied -> $relAdapter"
   }
 
-  # PRIVACY.md mirror
-  $srcPrivacy = Join-Path $root 'PRIVACY.md'
+  # Target privacy mirror. GitHub keeps the historical PRIVACY.md source;
+  # ADO has a separate policy because its hosts, stored keys, and endpoint
+  # behavior differ materially. Both ship as top-level PRIVACY.md.
+  $privacySourceName = if ($Target -eq 'ado') { 'PRIVACY_ADO.md' } else { 'PRIVACY.md' }
+  $srcPrivacy = Join-Path $root $privacySourceName
   if (Test-Path $srcPrivacy) {
     Copy-Item -Path $srcPrivacy -Destination (Join-Path $targetDir 'PRIVACY.md') -Force
-    Write-Host "[dev-sync] $Target : PRIVACY.md copied"
+    Write-Host "[dev-sync] $Target : $privacySourceName copied -> PRIVACY.md"
   } else {
-    Write-Warning "[dev-sync] PRIVACY.md not found at repo root - extension will ship without it"
+    Write-Warning "[dev-sync] $privacySourceName not found at repo root - extension will ship without PRIVACY.md"
   }
 }
 finally {

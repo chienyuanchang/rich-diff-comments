@@ -1,7 +1,8 @@
 'use strict';
 
 const { test, expect } = require('@playwright/test');
-const { setupAdoExtensionPage } = require('./_helpers');
+const { setupAdoExtensionPage, waitForAdoReady } = require('./_helpers');
+const fixtures = require('./fixtures/sources');
 
 test.describe('ADO sidebar and keyboard navigation', () => {
   test.beforeEach(async ({ page }) => {
@@ -21,6 +22,8 @@ test.describe('ADO sidebar and keyboard navigation', () => {
     await expect(sidebar).toHaveClass(/adrc-sidebar-collapsed/);
     await expect(sidebar.locator('.adrc-sidebar-changes-nav')).toBeVisible();
     await expect(sidebar.locator('.adrc-sidebar-thread-nav')).toBeVisible();
+    await expect(sidebar.locator('.adrc-sidebar-diff-icon')).toBeVisible();
+    await expect(sidebar.locator('.adrc-sidebar-thread-icon')).toBeVisible();
     await expect(sidebar.locator('.adrc-sidebar-collapse')).toHaveAttribute('aria-expanded', 'false');
 
     await page.keyboard.press('Shift+T');
@@ -30,7 +33,7 @@ test.describe('ADO sidebar and keyboard navigation', () => {
     expect(state.visible).toBe(true);
     expect(state.collapsed).toBe(false);
     expect(state.tab).toBe('threads');
-    expect(state.width).toBe(340);
+    expect(state.width).toBe(480);
     expect(state.height).toBe(480);
   });
 
@@ -59,12 +62,12 @@ test.describe('ADO sidebar and keyboard navigation', () => {
 
     await page.keyboard.press('j');
     await expect.poll(() => page.evaluate(() => window.ADORC_probe.sidebar().activeThreadId)).toBe('102');
-    await expect(page.locator('.adrc-sidebar-thread-count span')).toHaveText('2/3');
+    await expect(page.locator('.adrc-sidebar-thread-count span')).toHaveText('2/2 (3)');
     await expect(page.locator('.adrc-thread-panel[data-thread-id="102"]')).toBeVisible();
 
     await page.keyboard.press('k');
     await expect.poll(() => page.evaluate(() => window.ADORC_probe.sidebar().activeThreadId)).toBe('101');
-    await expect(page.locator('.adrc-sidebar-thread-count span')).toHaveText('1/3');
+    await expect(page.locator('.adrc-sidebar-thread-count span')).toHaveText('1/2 (3)');
     // Thread navigation preserves the pane the reviewer was using.
     await expect(page.locator('.adrc-sidebar-tab[data-tab="outline"]')).toHaveClass(/adrc-sidebar-tab-active/);
   });
@@ -78,6 +81,7 @@ test.describe('ADO sidebar and keyboard navigation', () => {
     await expect(page.locator('.adrc-sidebar-thread-card[data-thread-id="102"]')).toHaveCount(0);
     await expect(page.locator('[data-count="threads"]')).toHaveText('3');
     await expect(filter).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.adrc-sidebar-thread-count span')).toHaveText('1/1 (2)');
     const filtered = await page.evaluate(() => window.ADORC_probe.sidebar());
     expect(filtered.visibleThreadCount).toBe(2);
 
@@ -96,6 +100,42 @@ test.describe('ADO sidebar and keyboard navigation', () => {
     await expect(groups).toHaveText(['docs/design.md', 'docs/other.md']);
     await expect(groups.nth(0)).not.toHaveClass(/adrc-sidebar-file-current/);
     await expect(groups.nth(1)).toHaveClass(/adrc-sidebar-file-current/);
+    await expect(page.locator('.adrc-sidebar-thread-count span')).toHaveText('1/1 (3)');
+  });
+
+  test('shows a dimmed file-scoped Threads zero while preserving the PR total', async ({ page }) => {
+    await page.evaluate((path) => window.__ADO_FIXTURE__.openPath(path), fixtures.NEW_PATH);
+    await waitForAdoReady(page, fixtures.NEW_PATH, 3);
+    const counter = page.locator('.adrc-sidebar-thread-count');
+    await expect(counter.locator('span')).toHaveText('0/0 (3)');
+    await expect(counter).toHaveClass(/adrc-sidebar-count-empty/);
+    await expect(counter).toHaveAttribute('aria-label', '0 of 0 threads in this file · 3 threads in this pull request');
+
+    await page.locator('.adrc-sidebar-thread-icon').click();
+    await waitForAdoReady(page, fixtures.DESIGN_PATH, 3);
+    await expect.poll(() => page.evaluate(() => window.ADORC_probe.sidebar().activeThreadId)).toBe('101');
+    await expect(counter.locator('span')).toHaveText('1/2 (3)');
+    await expect(counter).not.toHaveClass(/adrc-sidebar-count-empty/);
+  });
+
+  test('header icons jump to the first item in the current file without changing tabs', async ({ page }) => {
+    const sidebar = page.locator('.adrc-sidebar');
+    await page.keyboard.press('3');
+
+    await page.keyboard.press(']');
+    await page.keyboard.press(']');
+    await expect.poll(() => page.evaluate(() => window.ADORC_probe.sidebar().activeChangeIndex)).toBe(2);
+    await sidebar.locator('.adrc-sidebar-diff-icon').click();
+    await expect.poll(() => page.evaluate(() => window.ADORC_probe.sidebar().activeChangeIndex)).toBe(0);
+    await expect(sidebar.locator('.adrc-sidebar-changes-count span')).toHaveText('1/3 (9)');
+
+    await page.keyboard.press('h');
+    await page.keyboard.press('j');
+    await expect.poll(() => page.evaluate(() => window.ADORC_probe.sidebar().activeThreadId)).toBe('102');
+    await sidebar.locator('.adrc-sidebar-thread-icon').click();
+    await expect.poll(() => page.evaluate(() => window.ADORC_probe.sidebar().activeThreadId)).toBe('101');
+    await expect(sidebar.locator('.adrc-sidebar-thread-count span')).toHaveText('1/2 (3)');
+    await expect(sidebar.locator('.adrc-sidebar-tab[data-tab="outline"]')).toHaveClass(/adrc-sidebar-tab-active/);
   });
 
   test('same-file change cards scroll the nested ADO content surface', async ({ page }) => {

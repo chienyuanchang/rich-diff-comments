@@ -1,10 +1,10 @@
-﻿# Prepare a release folder under releases/<version>/ containing the
+﻿# Prepare a target-specific release folder containing the
 # packaged zip for Chrome / Edge submission.
 #
 # Submission copy (titles, descriptions, justifications, reviewer notes,
 # search terms, "what's new") is maintained directly in the canonical
-# docs at .github/skills/rdc-publish-check/templates/CHROME_SUBMISSION.md
-# and .github/skills/rdc-publish-check/templates/EDGE_SUBMISSION.md.
+# docs at .github/skills/rdc-publish-check/templates/CHROME_SUBMISSION[_ADO].md
+# and .github/skills/rdc-publish-check/templates/EDGE_SUBMISSION[_ADO].md.
 # Update those in-place each release (bump {{VERSION}}, update
 # {{CHANGELOG}}, fill submission notes); the git history of those two
 # files is the audit trail for what was submitted when.
@@ -12,19 +12,20 @@
 # Run from the repository root.
 #
 # Usage:
-#   .\.github\skills\rdc-publish-check\scripts\release-prep.ps1
-#       Builds the zip (via package.ps1), creates releases/<version>/,
-#       moves the zip in.
+#   .\.github\skills\rdc-publish-check\scripts\release-prep.ps1 -Target github|ado
+#       Builds the zip (via package.ps1), creates the target release folder,
+#       and moves the target-qualified zip into it.
 #
 #   .\.github\skills\rdc-publish-check\scripts\release-prep.ps1 -Force
 #       Overwrites releases/<version>/ if it already exists.
 #
 #   .\.github\skills\rdc-publish-check\scripts\release-prep.ps1 -SkipBuild
-#       Skips running package.ps1 (assumes rdc-<version>.zip already
-#       exists at the extension root).
+#       Skips running package.ps1 (assumes the target zip already exists).
 
 [CmdletBinding()]
 param(
+  [ValidateSet('github', 'ado')]
+  [string]$Target = 'github',
   [switch]$Force,
   [switch]$SkipBuild
 )
@@ -37,33 +38,38 @@ Push-Location $root
 
 try {
   # ── Read version ──────────────────────────────────────────────────────
-  $manifestPath = Join-Path $root 'extensions\github\manifest.json'
+  $manifestPath = Join-Path $root "extensions\$Target\manifest.json"
   if (-not (Test-Path $manifestPath)) {
     throw "manifest.json not found at $manifestPath"
   }
   $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
   $version = $manifest.version
-  Write-Host "Preparing release artifacts for v$version" -ForegroundColor Cyan
+  Write-Host "Preparing $Target release artifacts for v$version" -ForegroundColor Cyan
 
-  $releaseDir = Join-Path "releases" $version
+  $releaseDir = if ($Target -eq 'github') {
+    Join-Path 'releases' $version
+  } else {
+    Join-Path (Join-Path 'releases' $Target) $version
+  }
   if (Test-Path $releaseDir) {
     if ($Force) {
       Write-Host "  removing existing $releaseDir (--Force)" -ForegroundColor Yellow
       Remove-Item -Recurse -Force $releaseDir
     } else {
-      throw "releases/$version already exists. Re-run with -Force to overwrite."
+      throw "$releaseDir already exists. Re-run with -Force to overwrite."
     }
   }
   New-Item -ItemType Directory -Path $releaseDir | Out-Null
   Write-Host "  created $releaseDir"
 
   # ── Build (or locate) the zip ────────────────────────────────────────
-  $zipName = "rdc-$version.zip"
+  $artifactStem = if ($Target -eq 'github') { 'rdc' } else { "rdc-$Target" }
+  $zipName = "$artifactStem-$version.zip"
   $zipAtRoot = Join-Path $root $zipName
 
   if (-not $SkipBuild) {
     Write-Host "  building $zipName via .\scripts\package.ps1" -ForegroundColor Cyan
-    & (Join-Path $root "scripts\package.ps1") | Out-Host
+    & (Join-Path $root "scripts\package.ps1") -Target $Target | Out-Host
     if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne $null) {
       throw "package.ps1 failed (exit $LASTEXITCODE)"
     }
@@ -86,9 +92,10 @@ try {
   }
   Write-Host ""
   Write-Host "Next steps:"
+  $templateSuffix = if ($Target -eq 'github') { '' } else { "_$($Target.ToUpperInvariant())" }
   Write-Host "  1. Verify the canonical submission docs are up to date for v$version :"
-  Write-Host "       .github\skills\rdc-publish-check\templates\CHROME_SUBMISSION.md"
-  Write-Host "       .github\skills\rdc-publish-check\templates\EDGE_SUBMISSION.md"
+  Write-Host "       .github\skills\rdc-publish-check\templates\CHROME_SUBMISSION$templateSuffix.md"
+  Write-Host "       .github\skills\rdc-publish-check\templates\EDGE_SUBMISSION$templateSuffix.md"
   Write-Host "     (version stamp, changelog block, submission notes.)"
   Write-Host "  2. Upload $releaseDir\$zipName to the Chrome Web Store Developer Console;"
   Write-Host "     paste sections from the Chrome template into the listing form."

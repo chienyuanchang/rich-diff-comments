@@ -1,9 +1,9 @@
-﻿# Usage:  .\scripts\package.ps1 [-Target github|ado] [-Output path/to/rdc.zip]
+﻿# Usage:  .\scripts\package.ps1 [-Target github|ado] [-Output path/to/package.zip]
 #
 # Builds a publish-ready zip for Chrome Web Store / Edge Add-ons.
 #
 # Runs dev-sync.ps1 first to ensure the target folder has the latest
-# shared src/lib/*.js and PRIVACY.md mirrored in, then packages
+# shared src/lib/*.js, target adapter, and target privacy policy mirrored in, then packages
 # extensions/<target>/ so the zip contents are exactly what Chrome sees
 # when the folder is dev-loaded.
 #
@@ -35,8 +35,10 @@ try {
   $manifest = Get-Content "manifest.json" -Raw | ConvertFrom-Json
 
   if (-not $Output) {
-    # Default output lands at repo root (same as before the refactor).
-    $Output = Join-Path $root "rdc-$($manifest.version).zip"
+    # Preserve the established GitHub artifact name. Qualify every additional
+    # target so same-version first releases cannot overwrite the GitHub ZIP.
+    $artifactStem = if ($Target -eq 'github') { 'rdc' } else { "rdc-$Target" }
+    $Output = Join-Path $root "$artifactStem-$($manifest.version).zip"
   } elseif (-not [System.IO.Path]::IsPathRooted($Output)) {
     # Relative -Output paths resolve against the repo root, not the target folder.
     $Output = Join-Path $root $Output

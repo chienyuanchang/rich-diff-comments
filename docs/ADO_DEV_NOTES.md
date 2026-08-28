@@ -377,6 +377,26 @@ Highlight, HighlightText, GrayText, and LinkText, with deterministic adjustment
 on injected roots. Run `ADORC_probe.theme()` to print host tokens and computed
 sidebar/thread/editor colors during live theme checks.
 
+## Sidebar header parity — icons and scoped counters
+
+The ADO header follows the GitHub v1.8 interaction model while retaining Fluent
+colors, the ADO hide button, and clickable count buttons. Each navigation
+cluster is ordered icon → count → previous → next. The document/diff icon and
+overlapping-discussion icon jump to the first matching item in the current file,
+or invoke global-next when that file has none. Previous/next buttons and
+keyboard shortcuts continue walking the stable PR-wide lists.
+
+Both Changes and filtered Threads use `buildScopedCounterState()`:
+
+- `N/M (T)` — position in this file / items in this file / items in PR
+- `N/M` — one-file list, where the parenthetical would be redundant
+- `0/0 (T)` — current file has no items; the counter is visibly dimmed
+
+The unresolved-only filter changes the Threads `T` because header navigation
+walks only the visible filtered list. The Threads tab badge remains the
+unfiltered PR thread count, which accurately describes the pane's underlying
+data rather than the current header-navigation subset.
+
 ## URL parsing
 
 **PR URL** (browser): `/{org}/{project}/_git/{repo}/pullrequest/{id}[?path=/README.md]`

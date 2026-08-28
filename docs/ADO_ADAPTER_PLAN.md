@@ -472,6 +472,45 @@ the same sidebar/buttons and an open editor draft. Validation: 383 / 383
 unit/static tests, 21 / 21 GitHub Chromium scenarios, and 38 / 38 ADO Chromium
 scenarios. Light and dark modes were manually confirmed in the live ADO sandbox.
 
+### 7.8 Iteration P — GitHub-parity sidebar header icons and scoped counters
+
+Port the mature GitHub header semantics without replacing ADO's Fluent theme,
+hide affordance, or count-button tab shortcuts.
+
+**Scope:**
+
+- Give Changes and Threads distinct clickable icons before their counters: the
+  document/diff icon and overlapping discussion-bubbles icon used by the GitHub
+  target, recolored through ADO theme/status tokens.
+- Icon click jumps to the first visible item in the active file. If that file
+  has no item of the requested kind, fall back to the next PR-wide item so the
+  icon is never a dead action. Previous/next and keyboard navigation remain
+  global and wrapping.
+- Use the GitHub v1.8 counter model for both lists: `N/M (T)` means position in
+  the active file, total in that file, and total in the PR. Drop `(T)` when the
+  active file contains the entire list. Show dimmed `0/0 (T)` when the current
+  file has none.
+- Keep ADO's count itself clickable to open the matching tab; GitHub's count is
+  informational, but removing the established ADO shortcut would be a
+  regression.
+- Keep both icon/counter/chevron clusters usable in collapsed mode and under
+  light, dark, and forced-colors themes.
+
+**Acceptance:** icons are visually distinguishable and invoke file-first
+navigation; Changes and Threads counters share identical scoped semantics;
+switching to a file with no threads shows `0/0 (T)` instead of a misleading
+flat PR count; filters affect the Threads total; keyboard and collapsed-header
+behavior do not change.
+
+**Result:** the ADO header uses the
+GitHub document/diff and overlapping-discussion icons in icon → scoped count →
+previous → next clusters. Both lists use the same pure `N/M (T)` model,
+including filtered Threads and dimmed zero-file state; icon fallback and the
+480px collapsed footprint are browser-tested. Validation: 395 / 395 unit/static
+tests, 21 / 21 GitHub Chromium scenarios, and 40 / 40 ADO Chromium scenarios.
+The distinct icons, scoped counts, dimmed zero-item state, and collapsed header
+were manually confirmed in the live ADO sandbox before release preparation.
+
 **Deferred by decision:** `@mention` autocomplete remains a later iteration;
 none of M/N/O adds identity-search traffic or editor suggestion UI.
 

@@ -1,4 +1,4 @@
-# Render icon.svg -> PNGs at the sizes Chrome / Edge / store listings require.
+# Render an SVG -> PNGs at the sizes Chrome / Edge / store listings require.
 #
 # Strategy:
 #   1. Render the master 1024x1024 PNG from icon.svg using headless Chrome or Edge
@@ -9,19 +9,30 @@
 #      robust and keeps every size pixel-consistent.
 #
 # Usage:
-#   ./render.ps1                  # writes to ../../icons/  (replaces shipped icons)
-#   ./render.ps1 -OutDir preview  # writes to ./preview/   (review before replacing)
+#   ./render.ps1                                  # icon.svg -> ../../icons/
+#   ./render.ps1 -OutDir preview                  # icon.svg -> ./preview/
+#   ./render.ps1 -SvgFile icon-ado.svg -OutDir ../../extensions/ado/icons -Sizes 16,32,48,128
 
 [CmdletBinding()]
 param(
-    [string]$OutDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..\icons')).Path
+    [string]$OutDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..\icons')).Path,
+    [string]$SvgFile = 'icon.svg',
+    [int[]]$Sizes = @(1024, 300, 128, 48, 32, 16)
 )
 
 $ErrorActionPreference = 'Stop'
-$svg   = Join-Path $PSScriptRoot 'icon.svg'
-$sizes = 1024, 300, 128, 48, 32, 16
+$svg = if ([System.IO.Path]::IsPathRooted($SvgFile)) {
+    $SvgFile
+} else {
+    Join-Path $PSScriptRoot $SvgFile
+}
+
+if (-not (Test-Path $svg)) { throw "SVG not found: $svg" }
+if (-not $Sizes -or $Sizes.Count -eq 0) { throw 'At least one output size is required.' }
+if ($Sizes | Where-Object { $_ -le 0 }) { throw 'Output sizes must be positive integers.' }
 
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
+$OutDir = (Resolve-Path $OutDir).Path
 
 # 1. Locate a headless browser to rasterize the SVG master.
 $browser = $null
@@ -37,29 +48,35 @@ if (-not $browser) { throw 'Need Chrome or Edge installed to rasterize the SVG.'
 
 # 2. Wrap the SVG in a transparent HTML page so headless Chrome can screenshot it.
 $wrapper = Join-Path $PSScriptRoot '_render_wrapper.html'
-@'
+$svgUri = ([Uri](Resolve-Path $svg).Path).AbsoluteUri
+@"
 <!doctype html>
 <html><head><meta charset="utf-8"><style>
 html,body{margin:0;padding:0;background:transparent;}
 img{display:block;width:100vw;height:100vh;}
 </style></head>
-<body><img src="icon.svg"></body></html>
-'@ | Set-Content -Path $wrapper -Encoding UTF8
+<body><img src="$svgUri"></body></html>
+"@ | Set-Content -Path $wrapper -Encoding UTF8
 
 try {
     $uri = ([Uri](Resolve-Path $wrapper).Path).AbsoluteUri
     $masterPath = Join-Path $OutDir 'icon-1024.png'
     Write-Host "-> $masterPath (1024px, headless $(Split-Path $browser -Leaf))"
+    $priorErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     & $browser --headless=new --disable-gpu --hide-scrollbars `
         --default-background-color=00000000 --force-device-scale-factor=1 `
-        "--screenshot=$masterPath" '--window-size=1024,1024' $uri 2>&1 | Out-Null
+        "--screenshot=$masterPath" '--window-size=1024,1024' $uri 2>$null | Out-Null
+    $browserExit = $LASTEXITCODE
+    $ErrorActionPreference = $priorErrorActionPreference
+    if ($browserExit -ne 0) { throw "Headless browser failed (exit $browserExit)" }
     if (-not (Test-Path $masterPath)) { throw "Headless browser did not produce $masterPath" }
 
     # 3. Downscale to all other sizes from the 1024 master.
     Add-Type -AssemblyName System.Drawing
     $src = [System.Drawing.Image]::FromFile($masterPath)
     try {
-        foreach ($s in $sizes | Where-Object { $_ -ne 1024 }) {
+        foreach ($s in $Sizes | Sort-Object -Unique | Where-Object { $_ -ne 1024 }) {
             $out = Join-Path $OutDir ("icon-{0}.png" -f $s)
             Write-Host "-> $out (${s}px, bicubic downscale)"
             $bmp = New-Object System.Drawing.Bitmap $s, $s
@@ -82,6 +99,10 @@ try {
     }
 } finally {
     Remove-Item $wrapper -ErrorAction SilentlyContinue
+}
+
+if ($Sizes -notcontains 1024) {
+    Remove-Item $masterPath -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "`nDone. Sanity-check the 16px render -- it's the one that matters most."

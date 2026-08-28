@@ -1472,9 +1472,9 @@
   const SIDEBAR_PENDING_THREAD_KEY = 'adrc-pending-thread-jump-v1';
   const SIDEBAR_PENDING_CHANGE_KEY = 'adrc-pending-change-jump-v1';
   const SIDEBAR_PENDING_OUTLINE_KEY = 'adrc-pending-outline-jump-v1';
-  const SIDEBAR_MIN_WIDTH = 300;
+  const SIDEBAR_MIN_WIDTH = 480;
   const SIDEBAR_MIN_HEIGHT = 180;
-  const SIDEBAR_DEFAULT_WIDTH = 340;
+  const SIDEBAR_DEFAULT_WIDTH = 480;
   const SIDEBAR_DEFAULT_HEIGHT = 480;
   const OUTLINE_STICKY_OFFSET = 100;         // px above heading during scroll-to
   const OUTLINE_ACTIVE_OFFSET = 140;         // px below viewport top where the "reading line" sits
@@ -1815,6 +1815,25 @@
     else detachOutlineScrollListener();
   }
 
+  const SIDEBAR_DIFF_NAV_SVG = [
+    '<svg viewBox="0 0 16 16" aria-hidden="true">',
+    '  <path fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" d="M3 1.5h7l3 3v10a.5.5 0 0 1-.5.5h-9.5a.5.5 0 0 1-.5-.5v-12.5a.5.5 0 0 1 .5-.5z"/>',
+    '  <path fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" d="M10 1.5v3h3"/>',
+    '  <rect class="adrc-sidebar-diff-added" x="4.5" y="6.5" width="1.4" height="2.6" rx="0.4"/>',
+    '  <path stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-opacity="0.55" d="M6.6 7.3h4.5M6.6 8.5h3.4"/>',
+    '  <rect class="adrc-sidebar-diff-removed" x="4.5" y="10" width="1.4" height="2.6" rx="0.4"/>',
+    '  <path stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-opacity="0.55" d="M6.6 10.8h4.5M6.6 12h2.6"/>',
+    '</svg>'
+  ].join('');
+
+  const SIDEBAR_THREAD_NAV_SVG = [
+    '<svg viewBox="1 1 14 14" aria-hidden="true">',
+    '  <defs><mask id="adrc-thread-nav-mask"><rect width="16" height="16" fill="white"/><path d="M3.1 2.5H9.4a.6.6 0 0 1 .6.6V7.4a.6.6 0 0 1-.6.6H5L2 10l1.5-2H2.5a.6.6 0 0 1-.6-.6V3.1a.6.6 0 0 1 .6-.6Z" fill="none" stroke="black" stroke-width="0.8"/></mask></defs>',
+    '  <path fill="currentColor" mask="url(#adrc-thread-nav-mask)" d="M6.6 7H13a.6.6 0 0 1 .6.6V11.4a.6.6 0 0 1-.6.6L14 14 11.3 12H6.6a.6.6 0 0 1-.6-.6V7.6a.6.6 0 0 1 .6-.6Z"/>',
+    '  <path fill="currentColor" d="M3.1 2.5H9.4a.6.6 0 0 1 .6.6V7.4a.6.6 0 0 1-.6.6H5L2 10l1.5-2H2.5a.6.6 0 0 1-.6-.6V3.1a.6.6 0 0 1 .6-.6Z"/>',
+    '</svg>'
+  ].join('');
+
   function buildSidebarPanel() {
     if (sidebarPanel && sidebarPanel.isConnected) {
       applySidebarState();
@@ -1832,14 +1851,16 @@
       '<div class="adrc-sidebar-header">',
       '  <button type="button" class="adrc-sidebar-icon adrc-sidebar-collapse" aria-label="Toggle sidebar" title="Collapse / expand sidebar (t) \u2014 Shift+T to reset"></button>',
       '  <span class="adrc-sidebar-nav-cluster adrc-sidebar-changes-nav" aria-label="Change navigation">',
-      '    <button type="button" class="adrc-sidebar-nav-button adrc-sidebar-prev-change" aria-label="Previous change" title="Previous change ([) \u2014 first change ({)">\u2039</button>',
+      `    <button type="button" class="adrc-sidebar-nav-icon adrc-sidebar-diff-icon" aria-label="First change in this file" title="First change in this file \u2014 or next change globally if the file has none">${SIDEBAR_DIFF_NAV_SVG}</button>`,
       '    <button type="button" class="adrc-sidebar-nav-count adrc-sidebar-changes-count" aria-label="Show Changes" title="Show Changes (1)"><span aria-live="polite">0/0</span></button>',
+      '    <button type="button" class="adrc-sidebar-nav-button adrc-sidebar-prev-change" aria-label="Previous change" title="Previous change ([) \u2014 first change ({)">\u2039</button>',
       '    <button type="button" class="adrc-sidebar-nav-button adrc-sidebar-next-change" aria-label="Next change" title="Next change (]) \u2014 last change (})">\u203a</button>',
       '  </span>',
       '  <span class="adrc-sidebar-separator" aria-hidden="true"></span>',
       '  <span class="adrc-sidebar-nav-cluster adrc-sidebar-thread-nav" aria-label="Thread navigation">',
-      '    <button type="button" class="adrc-sidebar-nav-button adrc-sidebar-prev-thread" aria-label="Previous thread" title="Previous thread (k) \u2014 first thread (h)">\u2039</button>',
+      `    <button type="button" class="adrc-sidebar-nav-icon adrc-sidebar-thread-icon" aria-label="First thread in this file" title="First thread in this file \u2014 or next thread globally if the file has none">${SIDEBAR_THREAD_NAV_SVG}</button>`,
       '    <button type="button" class="adrc-sidebar-nav-count adrc-sidebar-thread-count" aria-label="Show Threads" title="Show Threads (2)"><span aria-live="polite">0/0</span></button>',
+      '    <button type="button" class="adrc-sidebar-nav-button adrc-sidebar-prev-thread" aria-label="Previous thread" title="Previous thread (k) \u2014 first thread (h)">\u2039</button>',
       '    <button type="button" class="adrc-sidebar-nav-button adrc-sidebar-next-thread" aria-label="Next thread" title="Next thread (j) \u2014 last thread (l)">\u203a</button>',
       '  </span>',
       '  <span class="adrc-sidebar-header-spacer"></span>',
@@ -1897,9 +1918,11 @@
       updateSidebarFilterUI();
       setSidebarTab('threads', false);
     });
+    panel.querySelector('.adrc-sidebar-diff-icon').addEventListener('click', jumpToFirstChangeInCurrentFile);
     panel.querySelector('.adrc-sidebar-prev-change').addEventListener('click', () => jumpSidebarChange(-1));
     panel.querySelector('.adrc-sidebar-next-change').addEventListener('click', () => jumpSidebarChange(1));
     panel.querySelector('.adrc-sidebar-changes-count').addEventListener('click', () => showSidebar('changes'));
+    panel.querySelector('.adrc-sidebar-thread-icon').addEventListener('click', jumpToFirstThreadInCurrentFile);
     panel.querySelector('.adrc-sidebar-prev-thread').addEventListener('click', () => jumpSidebarThread(-1));
     panel.querySelector('.adrc-sidebar-next-thread').addEventListener('click', () => jumpSidebarThread(1));
     panel.querySelector('.adrc-sidebar-thread-count').addEventListener('click', () => showSidebar('threads'));
@@ -2044,44 +2067,65 @@
   function updateSidebarNavigation() {
     if (!sidebarPanel) return;
 
-    const changesTotal = sidebarChangeStops.length;
     const activePath = currentFilePath() || currentFilePathCached;
-    const fileChangeIndexes = activePath
-      ? sidebarChangeStops
-          .map((stop, index) => stop && stop.path === activePath ? index : -1)
-          .filter((index) => index >= 0)
-      : [];
-    const filePosition = fileChangeIndexes.indexOf(sidebarActiveChangeIndex);
-    const changesCurrent = filePosition >= 0 ? filePosition + 1 : 0;
-    const changesCount = sidebarPanel.querySelector('.adrc-sidebar-changes-count span');
-    if (changesCount) {
-      if (activePath && fileChangeIndexes.length !== changesTotal) {
-        changesCount.textContent = `${changesCurrent}/${fileChangeIndexes.length} (${changesTotal})`;
-      } else {
-        const flatCurrent = activePath
-          ? changesCurrent
-          : (sidebarActiveChangeIndex >= 0 && sidebarActiveChangeIndex < changesTotal
-              ? sidebarActiveChangeIndex + 1
-              : 0);
-        changesCount.textContent = `${flatCurrent}/${activePath ? fileChangeIndexes.length : changesTotal}`;
-      }
-      const countButton = changesCount.closest('.adrc-sidebar-changes-count');
-      if (countButton) {
-        countButton.title = activePath
-          ? `${changesCurrent} of ${fileChangeIndexes.length} changes in this file · ${changesTotal} in this pull request`
-          : `${sidebarActiveChangeIndex + 1} of ${changesTotal} changes in this pull request`;
-      }
+    const GRDC = window.GRDC || {};
+    const buildCounter = typeof GRDC.buildScopedCounterState === 'function'
+      ? GRDC.buildScopedCounterState
+      : (items, index, path) => ({
+          text: `${index >= 0 ? index + 1 : 0}/${items.length}`,
+          title: `${items.length} items in this pull request`,
+          empty: !!path && items.every((item) => item.path !== path),
+          total: items.length
+        });
+
+    function applyCounter(buttonSelector, items, activeIndex, kind) {
+      const button = sidebarPanel.querySelector(buttonSelector);
+      const value = button && button.querySelector('span');
+      if (!button || !value) return;
+      const state = buildCounter(items, activeIndex, activePath, kind);
+      value.textContent = state.text;
+      button.title = `${kind === 'threads' ? 'Show Threads (2)' : 'Show Changes (1)'} · ${state.title}`;
+      button.setAttribute('aria-label', state.title);
+      button.classList.toggle('adrc-sidebar-count-empty', state.empty);
     }
-    sidebarPanel.querySelectorAll('.adrc-sidebar-prev-change, .adrc-sidebar-next-change')
-      .forEach((button) => { button.disabled = changesTotal === 0; });
+
+    applyCounter(
+      '.adrc-sidebar-changes-count',
+      sidebarChangeStops,
+      sidebarActiveChangeIndex,
+      'changes'
+    );
+    const changesTotal = sidebarChangeStops.length;
+    sidebarPanel.querySelectorAll(
+      '.adrc-sidebar-diff-icon, .adrc-sidebar-prev-change, .adrc-sidebar-next-change'
+    ).forEach((button) => { button.disabled = changesTotal === 0; });
 
     const threads = getVisibleSidebarThreads();
     const threadIndex = threads.findIndex((item) => String(item.id) === String(sidebarActiveThreadId));
-    const threadsCurrent = threadIndex >= 0 ? threadIndex + 1 : 0;
-    const threadCount = sidebarPanel.querySelector('.adrc-sidebar-thread-count span');
-    if (threadCount) threadCount.textContent = `${threadsCurrent}/${threads.length}`;
-    sidebarPanel.querySelectorAll('.adrc-sidebar-prev-thread, .adrc-sidebar-next-thread')
-      .forEach((button) => { button.disabled = threads.length === 0; });
+    applyCounter('.adrc-sidebar-thread-count', threads, threadIndex, 'threads');
+    sidebarPanel.querySelectorAll(
+      '.adrc-sidebar-thread-icon, .adrc-sidebar-prev-thread, .adrc-sidebar-next-thread'
+    ).forEach((button) => { button.disabled = threads.length === 0; });
+  }
+
+  function jumpToFirstThreadInCurrentFile() {
+    const items = getVisibleSidebarThreads();
+    if (items.length === 0) return false;
+    const path = currentFilePath() || currentFilePathCached;
+    const index = path ? items.findIndex((item) => item.path === path) : -1;
+    if (index < 0) return jumpSidebarThread(1);
+    setActiveSidebarThread(items[index].id);
+    navigateToSidebarThread(items[index], { preserveSidebar: true });
+    return true;
+  }
+
+  function jumpToFirstChangeInCurrentFile() {
+    if (sidebarChangeStops.length === 0) return false;
+    const path = currentFilePath() || currentFilePathCached;
+    const index = path ? sidebarChangeStops.findIndex((stop) => stop.path === path) : -1;
+    if (index < 0) return jumpSidebarChange(1);
+    navigateToSidebarChange(index);
+    return true;
   }
 
   function jumpSidebarThread(delta) {

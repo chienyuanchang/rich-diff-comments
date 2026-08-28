@@ -1,10 +1,10 @@
 ---
-description: Pre-publish audit and packaging for the Markdown PR Comments for GitHub browser extension. Use when preparing a new version to submit to the Chrome Web Store or Microsoft Edge Add-ons — runs the policy-lens checks that Chrome's reviewers care about (unused permissions, missing files, stale version) and builds the publish zip.
+description: Pre-publish audit and packaging for the separate GitHub and Azure DevOps Markdown PR Comments extensions. Use when preparing a target for Chrome Web Store or Microsoft Edge Add-ons submission—audits policy-sensitive permissions, files, versions, and packages a collision-safe release zip.
 ---
 
 # Pre-publish check & package the extension
 
-This skill prepares a new version of **Markdown PR Comments for GitHub** for submission to the Chrome Web Store and / or Microsoft Edge Add-ons.
+This skill prepares either **Markdown PR Comments for GitHub** or **Markdown PR Comments for Azure DevOps** for submission to the Chrome Web Store and / or Microsoft Edge Add-ons. Always keep the targets separate: manifests, privacy policies, changelogs, zips, release folders, store listings, and git tags are target-specific.
 
 ## When to use
 
@@ -29,8 +29,8 @@ The preflight script (`scripts/preflight.ps1`) implements the **policy-lens chec
 >
 > Applies to **every** doc that ships release notes:
 >
-> - [CHANGELOG.md](../../../CHANGELOG.md) (the source of truth, edited every release — often during feature work via the [rdc-feature-dev](../rdc-feature-dev/SKILL.md) loop, not just at publish time)
-> - The `🆕 What's new in v...` lead block at the top of the Description in each submission template ([CHROME_SUBMISSION.md](./templates/CHROME_SUBMISSION.md), [EDGE_SUBMISSION.md](./templates/EDGE_SUBMISSION.md))
+> - [CHANGELOG.md](../../../CHANGELOG.md) for GitHub or [CHANGELOG_ADO.md](../../../CHANGELOG_ADO.md) for Azure DevOps (the target's source of truth)
+> - The `🆕 What's new in v...` lead block at the top of the Description in the target's Chrome and Edge submission templates
 > - The `## What's new in this version` section at the bottom of each submission template
 > - Any new-feature mention in [README.md](../../../README.md)
 >
@@ -57,13 +57,14 @@ The preflight script (`scripts/preflight.ps1`) implements the **policy-lens chec
 From the repository root:
 
 ```powershell
-.\.github\skills\rdc-publish-check\scripts\preflight.ps1
+.\.github\skills\rdc-publish-check\scripts\preflight.ps1 -Target github
+.\.github\skills\rdc-publish-check\scripts\preflight.ps1 -Target ado
 ```
 
 Or with verbose output:
 
 ```powershell
-.\.github\skills\rdc-publish-check\scripts\preflight.ps1 -Verbose
+.\.github\skills\rdc-publish-check\scripts\preflight.ps1 -Target ado -Verbose
 ```
 
 The script:
@@ -74,7 +75,7 @@ The script:
 4. **Verifies required files** are present at expected paths (`content.js`, all `src/lib/*.js` declared in manifest, `styles.css`, `PRIVACY.md`, all four icon PNGs).
 5. **Runs the test suite** (`node --test tests/*.test.js`) and fails if any tests fail.
 6. **Checks the version hasn't shipped yet** — compares against git tags and the live version recorded in `docs/PUBLISHING.md`'s status table. Warns if the manifest version is `<=` the last shipped version (this would be rejected on upload).
-7. **Confirms there's a matching `CHANGELOG.md` entry** for the current manifest version. Missing entry = warning.
+7. **Confirms the target changelog has a matching version entry**: `CHANGELOG.md` for GitHub or `CHANGELOG_ADO.md` for Azure DevOps. Missing entry = warning.
 
 If everything passes, the script reports `READY TO PACKAGE` and exits 0. If any check fails, it reports the issue and exits non-zero.
 
@@ -85,40 +86,47 @@ If preflight passes, run the packager:
 ```powershell
 .\scripts\package.ps1                # defaults to -Target github
 .\scripts\package.ps1 -Target github  # explicit
+.\scripts\package.ps1 -Target ado     # separate ADO package
 ```
 
-The packager runs `scripts/dev-sync.ps1` first (mirrors `src/lib/*.js` and `PRIVACY.md` into `extensions/<target>/`), then zips the target folder. Output is `rdc-<version>.zip` at the repo root.
+The packager runs `scripts/dev-sync.ps1` first, then zips only the target folder. Shared helpers are mirrored into both targets. GitHub receives root `PRIVACY.md`; ADO receives root `PRIVACY_ADO.md` under the packaged name `PRIVACY.md`. Outputs are `rdc-<version>.zip` for GitHub and `rdc-ado-<version>.zip` for ADO.
 
 ### 3. Prepare the release folder (zip only)
 
 Organize the zip into a per-version release folder:
 
 ```powershell
-.\.github\skills\rdc-publish-check\scripts\release-prep.ps1
+.\.github\skills\rdc-publish-check\scripts\release-prep.ps1 -Target github
+.\.github\skills\rdc-publish-check\scripts\release-prep.ps1 -Target ado
 ```
 
 This:
 
-1. Reads the version from `manifest.json`.
-2. Creates `releases/<version>/` (e.g. `releases/1.0.2/`). If the folder already exists, pass `-Force` to overwrite.
+1. Reads the version from `extensions/<target>/manifest.json`.
+2. Creates `releases/<version>/` for GitHub or `releases/ado/<version>/` for ADO. If the folder already exists, pass `-Force` to overwrite.
 3. Builds the zip via `package.ps1` (skippable with `-SkipBuild` if a zip already exists at the extension root) and **moves** the zip into the release folder.
 
-Final folder layout for v1.0.2:
+Final folder layouts:
 
 ```
 releases/
-└── 1.0.2/
-    └── rdc-1.0.2.zip
+├── 1.4.0/
+│   └── rdc-1.4.0.zip
+└── ado/
+  └── 1.0.0/
+    └── rdc-ado-1.0.0.zip
 ```
 
 > **Submission copy is not emitted per release.** Titles, descriptions, justifications, reviewer notes, search terms, and the "What's new" block are maintained directly in two **canonical living docs** under `.github/skills/rdc-publish-check/templates/`. The git history of those two files is the audit trail for what was submitted when. See step 4.
 
 ### 4. Update the canonical submission docs
 
-The two submission docs live at:
+Each target has two submission docs:
 
-- `.github/skills/rdc-publish-check/templates/CHROME_SUBMISSION.md` — every field the Chrome Web Store Developer Console asks for (product details, single purpose, host permission justification, remote code declaration, data-usage checkboxes, privacy policy URL, reviewer testing notes).
-- `.github/skills/rdc-publish-check/templates/EDGE_SUBMISSION.md` — equivalent for Microsoft Edge Partner Center, plus an Edge-only **Search terms** section (≤ 7 terms, ≤ 30 chars each, ≤ 21 words total).
+- GitHub: `CHROME_SUBMISSION.md` and `EDGE_SUBMISSION.md`.
+- Azure DevOps: `CHROME_SUBMISSION_ADO.md` and `EDGE_SUBMISSION_ADO.md`.
+
+The Chrome document covers product details, single purpose, host-permission justification, remote-code declaration, data usage, privacy, and reviewer notes. The Edge document contains equivalent fields plus **Search terms** (≤ 7 terms, ≤ 30 chars each, ≤ 21 words total).
 
 Each store-form field has its own fenced code block so the dashboard form takes the text exactly as written.
 
@@ -128,13 +136,13 @@ Before submitting, edit these two files **in place** with the changes for this r
 
 - [ ] **`{{VERSION}}` placeholder** — search-and-replace with the new manifest version (`{{VERSION}}` appears in the title and Package section). Two find-replaces total per file.
 
-- [ ] **`## What's new in this version` section at the bottom** — replace with the **latest 3 versions** from `CHANGELOG.md`, newest first, each under an `### v<version> — <date>` subheading followed by `#### Added` / `#### Changed` / `#### Fixed` blocks. Lead the section with a one-line `Includes all changes from v<latest>, v<latest-1>, and v<latest-2>.` summary so reviewers know the scope at a glance.
+- [ ] **`## What's new in this version` section at the bottom** — replace with up to the **latest 3 versions** from the target changelog, newest first, each under an `### v<version> — <date>` subheading followed by `#### Added` / `#### Changed` / `#### Fixed` blocks. A target with fewer than three public releases lists only those available.
 
   Why three versions, not one: the store's "What's new" field is the only per-release surface the dashboard shows, but **users who skip a release or two only ever see the most recent submission's `What's new`** — so collapsing the last few releases here ensures someone auto-updating from v1.3.0 → v1.5.0 isn't missing v1.4.0's changes. Three is the sweet spot: enough recent history for users who skip a release, short enough that reviewers don't have to scroll past every change since v1.0.0.
 
-  Trim per-bullet detail where it's safe to do so — keep the headline sentence in bold and drop the longer "why we did it / how the regression test pins it" tail that lives in `CHANGELOG.md`. Reviewers want to see *what changed*, not the engineering rationale.
+  Trim per-bullet detail where it's safe to do so—keep the headline sentence and drop engineering rationale retained in the target changelog.
 
-  If `CHANGELOG.md` is out of date relative to `manifest.json`, fix `CHANGELOG.md` first.
+  If the target changelog is out of date relative to its manifest, fix the changelog first.
 
   See [CHANGELOG / release-notes writing rules](#changelog--release-notes-writing-rules) above — same rules apply here.
 
@@ -148,18 +156,18 @@ Before submitting, edit these two files **in place** with the changes for this r
 
 - [ ] **Description** (the long marketing copy) — update if a feature added in this version belongs in the listing description. Per [Disclosure Requirements](https://developer.chrome.com/docs/webstore/program-policies/disclosure-requirements), all functionality must be disclosed to users. If a new feature is significant enough to appear in screenshots, it should appear in the description.
 
-- [ ] **"What's new in recent releases" lead block at the TOP of the Description** — every release must rotate the existing `🆕 What's new in recent releases` block at the very top of the Description code-fence so it shows the **latest 3 versions** from `CHANGELOG.md`, newest first, each under a `vX.Y.Z (YYYY-MM-DD)` sub-header. Rotation = drop the oldest of the previous three, add this release at the top. This is the single most important update to the listing copy because:
+- [ ] **"What's new in recent releases" lead block at the TOP of the Description**—every release must rotate this block so it shows up to the **latest 3 versions** from the target changelog, newest first, each under a `vX.Y.Z (YYYY-MM-DD)` sub-header.
   - Existing users who auto-update only see the **store listing description**, not the changelog or release notes — so the "What's new" block at the top of the description is the only place they'll learn what changed.
   - Putting it **first** (before the evergreen "GitHub's Files changed rich-diff…" pitch) means returning visitors immediately see the new value without having to re-read the full description.
   - Showing **3 versions** (not just the current one) catches users who skip a release: someone auto-updating from v1.3.0 → v1.5.0 still sees v1.4.0's changes here. Same reasoning as the bottom "What's new in this version" section, just in shorter form.
-  - Keep it short — **1–2 bullets per version, 4–6 total**, one line each, written in the same user-facing voice as `CHANGELOG.md` (no internal selectors / class names — see the [CHANGELOG / release-notes writing rules](#changelog--release-notes-writing-rules) above). The full per-version detail still lives in the "What's new in this version" section at the bottom of the submission doc (which gets pasted into the store's separate "What's new" field) and in `CHANGELOG.md`.
-  - Pull the bullets directly from the `Added` / `Changed` / `Fixed` entries in `CHANGELOG.md` for each of the 3 versions — pick the 1–2 most user-visible items per version. Trim per-bullet detail compared to the bottom section: drop the secondary "and also…" clauses, keep the headline sentence.
-  - **Include the release date in each sub-header** in the form `vX.Y.Z (YYYY-MM-DD)` — the date must match the `## [X.Y.Z] — YYYY-MM-DD` heading in `CHANGELOG.md` for the same version. Stores don't show a separate "updated on" date prominently next to the description, so anchoring the recency in each sub-header lets returning visitors immediately tell whether they're reading fresh notes or stale ones.
+  - Keep it short—**1–2 bullets per version, 4–6 total**, one line each, in the same user-facing voice as the target changelog.
+  - Pull bullets from the target changelog's `Added` / `Changed` / `Fixed` entries, choosing the most user-visible items.
+  - **Include the release date in each sub-header** in the form `vX.Y.Z (YYYY-MM-DD)`; it must match the target changelog.
   - **⚠️ Don't delete the `📌 Just installed?` line that sits right below the "What's new" block.** It's evergreen (same text every release, only the per-store verb changes — *"clicked Add to Chrome"* in `CHROME_SUBMISSION.md`, *"clicked Get"* in `EDGE_SUBMISSION.md`) and lives next to "What's new" deliberately so returning users who scan only the top of the listing see the hard-refresh reminder when they auto-update. When you rotate the "What's new" block, scope your edit to the version groups only — leave the `📌` line untouched.
 
-- [ ] **Permission justification** — if `manifest.json` `permissions` or `host_permissions` changed since the previous version, update the justification text. The current state assumes no `permissions`, only `host_permissions: https://github.com/*`. Versions that add permissions need extra justification paragraphs.
+- [ ] **Permission justification** — if target `permissions` or `host_permissions` changed since the previous version, update the justification text. GitHub uses `https://github.com/*`; ADO uses current `https://dev.azure.com/*` and legacy `https://*.visualstudio.com/*` origins. Neither target currently declares Chrome API `permissions`.
 
-- [ ] **Behavior text drift** — sanity-check that what the docs describe still matches the shipping code. Easy regressions: badge wording (e.g. `"N comments"` vs an old `"💬 N comments"`), keyboard shortcut keys, sidebar tab names, button labels. When `CHANGELOG.md` has a "Changed" entry that touches user-visible UI, double-check the relevant description bullets and the reviewer "How to test" section.
+- [ ] **Behavior text drift**—sanity-check that the target docs still match shipping code: badge wording, keyboard shortcuts, sidebar tab names, and button labels. When the target changelog changes visible UI, recheck the description and reviewer test steps.
 
 - [ ] **Search terms** (Edge only) — only edit if the extension picks up a meaningful new keyword. Enforce the limits: ≤ 7 terms, ≤ 30 chars per term, ≤ 21 words total.
 
@@ -168,7 +176,7 @@ Before submitting, edit these two files **in place** with the changes for this r
 - Title, summary, category, language — set once, don't change.
 - Single purpose statement — only changes if the extension scope changes (which would warrant a separate submission anyway).
 - Reviewer testing notes ("how to test" block) — the test steps work for every version of the extension. Only update if the install / activation flow changes, or if a behavior bullet ("Hover any paragraph — a blue + appears") no longer matches the UI.
-- Privacy policy URL — only changes if PRIVACY.md is updated and the gist is re-published.
+- Privacy policy URL—GitHub uses public `PRIVACY.md`; ADO uses public `PRIVACY_ADO.md`.
 - **Open-source GitHub repo line** (`Open source on GitHub: …`) right before the legal disclaimer — present because the Chrome Web Store listing **does NOT render the Website / Homepage URL form field as a visible link** (only Support URL and Privacy Policy URL show up as clickable buttons). Without this line, users browsing the listing can reach `/issues` but have no path back to the repo home, README, or roadmap. Keep it as one short line; if it grows, Chrome's "promotional content" policy may flag it.
 
 
@@ -198,35 +206,38 @@ The script supports `-Width` / `-Height` (e.g. for the 640×400 option), `-Input
 The preflight script can also verify an existing zip:
 
 ```powershell
-.\.github\skills\rdc-publish-check\scripts\preflight.ps1 -VerifyZip .\releases\1.0.0\rdc-1.0.0.zip
+.\.github\skills\rdc-publish-check\scripts\preflight.ps1 -Target github -VerifyZip .\releases\1.4.0\rdc-1.4.0.zip
+.\.github\skills\rdc-publish-check\scripts\preflight.ps1 -Target ado -VerifyZip .\releases\ado\1.0.0\rdc-ado-1.0.0.zip
 ```
 
 This checks that:
 - Manifest is at the **top level** of the zip (not nested in a folder — Chrome rejects nested manifests).
-- All files listed in `manifest.json` `"content_scripts.js"` are present in the zip.
+- Packaged name, version, and host permissions match the selected target manifest.
+- All manifest-declared scripts, styles, and icons plus the target privacy policy are present.
 - No development-only files leaked in (`tests/`, `docs/`, `design/`, `test_md_files/`, `package.json`, `node_modules/`, `.git/`, `local-only/`).
 
 ### 7. Tag and publish the GitHub Release
 
 Before submitting to the stores, publish a GitHub Release for the version. This:
 
-- Creates a permanent versioned anchor on the repo (`v<version>` tag).
+- Creates a permanent target-safe anchor: `v<version>` for GitHub or `ado-v<version>` for ADO.
 - Gives users a sideload-ready download mirror (helpful for early adopters and anyone who can't / won't install from the stores).
 - Attaches a SHA256 checksum so users can verify the zip.
-- Uses the matching `## [<version>]` section from `CHANGELOG.md` as the release body — **not** `CHROME_SUBMISSION.md`, which is reviewer-facing form copy, not user-facing release notes.
+- Uses the matching section from the target changelog as the release body—not a reviewer-facing submission template.
 
 Run:
 
 ```powershell
-.\.github\skills\rdc-publish-check\scripts\github-release.ps1
+.\.github\skills\rdc-publish-check\scripts\github-release.ps1 -Target github
+.\.github\skills\rdc-publish-check\scripts\github-release.ps1 -Target ado
 ```
 
 The script:
 
-1. Reads version from `manifest.json` and verifies `releases/<version>/rdc-<version>.zip` exists (run `release-prep.ps1` first if missing).
-2. Extracts the `## [<version>]` block from `CHANGELOG.md` into `releases/<version>/RELEASE_NOTES.md`. Fails loudly if the entry doesn't exist.
-3. Generates a SHA256 of the zip into `releases/<version>/rdc-<version>.zip.sha256`.
-4. Creates an annotated git tag `v<version>` (skips if it already exists).
+1. Reads the selected target manifest and verifies its target-specific release zip exists.
+2. Extracts the matching block from `CHANGELOG.md` or `CHANGELOG_ADO.md` into the target release folder's `RELEASE_NOTES.md`.
+3. Generates a SHA256 beside the target zip.
+4. Creates an annotated `v<version>` or `ado-v<version>` git tag (skips if it already exists).
 5. Pushes the tag to `origin` (skip with `-SkipPush`).
 6. Calls `gh release create` with the zip + checksum attached and the extracted notes as the release body.
 
@@ -248,7 +259,7 @@ Reviewer-notes templates are in [PUBLISHING.md → Notes for certification](../.
 ## What this skill does NOT do
 
 - **It doesn't auto-bump the version.** Version bumps need a human decision (patch / minor / major). The user should edit `manifest.json` first, then run preflight.
-- **It doesn't update CHANGELOG.md.** CHANGELOG entries are user-facing prose — the user writes them. Preflight just warns if the version row is missing.
+- **It doesn't update the target changelog.** Entries are user-facing prose; preflight only warns if the version row is missing.
 - **It doesn't upload to the stores.** Submission goes through the Chrome Web Store dashboard and Edge Partner Center — both require interactive sign-in.
 - **It doesn't check the listing copy** (description, screenshots) — those live in the dashboards, not the repo.
 

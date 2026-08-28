@@ -131,6 +131,7 @@ test('ADO collapsed sidebar hides body/tabs but keeps both header nav clusters r
   const collapsedBody = ruleBody('.adrc-sidebar-collapsed .adrc-sidebar-body');
   const collapsedTabs = ruleBody('.adrc-sidebar-collapsed .adrc-sidebar-tabs');
   assert.match(collapsed, /height\s*:\s*42px\s*!important/);
+  assert.match(collapsed, /width\s*:\s*480px\s*!important/);
   assert.match(collapsedBody, /display\s*:\s*none/);
   assert.match(collapsedTabs, /display\s*:\s*none/);
   assert.doesNotMatch(css, /\.adrc-sidebar-collapsed\s+\.adrc-sidebar-header\s*\{[^}]*display\s*:\s*none/);
@@ -145,8 +146,27 @@ test('ADO header exposes scoped Changes and Threads nav controls with live count
   assert.match(content, /class="[^"]*adrc-sidebar-next-change[^"]*"/);
   assert.match(content, /class="[^"]*adrc-sidebar-prev-thread[^"]*"/);
   assert.match(content, /class="[^"]*adrc-sidebar-next-thread[^"]*"/);
+  assert.match(content, /class="adrc-sidebar-nav-icon adrc-sidebar-diff-icon"/);
+  assert.match(content, /class="adrc-sidebar-nav-icon adrc-sidebar-thread-icon"/);
+  assert.match(content, /SIDEBAR_DIFF_NAV_SVG/);
+  assert.match(content, /SIDEBAR_THREAD_NAV_SVG/);
   assert.ok((content.match(/aria-live="polite"/g) || []).length >= 2);
+  assert.match(content, /GRDC\.buildScopedCounterState/);
+  assert.match(content, /applyCounter\('\.adrc-sidebar-thread-count', threads, threadIndex, 'threads'\)/);
+  assert.match(content, /classList\.toggle\('adrc-sidebar-count-empty', state\.empty\)/);
+  assert.match(css, /\.adrc-sidebar-count-empty/);
   assert.match(content, /function updateSidebarNavigation\(\)/);
+});
+
+test('ADO header icons jump to first current-file item with global-next fallback', () => {
+  assert.match(content, /function jumpToFirstThreadInCurrentFile\(\)/);
+  assert.match(content, /if \(index < 0\) return jumpSidebarThread\(1\)/);
+  assert.match(content, /navigateToSidebarThread\(items\[index\], \{ preserveSidebar: true \}\)/);
+  assert.match(content, /function jumpToFirstChangeInCurrentFile\(\)/);
+  assert.match(content, /if \(index < 0\) return jumpSidebarChange\(1\)/);
+  assert.match(content, /navigateToSidebarChange\(index\)/);
+  assert.match(content, /adrc-sidebar-diff-icon'\)\.addEventListener\('click', jumpToFirstChangeInCurrentFile\)/);
+  assert.match(content, /adrc-sidebar-thread-icon'\)\.addEventListener\('click', jumpToFirstThreadInCurrentFile\)/);
 });
 
 test('ADO keyboard maps 1/2/3 to Changes/Threads/Outline and b to Outline', () => {

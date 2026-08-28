@@ -152,6 +152,53 @@
       .map((entry) => entry.item);
   }
 
+  /**
+   * Build GitHub v1.8-style file-scoped counter state for a PR-wide list.
+   * Items expose `path`; activeIndex refers to the stable/global ordered list.
+   *
+   * Multi-file: `N/M (T)` where N/M is current-file progress and T is PR total.
+   * Single-file: `N/M`. Current file with no items: `0/0 (T)` + empty=true.
+   * Unknown current file falls back to flat global `N/T` so the counter remains
+   * meaningful during transient SPA route states.
+   */
+  function buildScopedCounterState(items, activeIndex, currentPath, kindLabel) {
+    const values = Array.isArray(items) ? items : [];
+    const total = values.length;
+    const active = Number.isFinite(activeIndex) && activeIndex >= 0 && activeIndex < total
+      ? activeIndex
+      : -1;
+    const label = kindLabel === 'threads' ? 'threads' : 'changes';
+
+    if (!currentPath) {
+      const position = active >= 0 ? active + 1 : 0;
+      return {
+        text: `${position}/${total}`,
+        title: `${position} of ${total} ${label} in this pull request`,
+        position,
+        fileTotal: total,
+        total,
+        empty: total === 0,
+      };
+    }
+
+    const fileIndexes = [];
+    values.forEach((item, index) => {
+      if (item && item.path === currentPath) fileIndexes.push(index);
+    });
+    const fileTotal = fileIndexes.length;
+    const fileIndex = fileIndexes.indexOf(active);
+    const position = fileIndex >= 0 ? fileIndex + 1 : 0;
+    const multiFile = fileTotal !== total;
+    return {
+      text: multiFile ? `${position}/${fileTotal} (${total})` : `${position}/${fileTotal}`,
+      title: `${position} of ${fileTotal} ${label} in this file · ${total} ${label} in this pull request`,
+      position,
+      fileTotal,
+      total,
+      empty: fileTotal === 0 && total > 0,
+    };
+  }
+
   return {
     buildSnippet,
     clampDragPos,
@@ -161,5 +208,6 @@
     formatLineRange,
     filterSidebarThreadItems,
     sortSidebarThreadItems,
+    buildScopedCounterState,
   };
 });

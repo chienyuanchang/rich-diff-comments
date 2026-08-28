@@ -1,11 +1,11 @@
-﻿# Pre-publish audit for Markdown PR Comments for GitHub.
+﻿# Pre-publish audit for either separate Markdown PR Comments target.
 #
 # Run from the repository root.
 #
 # Usage:
 #   .\.github\skills\rdc-publish-check\scripts\preflight.ps1
-#   .\.github\skills\rdc-publish-check\scripts\preflight.ps1 -Verbose
-#   .\.github\skills\rdc-publish-check\scripts\preflight.ps1 -VerifyZip .\rdc-1.0.0.zip
+#   .\.github\skills\rdc-publish-check\scripts\preflight.ps1 -Target ado -Verbose
+#   .\.github\skills\rdc-publish-check\scripts\preflight.ps1 -Target ado -VerifyZip .\rdc-ado-1.0.0.zip
 #
 # Exits 0 if all checks pass, non-zero otherwise.
 
@@ -84,18 +84,61 @@ try {
         Fail "manifest.json not at zip top level (Chrome rejects nested manifests)"
       } else {
         Pass "manifest.json is at zip top level"
-      }
 
-      # Must include all content_scripts.js entries
-      foreach ($cs in $manifest.content_scripts) {
-        foreach ($js in $cs.js) {
-          $normalized = $js -replace '\\', '/'
-          if ($entries -notcontains $normalized) {
-            Fail "content_scripts entry missing from zip: $js"
-          }
+        $manifestEntry = $zip.Entries | Where-Object { ($_.FullName -replace '\\', '/') -eq 'manifest.json' } | Select-Object -First 1
+        $reader = New-Object System.IO.StreamReader($manifestEntry.Open())
+        try {
+          $zipManifest = $reader.ReadToEnd() | ConvertFrom-Json
+        }
+        finally {
+          $reader.Dispose()
+        }
+
+        if ($zipManifest.name -eq $manifest.name -and $zipManifest.version -eq $manifest.version) {
+          Pass "packaged manifest is $($manifest.name) v$($manifest.version)"
+        } else {
+          Fail "packaged manifest identity differs from extensions/$Target/manifest.json"
+        }
+
+        $sourceHosts = @($manifest.host_permissions) -join "`n"
+        $zipHosts = @($zipManifest.host_permissions) -join "`n"
+        if ($zipHosts -eq $sourceHosts) {
+          Pass "packaged host permissions match the $Target target"
+        } else {
+          Fail "packaged host permissions do not match the $Target target"
         }
       }
-      Pass "all content_scripts.js entries are in the zip"
+
+      if ($zipManifest) {
+        # Must include all manifest-declared scripts and styles.
+        $declaredFilesMissing = $false
+        foreach ($cs in $zipManifest.content_scripts) {
+          foreach ($asset in @($cs.js) + @($cs.css)) {
+            $normalized = $asset -replace '\\', '/'
+            if ($entries -notcontains $normalized) {
+              Fail "content_scripts entry missing from zip: $asset"
+              $declaredFilesMissing = $true
+            }
+          }
+        }
+        if (-not $declaredFilesMissing) { Pass "all content_scripts entries are in the zip" }
+
+        $iconsMissing = $false
+        foreach ($size in $zipManifest.icons.PSObject.Properties.Name) {
+          $iconPath = $zipManifest.icons.$size -replace '\\', '/'
+          if ($entries -notcontains $iconPath) {
+            Fail "declared $size px icon missing from zip: $iconPath"
+            $iconsMissing = $true
+          }
+        }
+        if (-not $iconsMissing) { Pass "all declared icons are in the zip" }
+      }
+
+      if ($entries -contains 'PRIVACY.md') {
+        Pass "target privacy policy is in the zip"
+      } else {
+        Fail "PRIVACY.md missing from zip"
+      }
 
       # Forbidden dev-only entries
       $forbidden = @('tests/', 'docs/', 'test_md_files/', 'design/', 'node_modules/', 'package.json', 'package-lock.json', 'playwright.config.js', 'test-results/', 'playwright-report/', '.git/', 'local-only/', '_local_only/', '.github/')
@@ -148,7 +191,7 @@ try {
         default          { "chrome\.${p}\." }
       }
 
-      $hit = Select-String -Path "$extPrefix\content.js","$extPrefix\src\lib\*.js" -Pattern $patterns 2>$null `
+      $hit = Select-String -Path "$extPrefix\content.js","$extPrefix\src\lib\*.js","$extPrefix\src\adapters\*.js" -Pattern $patterns 2>$null `
         | Where-Object { $_.Line -notmatch '^\s*//' -and $_.Line -notmatch '^\s*\*' }
 
       if ($hit) {
@@ -169,7 +212,11 @@ try {
       # Strip the URL pattern to a host substring (e.g. https://github.com/* -> github.com)
       $hpHost = $hp -replace '^https?://', '' -replace '/.*$', '' -replace '\*\.?', ''
       if (-not $hpHost) { continue }
-      $hit = Select-String -Path "$extPrefix\content.js","$extPrefix\src\lib\*.js" -Pattern "fetch\([^)]*${hpHost}|fetch\([^)]*['""]/" 2>$null `
+      # ADO's adapter passes relative paths through named URL builders (for
+      # example fetchImpl(threadsUrl(ctx), ...)). Because the content script
+      # runs only on the manifest's matched service origins, those calls are
+      # same-origin uses of each declared current/legacy ADO host pattern.
+      $hit = Select-String -Path "$extPrefix\content.js","$extPrefix\src\lib\*.js","$extPrefix\src\adapters\*.js" -Pattern "fetch(?:Impl)?\([^)]*${hpHost}|fetch(?:Impl)?\([^)]*(?:['""]/|\b(?:url|[A-Za-z]+Url\())" 2>$null `
         | Where-Object { $_.Line -notmatch '^\s*//' -and $_.Line -notmatch '^\s*\*' }
       if ($hit) {
         Pass "host_permission '$hp' is used by fetch() ($($hit.Count) call$(if ($hit.Count -ne 1) { 's' }))"
@@ -225,8 +272,12 @@ try {
       $testResult = & node --test ($testFiles.FullName) 2>&1
       $testExit = $LASTEXITCODE
       if ($testExit -eq 0) {
-        $passCount = ($testResult | Select-String -Pattern '^# pass (\d+)' | ForEach-Object { $_.Matches[0].Groups[1].Value }) -join ""
-        Pass "test suite passed ($passCount tests)"
+        # Node 22 emitted "# pass N" while Node 24's spec reporter emits
+        # "ℹ pass N". Accept both so the release summary keeps its count.
+        $testText = $testResult -join "`n"
+        $passCount = if ($testText -match '(?m)\bpass\s+(\d+)') { $matches[1] } else { $null }
+        $passLabel = if ($passCount) { "$passCount tests" } else { 'all tests' }
+        Pass "test suite passed ($passLabel)"
       } else {
         Fail "test suite failed (exit $testExit) — run 'npm test' to see details"
         Write-Verbose ($testResult -join "`n")
@@ -242,21 +293,24 @@ try {
   Section "Version sanity"
 
   # Look for a matching CHANGELOG entry
-  if (Test-Path "CHANGELOG.md") {
-    $changelog = Get-Content "CHANGELOG.md" -Raw
+  $changelogPath = if ($Target -eq 'ado') { 'CHANGELOG_ADO.md' } else { 'CHANGELOG.md' }
+  if (Test-Path $changelogPath) {
+    $changelog = Get-Content $changelogPath -Raw
     if ($changelog -match "##\s*\[$([regex]::Escape($version))\]") {
-      Pass "CHANGELOG.md has an entry for $version"
+      Pass "$changelogPath has an entry for $version"
     } else {
-      Warn "CHANGELOG.md has no entry for $version — add a '## [$version] — <date>' section before publishing"
+      Warn "$changelogPath has no entry for $version — add a '## [$version] — <date>' section before publishing"
     }
   } else {
-    Warn "no CHANGELOG.md at repo root"
+    Warn "no $changelogPath at repo root"
   }
 
-  # Compare against git tags (vX.Y.Z) if any
-  $tags = & git tag --list "v*" 2>$null
+  # Compare against this target's tags. ADO uses ado-vX.Y.Z so its first 1.0.0
+  # is independent from GitHub's existing v1.0.0 history.
+  $tagPrefix = if ($Target -eq 'github') { 'v' } else { "$Target-v" }
+  $tags = & git tag --list "$tagPrefix*" 2>$null
   if ($tags) {
-    $latestTag = ($tags | ForEach-Object { $_.TrimStart('v') } | Sort-Object { [version]$_ } -ErrorAction SilentlyContinue) `
+    $latestTag = ($tags | ForEach-Object { $_.Substring($tagPrefix.Length) } | Sort-Object { [version]$_ } -ErrorAction SilentlyContinue) `
       | Select-Object -Last 1
     if ($latestTag) {
       try {
@@ -265,15 +319,15 @@ try {
         $cmp = $null
       }
       if ([version]$version -gt [version]$latestTag) {
-        Pass "manifest version $version is greater than latest tag v$latestTag"
+        Pass "manifest version $version is greater than latest tag $tagPrefix$latestTag"
       } elseif ([version]$version -eq [version]$latestTag) {
-        Warn "manifest version $version matches latest tag v$latestTag — bump before publishing (Chrome rejects duplicate versions)"
+        Warn "manifest version $version matches latest tag $tagPrefix$latestTag — bump before publishing (stores reject duplicate package versions)"
       } else {
-        Fail "manifest version $version is BELOW latest tag v$latestTag — Chrome will reject upload"
+        Fail "manifest version $version is BELOW latest tag $tagPrefix$latestTag — stores will reject upload"
       }
     }
   } else {
-    Write-Verbose "no v* git tags found, skipping tag comparison"
+    Write-Verbose "no $tagPrefix* git tags found, skipping tag comparison"
   }
 }
 finally {
@@ -285,11 +339,11 @@ Section "Summary"
 
 if ($issues.Count -eq 0 -and $warnings.Count -eq 0) {
   Write-Host "READY TO PACKAGE" -ForegroundColor Green
-  Write-Host "Next step: .\scripts\package.ps1"
+  Write-Host "Next step: .\scripts\package.ps1 -Target $Target"
   exit 0
 } elseif ($issues.Count -eq 0) {
   Write-Host "READY TO PACKAGE (with $($warnings.Count) warning(s) — review above)" -ForegroundColor Yellow
-  Write-Host "Next step: .\scripts\package.ps1"
+  Write-Host "Next step: .\scripts\package.ps1 -Target $Target"
   exit 0
 } else {
   Write-Host "$($issues.Count) FAILURE(s) — fix before packaging:" -ForegroundColor Red

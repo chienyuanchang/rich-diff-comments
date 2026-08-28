@@ -4,16 +4,6 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
-### Added — Azure DevOps
-
-- **The Changes tab now covers every Markdown file in the pull request, not only the file currently open in Preview.** Changes are grouped by file, the counter shows progress in the current file alongside the pull-request total, and the previous/next controls and keyboard shortcuts move across files without leaving Preview. New, deleted, and renamed Markdown files appear as clear summary cards instead of being skipped or flooding the list.
-- **The Outline tab now shows headings from every changed Markdown file at once.** Files stay in Azure DevOps' tree order, heading rows show their review-thread counts, and selecting a heading in another file opens it in Preview and scrolls to the section. Per-heading chevrons and Fold H1/H2/H3/Expand all controls make long design documents easier to scan; deleted or heading-free files remain visible with a clear status.
-
-### Changed — Azure DevOps
-
-- **Changes and Threads now stay in the same order as Azure DevOps' file tree.** Opening another file highlights its group without moving it to the top, so both lists remain stable while reviewing a multi-file pull request.
-- **The full review interface now follows Azure DevOps light, dark, and high-contrast themes.** The sidebar, comment editor, threads, status colors, hover states, and focus indicators update in place when the theme changes, without closing a draft or resetting navigation state.
-
 ## [1.9.0] — 2026-07-02
 
 ### Added

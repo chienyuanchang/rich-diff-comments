@@ -1,18 +1,17 @@
 ﻿<#
 .SYNOPSIS
   Tag the current commit and create a GitHub Release with the packaged zip,
-  a SHA256 checksum, and release notes auto-extracted from CHANGELOG.md.
+  a SHA256 checksum, and release notes auto-extracted from the target changelog.
 
 .DESCRIPTION
-  Run after `release-prep.ps1` has produced `releases/<version>/rdc-<version>.zip`.
+  Run after `release-prep.ps1 -Target <target>` has produced the target zip.
   This script:
-    1. Reads the version from manifest.json.
+    1. Reads the version from extensions/<target>/manifest.json.
     2. Verifies the zip exists at the expected path.
-    3. Creates an annotated git tag `v<version>` if one doesn't exist locally.
+    3. Creates a target-safe annotated tag (`v<version>` or `ado-v<version>`).
     4. Pushes the tag to `origin` (skip with -SkipPush).
-    5. Extracts the matching `## [<version>]` section from CHANGELOG.md into
-       `releases/<version>/RELEASE_NOTES.md`.
-    6. Generates a SHA256 of the zip into `releases/<version>/rdc-<version>.zip.sha256`.
+     5. Extracts the matching section from CHANGELOG.md or CHANGELOG_ADO.md.
+     6. Generates a SHA256 beside the target zip.
     7. Calls `gh release create` with the zip + checksum attached and the
        extracted notes as the release body.
 
@@ -41,11 +40,13 @@
   Tag, push, and publish as a draft for manual review before going live.
 
 .EXAMPLE
-  .\.github\skills\rdc-publish-check\scripts\github-release.ps1 -SkipRelease
-  Just prepare the notes + checksum + tag locally, don't touch GitHub.
+  .\.github\skills\rdc-publish-check\scripts\github-release.ps1 -Target ado -SkipPush -SkipRelease
+  Prepare ADO notes, checksum, and tag locally without publishing.
 #>
 [CmdletBinding()]
 param(
+  [ValidateSet('github', 'ado')]
+  [string]$Target = 'github',
   [switch]$SkipPush,
   [switch]$SkipRelease,
   [switch]$Force,
@@ -58,18 +59,23 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')
 Set-Location $repoRoot
 
-$manifestPath = Join-Path $repoRoot 'extensions\github\manifest.json'
+$manifestPath = Join-Path $repoRoot "extensions\$Target\manifest.json"
 if (-not (Test-Path $manifestPath)) {
   throw "manifest.json not found at $manifestPath"
 }
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
 $version = $manifest.version
-$tag = "v$version"
+$tag = if ($Target -eq 'github') { "v$version" } else { "$Target-v$version" }
 
-Write-Host "Preparing GitHub Release for $tag" -ForegroundColor Cyan
+Write-Host "Preparing GitHub Release for $tag ($Target target)" -ForegroundColor Cyan
 
-$releaseDir = Join-Path $repoRoot "releases\$version"
-$zipPath = Join-Path $releaseDir "rdc-$version.zip"
+$releaseDir = if ($Target -eq 'github') {
+  Join-Path $repoRoot "releases\$version"
+} else {
+  Join-Path $repoRoot "releases\$Target\$version"
+}
+$artifactStem = if ($Target -eq 'github') { 'rdc' } else { "rdc-$Target" }
+$zipPath = Join-Path $releaseDir "$artifactStem-$version.zip"
 if (-not (Test-Path $zipPath)) {
   throw "Zip not found at $zipPath. Run release-prep.ps1 first."
 }
@@ -80,11 +86,12 @@ $notesPath = Join-Path $releaseDir 'RELEASE_NOTES.md'
 if ((Test-Path $notesPath) -and -not $Force) {
   Write-Host "  notes: reusing existing $notesPath (use -Force to regenerate)"
 } else {
-  $changelog = Get-Content (Join-Path $repoRoot 'CHANGELOG.md') -Raw
+  $changelogName = if ($Target -eq 'ado') { 'CHANGELOG_ADO.md' } else { 'CHANGELOG.md' }
+  $changelog = Get-Content (Join-Path $repoRoot $changelogName) -Raw
   $escapedVersion = [regex]::Escape($version)
   $pattern = "(?ms)(^## \[$escapedVersion\][^\n]*\n.*?)(?=^## \[|\z)"
   if ($changelog -notmatch $pattern) {
-    throw "No '## [$version]' section found in CHANGELOG.md. Add an entry before releasing."
+    throw "No '## [$version]' section found in $changelogName. Add an entry before releasing."
   }
   $matches[1].TrimEnd() | Out-File -Encoding utf8 $notesPath
   Write-Host "  notes: wrote $notesPath"
@@ -104,7 +111,7 @@ $existingTag = git tag --list $tag
 if ($existingTag) {
   Write-Host "  tag: $tag already exists locally, skipping create"
 } else {
-  git tag -a $tag -m "$tag - see CHANGELOG.md" | Out-Null
+  git tag -a $tag -m "$tag - see $changelogName" | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "git tag failed" }
   Write-Host "  tag: created $tag"
 }
@@ -150,8 +157,9 @@ if ($LASTEXITCODE -eq 0) {
   exit 0
 }
 
+$releaseTitle = "$($manifest.name) v$version"
 $ghArgs = @('release', 'create', $tag, $zipPath, $shaPath,
-            '--title', "$tag",
+            '--title', $releaseTitle,
             '--notes-file', $notesPath)
 if ($Draft) { $ghArgs += '--draft' }
 

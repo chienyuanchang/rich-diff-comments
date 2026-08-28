@@ -1,12 +1,9 @@
-# Regenerate the Chrome Web Store promo tiles using the new icon + new name.
+# Regenerate target-specific Chrome Web Store promo tiles.
 #
 # Composes each tile from:
-#   - GitHub-blue radial-gradient background (matches the icon's `#0969da`
-#     so the whole tile reads as one brand system)
-#   - white rounded-rect badge behind the icon (icon is same-colour as the
-#     background and would otherwise disappear); soft drop shadow for lift
-#   - new app icon (design/logo/icon-1024.png) centered on the badge
-#   - "Markdown PR Comments" headline (white) + "for GitHub" (light blue)
+#   - white canvas with a target-blue perimeter frame
+#   - target app icon from design/logo/
+#   - "Markdown PR Comments" headline + target service name in blue
 #   - short verb-led tagline in light gray
 #
 # Sizes generated (per Chrome Web Store + Edge Add-ons):
@@ -50,14 +47,45 @@
 
 [CmdletBinding()]
 param(
-    [string]$IconPath = "C:\Local\local_repos\rich-diff-comments\design\logo\icon-1024.png",
-    [string]$OutDir   = "C:\Local\local_repos\rich-diff-comments\design\promo-tiles"
+    [ValidateSet('github', 'ado')]
+    [string]$Target = 'github',
+    [string]$IconPath,
+    [string]$OutDir
 )
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+if (-not $IconPath) {
+    $IconPath = if ($Target -eq 'ado') {
+        Join-Path $root 'design\logo\ado\icon-1024.png'
+    } else {
+        Join-Path $root 'design\logo\icon-1024.png'
+    }
+}
+if (-not $OutDir) {
+    $OutDir = if ($Target -eq 'ado') {
+        Join-Path $PSScriptRoot 'ado'
+    } else {
+        $PSScriptRoot
+    }
+}
+
+$brandColor = if ($Target -eq 'ado') {
+    [System.Drawing.Color]::FromArgb(255, 0, 120, 212)
+} else {
+    [System.Drawing.Color]::FromArgb(255, 9, 105, 218)
+}
+$serviceName = if ($Target -eq 'ado') { 'for Azure DevOps' } else { 'for GitHub' }
+$taglineText = if ($Target -eq 'ado') {
+    'Comment, navigate, review rendered markdown.'
+} else {
+    'Comment, reply, resolve in rendered markdown.'
+}
+
 if (-not (Test-Path $IconPath)) { throw "Icon not found: $IconPath" }
+if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
 $icon = [System.Drawing.Image]::FromFile($IconPath)
 
 # Tile spec: width, height, icon size, headline pt, sub pt, tagline pt, line-spacing
@@ -92,7 +120,7 @@ foreach ($t in $tiles) {
     # by half the pen width so the frame sits flush with the canvas
     # edge rather than getting clipped.
     $frameWidth = [Math]::Max(6, [int]($t.W * 0.025))
-    $framePen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(255, 9, 105, 218)), $frameWidth
+    $framePen = New-Object System.Drawing.Pen $brandColor, $frameWidth
     $inset = [int]($frameWidth / 2)
     $g.DrawRectangle($framePen, $inset, $inset, ($t.W - $frameWidth), ($t.H - $frameWidth))
     $framePen.Dispose()
@@ -117,13 +145,13 @@ foreach ($t in $tiles) {
         # `--fgColor-accent`, `--fgColor-muted`) so the tile reads as
         # "native GitHub" branding rather than custom-coloured marketing.
         $whiteBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 31, 35, 40))
-        $blueBrush  = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 9, 105, 218))
+        $blueBrush  = New-Object System.Drawing.SolidBrush $brandColor
         $grayBrush  = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 87, 96, 106))
 
         # Stack headline / sub / tagline vertically, anchored to vertical centre
         $line1 = "Markdown PR Comments"
-        $line2 = "for GitHub"
-        $tagline = "Comment, reply, resolve in rendered markdown."
+        $line2 = $serviceName
+        $tagline = $taglineText
         $lineGap = [int]($t.H1 * 0.15)
         $tagGap  = [int]($t.H1 * 0.6)
         $h1H = [int]($t.H1 * 1.25)
@@ -155,7 +183,7 @@ foreach ($t in $tiles) {
         $tagFont      = New-Object System.Drawing.Font 'Segoe UI', $t.T,  ([System.Drawing.FontStyle]::Regular), ([System.Drawing.GraphicsUnit]::Pixel)
 
         $whiteBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 31, 35, 40))
-        $blueBrush  = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 9, 105, 218))
+        $blueBrush  = New-Object System.Drawing.SolidBrush $brandColor
         $grayBrush  = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 87, 96, 106))
 
         $sf = New-Object System.Drawing.StringFormat
@@ -163,8 +191,12 @@ foreach ($t in $tiles) {
         $sf.LineAlignment = [System.Drawing.StringAlignment]::Near
 
         $line1 = "Markdown PR Comments"
-        $line2 = "for GitHub"
-        $tagline = "Comment, reply, resolve`nin rendered markdown."
+        $line2 = $serviceName
+        $tagline = if ($Target -eq 'ado') {
+            "Comment, navigate, review`nrendered markdown."
+        } else {
+            "Comment, reply, resolve`nin rendered markdown."
+        }
 
         # Compute text-block height + place it anchored to the bottom
         # padding. Then put the icon in the vertical middle of the
@@ -208,4 +240,4 @@ foreach ($t in $tiles) {
 }
 
 $icon.Dispose()
-Write-Host "`nDone."
+Write-Host "`nDone. Generated $Target promo tiles in $OutDir."

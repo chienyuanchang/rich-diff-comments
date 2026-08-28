@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Markdown PR Comments for Azure DevOps — reversed-color icon
+  Master: 1024×1024. Geometry matches icon.svg; only the color treatment
+  changes so the two separately installed extensions remain related but
+  distinguishable.
+
+  Visual:
+    • Transparent outside the speech bubble.
+    • Fluent blue outer bubble/frame (#0078d4).
+    • White message interior, including an inset tail.
+    • Fluent blue "M" and down arrow.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Outer bubble silhouette: identical to the GitHub icon. -->
+  <path fill="#0078d4" d="
+      M 160 30
+      H 864
+      Q 994 30 994 160
+      V 730
+      Q 994 860 864 860
+      H 370
+      L 140 994
+      Q 100 1012 110 980
+      L 160 860
+      Q 30 860 30 730
+      V 160
+      Q 30 30 160 30
+      Z
+  "/>
+
+  <!-- White inset creates the blue speech-bubble frame. The inset tail keeps
+       the frame continuous and readable instead of leaving a solid-blue tail. -->
+  <path fill="#ffffff" d="
+      M 180 100
+      H 844
+      Q 924 100 924 180
+      V 710
+      Q 924 790 844 790
+      H 350
+      L 185 886
+      L 225 790
+      H 180
+      Q 100 790 100 710
+      V 180
+      Q 100 100 180 100
+      Z
+  "/>
+
+  <text
+    x="340"
+    y="425"
+    text-anchor="middle"
+    dominant-baseline="central"
+    font-family="'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+    font-weight="700"
+    font-size="572"
+    fill="#0078d4"
+  >M</text>
+
+  <path fill="#0078d4" d="
+      M 710 269
+      H 830
+      V 520
+      H 930
+      L 770 681
+      L 610 520
+      H 710
+      Z
+  "/>
+</svg>

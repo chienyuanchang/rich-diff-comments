@@ -18,7 +18,7 @@ Every entry in `CHANGELOG.md` (and the equivalent blocks in the store submission
 
 | What | Where |
 |---|---|
-| User-visible feature or bug fix | `CHANGELOG.md` + the `Description` and `What's new` sections of `CHROME_SUBMISSION.md` / `EDGE_SUBMISSION.md` |
+| User-visible feature or bug fix | GitHub: `CHANGELOG.md`; ADO: `CHANGELOG_ADO.md`; plus the matching target's store submission docs |
 | Dev infrastructure (tests, refactors, lib extractions, devDeps) | Git commit message only — **NOT** CHANGELOG |
 | Captured GitHub endpoint payloads, DOM quirks, "I thought X but actually Y" | [docs/DEV_NOTES.md](docs/DEV_NOTES.md) |
 | Stable architecture decisions (why we forward-scan match, LEFT vs RIGHT side, edge-case strategy) | [docs/APPROACH.md](docs/APPROACH.md) |
@@ -37,9 +37,9 @@ The repository is a monorepo with per-target extension folders sharing a single 
 
 ### Tests
 
-- `npm test` — 383 Node:test unit/static tests (no browser). Run before every commit touching JS.
+- `npm test` — 395 Node:test unit/static tests (no browser). Run before every commit touching JS.
 - `npm run test:e2e` / `npm run test:e2e:github` — 21 GitHub fixture tests in headless Chromium.
-- `npm run test:e2e:ado` — 38 ADO Preview + mocked REST fixture tests in headless Chromium.
+- `npm run test:e2e:ado` — 40 ADO Preview + mocked REST fixture tests in headless Chromium.
 - `npm run test:e2e:all` — both browser targets.
 - `npm run test:all` — Node tests plus both browser targets.
 - Preflight (`.github/skills/rdc-publish-check/scripts/preflight.ps1`) runs `npm test` only — add `test:e2e` to your manual flow when DOM behavior changed.

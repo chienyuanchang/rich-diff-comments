@@ -301,9 +301,9 @@ body.adrc-dragging {
   position: fixed;
   top: 80px;
   right: 16px;
-  width: 340px;
+  width: 480px;
   height: 480px;
-  min-width: 300px;
+  min-width: 480px;
   min-height: 180px;
   max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
@@ -326,6 +326,7 @@ body.adrc-dragging {
 }
 
 .adrc-sidebar-collapsed {
+  width: 480px !important;
   height: 42px !important;
   min-height: 42px;
   resize: none;
@@ -353,7 +354,7 @@ body.adrc-dragging {
 .adrc-sidebar-header {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   min-height: 40px;
   padding: 0 6px;
   border-bottom: 1px solid var(--adrc-border);
@@ -381,16 +382,17 @@ body.adrc-dragging {
 .adrc-sidebar-nav-cluster {
   display: inline-flex;
   align-items: center;
-  gap: 1px;
+  gap: 4px;
   flex-shrink: 0;
 }
 
+.adrc-sidebar-nav-icon,
 .adrc-sidebar-nav-button,
 .adrc-sidebar-nav-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 26px;
+  height: 28px;
   padding: 0;
   color: var(--adrc-text-muted);
   background: transparent;
@@ -401,18 +403,39 @@ body.adrc-dragging {
 }
 
 .adrc-sidebar-nav-button {
-  width: 22px;
+  width: 24px;
   font-size: 20px;
   line-height: 1;
 }
 
-.adrc-sidebar-nav-count {
-  min-width: 34px;
-  padding: 0 3px;
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
+.adrc-sidebar-nav-icon {
+  width: 28px;
 }
 
+.adrc-sidebar-nav-icon svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.adrc-sidebar-diff-added {
+  fill: var(--adrc-success);
+}
+
+.adrc-sidebar-diff-removed {
+  fill: var(--adrc-warning);
+}
+
+.adrc-sidebar-nav-count {
+  min-width: 58px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.adrc-sidebar-nav-icon:hover:not(:disabled),
 .adrc-sidebar-nav-button:hover:not(:disabled),
 .adrc-sidebar-nav-count:hover {
   color: var(--adrc-accent);
@@ -420,9 +443,14 @@ body.adrc-dragging {
   border-color: var(--adrc-border);
 }
 
+.adrc-sidebar-nav-icon:disabled,
 .adrc-sidebar-nav-button:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+.adrc-sidebar-count-empty {
+  opacity: 0.5;
 }
 
 .adrc-sidebar-icon {
@@ -450,6 +478,7 @@ body.adrc-dragging {
 }
 
 .adrc-sidebar-icon:focus-visible,
+.adrc-sidebar-nav-icon:focus-visible,
 .adrc-sidebar-nav-button:focus-visible,
 .adrc-sidebar-nav-count:focus-visible,
 .adrc-sidebar-tab:focus-visible,

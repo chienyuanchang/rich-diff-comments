@@ -12,6 +12,7 @@ const {
   formatLineRange,
   filterSidebarThreadItems,
   sortSidebarThreadItems,
+  buildScopedCounterState,
 } = require('../src/lib/sidebar.js');
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -311,6 +312,54 @@ test('sortSidebarThreadItems — defensive against malformed input', () => {
   assert.deepEqual(sortSidebarThreadItems(null, '/a.md'), []);
   const malformed = [{ id: 1 }, null, { id: 2, path: '/a.md', line: 1 }];
   assert.deepEqual(sortSidebarThreadItems(malformed, '/a.md').map(x => x && x.id), [2, 1, null]);
+});
+
+// ──────────────────────────────────────────────────────────────────────
+// GitHub-parity scoped counters — shared by ADO Changes and Threads
+// ──────────────────────────────────────────────────────────────────────
+
+test('buildScopedCounterState — multi-file counter shows file progress and PR total', () => {
+  const items = [
+    { path: '/a.md' },
+    { path: '/a.md' },
+    { path: '/b.md' },
+  ];
+  assert.deepEqual(buildScopedCounterState(items, 1, '/a.md', 'threads'), {
+    text: '2/2 (3)',
+    title: '2 of 2 threads in this file · 3 threads in this pull request',
+    position: 2,
+    fileTotal: 2,
+    total: 3,
+    empty: false,
+  });
+});
+
+test('buildScopedCounterState — file with no items shows dimmable zero state', () => {
+  const state = buildScopedCounterState([{ path: '/a.md' }], 0, '/empty.md', 'changes');
+  assert.equal(state.text, '0/0 (1)');
+  assert.equal(state.empty, true);
+  assert.equal(state.fileTotal, 0);
+});
+
+test('buildScopedCounterState — single-file list drops redundant PR total', () => {
+  const state = buildScopedCounterState([
+    { path: '/only.md' }, { path: '/only.md' }
+  ], 0, '/only.md', 'threads');
+  assert.equal(state.text, '1/2');
+  assert.equal(state.empty, false);
+});
+
+test('buildScopedCounterState — selected item in another file reports zero current position', () => {
+  const state = buildScopedCounterState([
+    { path: '/a.md' }, { path: '/b.md' }, { path: '/b.md' }
+  ], 0, '/b.md', 'changes');
+  assert.equal(state.text, '0/2 (3)');
+  assert.equal(state.position, 0);
+});
+
+test('buildScopedCounterState — unknown route and invalid input use defensive flat count', () => {
+  assert.equal(buildScopedCounterState([{ path: '/a.md' }], 0, '', 'threads').text, '1/1');
+  assert.equal(buildScopedCounterState(null, 99, null, 'changes').text, '0/0');
 });
 
 

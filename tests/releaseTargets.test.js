@@ -59,6 +59,8 @@ test('ADO sync and audit use the ADO-specific privacy policy and changelog', () 
 test('ADO release uses a target-qualified tag and submission documents', () => {
   assert.match(releaseScript, /if \(\$Target -eq 'github'\) \{ "v\$version" \} else \{ "\$Target-v\$version" \}/);
   assert.match(preflightScript, /if \(\$Target -eq 'github'\) \{ 'v' \} else \{ "\$Target-v" \}/);
+  assert.match(releaseScript, /\$ErrorActionPreference = 'Continue'[\s\S]*?gh release view \$tag 2>&1[\s\S]*?\$releaseViewExit = \$LASTEXITCODE/);
+  assert.match(releaseScript, /if \(\$releaseViewExit -eq 0\)/);
   assert.match(prepScript, /CHROME_SUBMISSION\$templateSuffix\.md/);
   assert.match(prepScript, /EDGE_SUBMISSION\$templateSuffix\.md/);
   assert.equal(fs.existsSync(path.join(ROOT, '.github', 'skills', 'rdc-publish-check', 'templates', 'CHROME_SUBMISSION_ADO.md')), true);

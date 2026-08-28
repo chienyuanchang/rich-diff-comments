@@ -149,8 +149,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Check if a release for this tag already exists
+$priorErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 $existingRelease = & gh release view $tag 2>&1
-if ($LASTEXITCODE -eq 0) {
+$releaseViewExit = $LASTEXITCODE
+$ErrorActionPreference = $priorErrorActionPreference
+if ($releaseViewExit -eq 0) {
   Write-Host ""
   Write-Host "A GitHub Release for $tag already exists." -ForegroundColor Yellow
   Write-Host "Delete it manually with 'gh release delete $tag' if you want to recreate." -ForegroundColor Yellow

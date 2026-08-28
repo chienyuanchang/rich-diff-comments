@@ -30,6 +30,11 @@
   }
   console.log(`${LOG} parsed PR context:`, ctx);
 
+  // Resolve namespaced CSS theme aliases at the same inherited scope where
+  // ADO exposes its live semantic tokens. Attribute observation is disabled,
+  // so this class does not trigger Preview reinitialization.
+  document.body.classList.add('adrc-theme-host');
+
   // Fire-and-forget: fetch the current user's identity so Edit / Delete
   // affordances can be shown only on their own comments. If this fails
   // (offline, auth cookie missing), we just skip the buttons — the rest
@@ -4306,6 +4311,51 @@
         pendingChangeJump: readPendingChangeJump(),
         pendingOutlineJump: readPendingOutlineJump()
       };
+    },
+
+    theme() {
+      const root = getComputedStyle(document.documentElement);
+      const host = getComputedStyle(document.body);
+      const sidebar = document.querySelector('.adrc-sidebar');
+      const panel = document.querySelector('.adrc-thread-panel');
+      const editor = document.querySelector('.adrc-editor');
+      const read = (style, name) => style ? style.getPropertyValue(name).trim() : '';
+      const hostTokens = [
+        '--background-color',
+        '--text-primary-color',
+        '--text-secondary-color',
+        '--border-subtle-color',
+        '--communication-background',
+        '--status-error-text',
+        '--status-success-text',
+        '--status-warning-text',
+        '--focus-border-color'
+      ].reduce((out, name) => {
+        out[name] = read(host, name) || read(root, name) || null;
+        return out;
+      }, {});
+      const inspect = (element) => {
+        if (!element) return null;
+        const style = getComputedStyle(element);
+        return {
+          background: style.backgroundColor,
+          color: style.color,
+          border: style.borderColor,
+          outline: style.outlineColor,
+          forcedColorAdjust: style.forcedColorAdjust
+        };
+      };
+      const snapshot = {
+        darkPreference: matchMedia('(prefers-color-scheme: dark)').matches,
+        forcedColors: matchMedia('(forced-colors: active)').matches,
+        hostTokens,
+        sidebar: inspect(sidebar),
+        threadPanel: inspect(panel),
+        editor: inspect(editor)
+      };
+      console.table(hostTokens);
+      console.log(`${LOG} theme snapshot:`, snapshot);
+      return snapshot;
     },
 
     fileTargets(path) {

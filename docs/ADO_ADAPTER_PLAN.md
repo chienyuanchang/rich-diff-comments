@@ -442,7 +442,7 @@ before or after opening a file; deleted/no-heading/error files remain visible.
 Validation: 378 / 378 unit/static tests, 21 / 21 GitHub Chromium scenarios, and
 35 / 35 ADO Chromium scenarios. Manually confirmed in the live ADO sandbox.
 
-### 7.7 Iteration O — ADO theme integration
+### 7.7 Iteration O — ADO theme integration (complete, 2026-08-27)
 
 Replace the light-only Fluent palette with semantic extension tokens that use
 live ADO theme variables when available and safe browser fallbacks otherwise.
@@ -462,6 +462,15 @@ live ADO theme variables when available and safe browser fallbacks otherwise.
 **Acceptance:** the complete extension remains legible and visually integrated
 in ADO light/dark/high-contrast modes, meets visible focus/selection contrast,
 reacts to a theme switch in place, and retains all existing browser behavior.
+
+**Acceptance result:** every component color
+routes through namespaced semantic tokens that consume ADO's live
+`--background-color`, text, border, communication, status, focus, and shadow
+properties, then ADO RGB palette channels, then browser-safe light/dark
+fallbacks. Windows forced-colors maps to system colors. Theme updates preserve
+the same sidebar/buttons and an open editor draft. Validation: 383 / 383
+unit/static tests, 21 / 21 GitHub Chromium scenarios, and 38 / 38 ADO Chromium
+scenarios. Light and dark modes were manually confirmed in the live ADO sandbox.
 
 **Deferred by decision:** `@mention` autocomplete remains a later iteration;
 none of M/N/O adds identity-search traffic or editor suggestion UI.

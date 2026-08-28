@@ -5,22 +5,67 @@
  * their hover / focus states. Deliberately namespaced under `.adrc-*` so
  * nothing here can collide with ADO's own class names.
  *
- * Colors track Microsoft's Fluent palette (#0078d4 = Communication Blue).
- * Kept a single source of truth for tokens at the top so the color scheme
- * is easy to shift when we add a dark-mode pass later.
+ * Colors consume Azure DevOps' live semantic theme properties first, then its
+ * RGB palette properties, then a browser-safe fallback. ADO updates these
+ * custom properties in place when its theme changes, so injected UI follows
+ * without rerunning the content script or losing sidebar/editor state.
  */
 
-:root {
-  --adrc-accent: #0078d4;
-  --adrc-accent-hover: #106ebe;
-  --adrc-accent-tint: rgba(0, 120, 212, 0.08);
-  --adrc-danger: #d13438;
-  --adrc-success: #107c10;
-  --adrc-border: #d1d1d1;
-  --adrc-text: #201f1e;
-  --adrc-text-muted: #605e5c;
-  --adrc-bg: #ffffff;
-  --adrc-bg-subtle: #faf9f8;
+:root,
+body.adrc-theme-host {
+  --adrc-accent: var(--communication-background, rgba(var(--palette-primary-60, 0, 120, 212), 1));
+  --adrc-accent-hover: rgba(var(--palette-primary-darkened-6, 16, 110, 190), 1);
+  --adrc-accent-tint: rgba(var(--palette-primary-60, 0, 120, 212), 0.12);
+  --adrc-accent-border: rgba(var(--palette-primary-60, 0, 120, 212), 0.35);
+  --adrc-on-accent: var(--text-on-communication-background, rgba(var(--palette-neutral-0, 255, 255, 255), 1));
+  --adrc-danger: var(--status-error-text, rgba(218, 10, 0, 1));
+  --adrc-danger-bg: var(--status-error-background, rgba(218, 10, 0, 0.10));
+  --adrc-danger-border: var(--status-error-foreground, rgba(209, 52, 56, 0.45));
+  --adrc-success: var(--status-success-text, rgba(16, 124, 16, 1));
+  --adrc-warning: var(--status-warning-text, rgba(202, 80, 16, 1));
+  --adrc-warning-bg: var(--status-warning-background, rgba(255, 191, 0, 0.16));
+  --adrc-warning-border: var(--status-warning-foreground, rgba(230, 175, 20, 0.75));
+  --adrc-renamed: var(--status-info-foreground, rgba(135, 100, 184, 1));
+  --adrc-border: var(--border-subtle-color, rgba(var(--palette-neutral-20, 209, 209, 209), 1));
+  --adrc-focus: var(--focus-border-color, var(--adrc-accent));
+  --adrc-text: var(--text-primary-color, rgba(var(--palette-neutral-100, 32, 31, 30), 1));
+  --adrc-text-muted: var(--text-secondary-color, rgba(var(--palette-neutral-70, 96, 94, 92), 1));
+  --adrc-bg: var(--background-color, rgba(var(--palette-neutral-0, 255, 255, 255), 1));
+  --adrc-bg-subtle: rgba(var(--palette-neutral-2, 250, 249, 248), 1);
+  --adrc-bg-hover: var(--palette-black-alpha-4, rgba(0, 0, 0, 0.04));
+  --adrc-code-bg: var(--palette-black-alpha-6, rgba(0, 0, 0, 0.06));
+  --adrc-shadow: var(--panel-shadow-color, rgba(0, 0, 0, 0.18));
+  --adrc-shadow-secondary: var(--panel-shadow-secondary-color, rgba(0, 0, 0, 0.08));
+}
+
+/* Safety net for stripped/embedded pages where ADO semantic variables are not
+   exposed. Real ADO themes keep winning through the var() first arguments. */
+@media (prefers-color-scheme: dark) {
+  :root,
+  body.adrc-theme-host {
+    --adrc-accent: var(--communication-background, rgba(var(--palette-primary-60, 78, 154, 241), 1));
+    --adrc-accent-hover: rgba(var(--palette-primary-darkened-6, 105, 170, 245), 1);
+    --adrc-accent-tint: rgba(var(--palette-primary-60, 78, 154, 241), 0.20);
+    --adrc-accent-border: rgba(var(--palette-primary-60, 78, 154, 241), 0.55);
+    --adrc-on-accent: var(--text-on-communication-background, rgba(var(--palette-neutral-0, 255, 255, 255), 1));
+    --adrc-danger: var(--status-error-text, rgba(255, 153, 153, 1));
+    --adrc-danger-bg: var(--status-error-background, rgba(255, 99, 99, 0.18));
+    --adrc-danger-border: var(--status-error-foreground, rgba(255, 120, 120, 0.75));
+    --adrc-success: var(--status-success-text, rgba(126, 201, 126, 1));
+    --adrc-warning: var(--status-warning-text, rgba(255, 185, 80, 1));
+    --adrc-warning-bg: var(--status-warning-background, rgba(255, 185, 80, 0.20));
+    --adrc-warning-border: var(--status-warning-foreground, rgba(255, 185, 80, 0.75));
+    --adrc-renamed: var(--status-info-foreground, rgba(195, 166, 255, 1));
+    --adrc-border: var(--border-subtle-color, rgba(var(--palette-neutral-20, 96, 94, 92), 1));
+    --adrc-text: var(--text-primary-color, rgba(var(--palette-neutral-100, 243, 242, 241), 1));
+    --adrc-text-muted: var(--text-secondary-color, rgba(var(--palette-neutral-70, 200, 198, 196), 1));
+    --adrc-bg: var(--background-color, rgba(var(--palette-neutral-0, 32, 31, 30), 1));
+    --adrc-bg-subtle: rgba(var(--palette-neutral-2, 43, 42, 41), 1);
+    --adrc-bg-hover: var(--palette-black-alpha-4, rgba(255, 255, 255, 0.08));
+    --adrc-code-bg: var(--palette-black-alpha-6, rgba(255, 255, 255, 0.10));
+    --adrc-shadow: var(--panel-shadow-color, rgba(0, 0, 0, 0.55));
+    --adrc-shadow-secondary: var(--panel-shadow-secondary-color, rgba(0, 0, 0, 0.28));
+  }
 }
 
 /* ── The `+` comment button ─────────────────────────────────────────── */
@@ -59,7 +104,7 @@
   height: 22px;
   border-radius: 50%;
   background: var(--adrc-accent);
-  color: white;
+  color: var(--adrc-on-accent);
   border: none;
   cursor: pointer;
   display: inline-flex;
@@ -144,16 +189,16 @@ body.adrc-dragging {
 }
 
 .adrc-range-hover {
-  background-color: rgba(255, 191, 0, 0.14) !important;
-  box-shadow: inset 3px 0 0 0 rgba(230, 175, 20, 0.7) !important;
+  background-color: var(--adrc-warning-bg) !important;
+  box-shadow: inset 3px 0 0 0 var(--adrc-warning-border) !important;
 }
 
 /* Persistent left-bar marker on blocks inside an existing multi-line
    thread's range. Softer than the drag-hover so the two don't fight
    each other visually while dragging. */
 .adrc-range-permanent {
-  box-shadow: inset 3px 0 0 0 rgba(230, 175, 20, 0.45);
-  background-color: rgba(255, 191, 0, 0.05);
+  box-shadow: inset 3px 0 0 0 var(--adrc-warning-border);
+  background-color: var(--adrc-warning-bg);
 }
 
 /* ── Section collapse chevron on H1–H6 headings ────────────────────── */
@@ -226,14 +271,14 @@ body.adrc-dragging {
   font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 13px;
   line-height: 1.4;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 4px 16px var(--adrc-shadow);
   animation: adrc-toast-in 0.2s ease-out;
 }
 
 .adrc-toast-error {
-  background: #fdecea;
+  background: var(--adrc-danger-bg);
   color: var(--adrc-danger);
-  border: 1px solid rgba(209, 52, 56, 0.35);
+  border: 1px solid var(--adrc-danger-border);
 }
 
 .adrc-toast-out {
@@ -267,7 +312,7 @@ body.adrc-dragging {
   background: var(--adrc-bg);
   border: 1px solid var(--adrc-border);
   border-radius: 6px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 6px 24px var(--adrc-shadow);
   font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   color: var(--adrc-text);
   z-index: 9998;
@@ -416,7 +461,7 @@ body.adrc-dragging {
 .adrc-outline-fold-level:focus-visible,
 .adrc-outline-expand-all:focus-visible,
 .adrc-sidebar-launcher:focus-visible {
-  outline: 2px solid var(--adrc-accent);
+  outline: 2px solid var(--adrc-focus);
   outline-offset: -2px;
 }
 
@@ -456,7 +501,7 @@ body.adrc-dragging {
 
 .adrc-sidebar-tab:hover {
   color: var(--adrc-text);
-  background: rgba(0, 0, 0, 0.025);
+  background: var(--adrc-bg-hover);
 }
 
 .adrc-sidebar-tab-active {
@@ -474,7 +519,7 @@ body.adrc-dragging {
   margin-left: 3px;
   padding: 0 4px;
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.07);
+  background: var(--adrc-code-bg);
   color: inherit;
   font-size: 10px;
   box-sizing: border-box;
@@ -670,11 +715,11 @@ body.adrc-dragging {
 }
 
 .adrc-sidebar-change-mixed {
-  border-left-color: #ca5010;
+  border-left-color: var(--adrc-warning);
 }
 
 .adrc-sidebar-change-renamed {
-  border-left-color: #8764b8;
+  border-left-color: var(--adrc-renamed);
 }
 
 .adrc-sidebar-change-unavailable {
@@ -683,7 +728,7 @@ body.adrc-dragging {
 
 .adrc-sidebar-change-active {
   background: var(--adrc-accent-tint);
-  box-shadow: inset 0 0 0 1px rgba(0, 120, 212, 0.25);
+  box-shadow: inset 0 0 0 1px var(--adrc-accent-border);
 }
 
 .adrc-sidebar-change-top {
@@ -700,7 +745,7 @@ body.adrc-dragging {
   width: 18px;
   height: 18px;
   border-radius: 3px;
-  color: white;
+  color: var(--adrc-on-accent);
   font-size: 13px;
   font-weight: 700;
   line-height: 1;
@@ -716,11 +761,11 @@ body.adrc-dragging {
 }
 
 .adrc-sidebar-change-mixed .adrc-sidebar-change-kind {
-  background: #ca5010;
+  background: var(--adrc-warning);
 }
 
 .adrc-sidebar-change-renamed .adrc-sidebar-change-kind {
-  background: #8764b8;
+  background: var(--adrc-renamed);
 }
 
 .adrc-sidebar-change-unavailable .adrc-sidebar-change-kind {
@@ -764,7 +809,7 @@ body.adrc-dragging {
 }
 
 @keyframes adrc-change-target-pulse {
-  0%, 35% { outline: 3px solid rgba(0, 120, 212, 0.35); outline-offset: 2px; }
+  0%, 35% { outline: 3px solid var(--adrc-accent-border); outline-offset: 2px; }
   100% { outline: 0 solid transparent; outline-offset: 6px; }
 }
 
@@ -779,7 +824,7 @@ body.adrc-dragging {
   border-radius: 6px;
   color: var(--adrc-accent);
   background: var(--adrc-bg);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 3px 12px var(--adrc-shadow-secondary);
   cursor: pointer;
 }
 
@@ -792,7 +837,7 @@ body.adrc-dragging {
 }
 
 @keyframes adrc-sidebar-target-pulse {
-  0%, 35% { box-shadow: 0 0 0 4px rgba(0, 120, 212, 0.28); }
+  0%, 35% { box-shadow: 0 0 0 4px var(--adrc-accent-border); }
   100% { box-shadow: none; }
 }
 
@@ -1168,7 +1213,7 @@ body.adrc-dragging {
 
 .adrc-editor-submit {
   background: var(--adrc-accent);
-  color: white;
+  color: var(--adrc-on-accent);
 }
 
 .adrc-editor-submit:hover:not(:disabled) {
@@ -1375,7 +1420,7 @@ body.adrc-dragging {
 
 .adrc-thread-comment-body code {
   padding: 1px 5px;
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--adrc-code-bg);
   border-radius: 3px;
   font-family: Consolas, "Courier New", monospace;
   font-size: 13px;
@@ -1384,7 +1429,7 @@ body.adrc-dragging {
 .adrc-thread-comment-body pre {
   margin: 6px 0 8px;
   padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--adrc-bg-hover);
   border: 1px solid var(--adrc-border);
   border-radius: 4px;
   overflow-x: auto;
@@ -1468,7 +1513,7 @@ body.adrc-dragging {
 }
 
 .adrc-comment-inline-btn.adrc-delete-comment:hover:not(:disabled) {
-  background: rgba(209, 52, 56, 0.08);
+  background: var(--adrc-danger-bg);
   border-color: var(--adrc-danger);
   color: var(--adrc-danger);
 }
@@ -1477,7 +1522,7 @@ body.adrc-dragging {
    button flips to a red-tinted "Confirm delete" state so the second
    click is deliberate. Auto-resets after 3 seconds. */
 .adrc-comment-inline-btn-danger {
-  background: rgba(209, 52, 56, 0.12) !important;
+  background: var(--adrc-danger-bg) !important;
   border-color: var(--adrc-danger) !important;
   color: var(--adrc-danger) !important;
   font-weight: 600;
@@ -1517,4 +1562,66 @@ body.adrc-dragging {
 .adrc-thread-action-btn:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* Windows high-contrast / forced-colors mode. System colors are intentional:
+   extension tokens remain the single source used by every component, while
+   explicit selected-state rules preserve readable HighlightText. */
+@media (forced-colors: active) {
+  :root,
+  body.adrc-theme-host {
+    --adrc-accent: Highlight;
+    --adrc-accent-hover: Highlight;
+    --adrc-accent-tint: Highlight;
+    --adrc-accent-border: Highlight;
+    --adrc-on-accent: HighlightText;
+    --adrc-danger: CanvasText;
+    --adrc-danger-bg: Canvas;
+    --adrc-danger-border: CanvasText;
+    --adrc-success: CanvasText;
+    --adrc-warning: CanvasText;
+    --adrc-warning-bg: Canvas;
+    --adrc-warning-border: CanvasText;
+    --adrc-renamed: LinkText;
+    --adrc-border: ButtonText;
+    --adrc-focus: Highlight;
+    --adrc-text: CanvasText;
+    --adrc-text-muted: GrayText;
+    --adrc-bg: Canvas;
+    --adrc-bg-subtle: Canvas;
+    --adrc-bg-hover: Canvas;
+    --adrc-code-bg: Canvas;
+    --adrc-shadow: transparent;
+    --adrc-shadow-secondary: transparent;
+  }
+
+  .adrc-sidebar,
+  .adrc-sidebar-launcher,
+  .adrc-editor,
+  .adrc-thread-badge,
+  .adrc-thread-panel,
+  .adrc-toast,
+  .adrc-comment-btn,
+  .adrc-collapse-toggle {
+    forced-color-adjust: none;
+  }
+
+  .adrc-comment-btn,
+  .adrc-editor-submit,
+  .adrc-sidebar-thread-active,
+  .adrc-sidebar-change-active,
+  .adrc-outline-row.adrc-outline-active,
+  .adrc-outline-file-current,
+  .adrc-sidebar-tab-active {
+    color: HighlightText;
+    background: Highlight;
+    border-color: Highlight;
+  }
+
+  .adrc-range-hover,
+  .adrc-range-permanent {
+    color: HighlightText;
+    background: Highlight !important;
+    box-shadow: inset 3px 0 0 ButtonText !important;
+  }
 }

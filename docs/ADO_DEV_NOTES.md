@@ -354,6 +354,29 @@ fold-key set applies that intent when its live Preview mounts. Bulk Fold H1/H2/
 H3 and Expand all intentionally affect only the active rendered file. Deleted,
 no-heading, and source-error files remain as compact file-level states.
 
+## ADO theme integration
+
+The production `azure-devops-ui` package maps its SCSS aliases to live page
+custom properties including `--background-color`, `--text-primary-color`,
+`--text-secondary-color`, `--border-subtle-color`, `--communication-background`,
+`--text-on-communication-background`, `--focus-border-color`, status colors,
+and panel-shadow colors. Palette colors such as `--palette-primary-60` and
+`--palette-neutral-2` are RGB channels and must be consumed as
+`rgba(var(--palette-..., r, g, b), alpha)`.
+
+ADRC aliases are defined on both `:root` and `body.adrc-theme-host`, then every
+injected component references only those aliases. This lets ADO's in-app theme
+custom properties win regardless of whether the host defines them on the root
+or an inherited body scope. Because theme changes mutate CSS properties rather
+than child DOM, they update in place and do not trigger Preview initialization
+or lose editor/sidebar state.
+
+`prefers-color-scheme: dark` is only a safety net for stripped/embedded pages
+without host tokens. `forced-colors: active` maps aliases to Canvas, CanvasText,
+Highlight, HighlightText, GrayText, and LinkText, with deterministic adjustment
+on injected roots. Run `ADORC_probe.theme()` to print host tokens and computed
+sidebar/thread/editor colors during live theme checks.
+
 ## URL parsing
 
 **PR URL** (browser): `/{org}/{project}/_git/{repo}/pullrequest/{id}[?path=/README.md]`

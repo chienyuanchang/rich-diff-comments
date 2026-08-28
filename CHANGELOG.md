@@ -12,6 +12,7 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 ### Changed — Azure DevOps
 
 - **Changes and Threads now stay in the same order as Azure DevOps' file tree.** Opening another file highlights its group without moving it to the top, so both lists remain stable while reviewing a multi-file pull request.
+- **The full review interface now follows Azure DevOps light, dark, and high-contrast themes.** The sidebar, comment editor, threads, status colors, hover states, and focus indicators update in place when the theme changes, without closing a draft or resetting navigation state.
 
 ## [1.9.0] — 2026-07-02
 

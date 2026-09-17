@@ -42,7 +42,7 @@ try {
   if (-not (Test-Path $manifestPath)) {
     throw "manifest.json not found at $manifestPath"
   }
-  $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+  $manifest = Get-Content $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
   $version = $manifest.version
   Write-Host "Preparing $Target release artifacts for v$version" -ForegroundColor Cyan
 

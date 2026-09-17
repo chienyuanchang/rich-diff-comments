@@ -63,7 +63,7 @@ $manifestPath = Join-Path $repoRoot "extensions\$Target\manifest.json"
 if (-not (Test-Path $manifestPath)) {
   throw "manifest.json not found at $manifestPath"
 }
-$manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+$manifest = Get-Content $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $version = $manifest.version
 $tag = if ($Target -eq 'github') { "v$version" } else { "$Target-v$version" }
 

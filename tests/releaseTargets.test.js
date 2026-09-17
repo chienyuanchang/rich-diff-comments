@@ -69,6 +69,21 @@ test('ADO release uses a target-qualified tag and submission documents', () => {
   assert.equal(fs.existsSync(path.join(ROOT, '.github', 'skills', 'rdc-publish-check', 'templates', 'EDGE_SUBMISSION_ADO.md')), true);
 });
 
+test('release scripts preserve non-ASCII manifest names in Windows PowerShell', () => {
+  for (const [name, script] of [
+    ['preflight.ps1', preflightScript],
+    ['release-prep.ps1', prepScript],
+    ['github-release.ps1', releaseScript]
+  ]) {
+    assert.match(
+      script,
+      /Get-Content \$manifestPath -Raw -Encoding UTF8 \| ConvertFrom-Json/,
+      `${name} must decode manifest.json as UTF-8`
+    );
+  }
+  assert.match(preflightScript, /StreamReader\(\$manifestEntry\.Open\(\), \[System\.Text\.Encoding\]::UTF8\)/);
+});
+
 test('GitHub and ADO manifests remain separately scoped', () => {
   assert.deepEqual(githubManifest.host_permissions, ['https://github.com/*']);
   assert.deepEqual(adoManifest.host_permissions, [

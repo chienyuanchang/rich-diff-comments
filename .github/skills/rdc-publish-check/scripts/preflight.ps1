@@ -53,7 +53,7 @@ try {
     throw "Missing manifest"
   }
 
-  $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+  $manifest = Get-Content $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
   $version = $manifest.version
   Pass "version: $version"
   Pass "name: $($manifest.name)"
@@ -86,7 +86,7 @@ try {
         Pass "manifest.json is at zip top level"
 
         $manifestEntry = $zip.Entries | Where-Object { ($_.FullName -replace '\\', '/') -eq 'manifest.json' } | Select-Object -First 1
-        $reader = New-Object System.IO.StreamReader($manifestEntry.Open())
+        $reader = New-Object System.IO.StreamReader($manifestEntry.Open(), [System.Text.Encoding]::UTF8)
         try {
           $zipManifest = $reader.ReadToEnd() | ConvertFrom-Json
         }

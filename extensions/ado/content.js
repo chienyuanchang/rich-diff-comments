@@ -14,7 +14,7 @@
   'use strict';
 
   const LOG = '[ADRC]';
-  const RUNTIME_REVISION = '2026-09-17-thread-loading-message-r27';
+  const RUNTIME_REVISION = '2026-09-17-hide-deleted-threads-r28';
   const adapter = (typeof window !== 'undefined' && window.ADORC) || null;
   const startupTiming = {
     scriptLoadedAt: performance.now(),
@@ -2685,12 +2685,16 @@
       ? tc.rightFileEnd.line
       : line;
     const comments = Array.isArray(thread.comments) ? thread.comments : [];
-    const visibleComments = comments.filter((comment) => !comment.isDeleted);
-    const head = visibleComments[0] || comments[0] || {};
+    const visibleComments = typeof GRDC.getVisibleThreadComments === 'function'
+      ? GRDC.getVisibleThreadComments(thread)
+      : comments.filter((comment) => comment && comment.isDeleted !== true);
+    // ADO retains a thread record after every comment in it is soft-deleted.
+    // Such a thread has no review content or useful destination, so keep it
+    // out of inline rendering, sidebar totals, Outline counts, and navigation.
+    if (visibleComments.length === 0) return null;
+    const head = visibleComments[0];
     const author = head.author || {};
-    const snippetSource = head.isDeleted
-      ? '(This comment was deleted.)'
-      : readableMentionText(head.content || '');
+    const snippetSource = readableMentionText(head.content || '');
     return {
       id: thread.id,
       thread,

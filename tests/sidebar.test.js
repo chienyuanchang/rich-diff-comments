@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const {
   buildSnippet,
+  getVisibleThreadComments,
   clampDragPos,
   nextWrappingIndex,
   clampSize,
@@ -56,6 +57,32 @@ test('buildSnippet — invalid maxLen falls back to default', () => {
   assert.equal(buildSnippet(long, 0).length, 81);
   assert.equal(buildSnippet(long, -1).length, 81);
   assert.equal(buildSnippet(long, NaN).length, 81);
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// getVisibleThreadComments — ADO soft-deleted comment handling
+// ───────────────────────────────────────────────────────────────────────────
+
+test('getVisibleThreadComments — omits deleted comments', () => {
+  const visible = { id: 2, content: 'Still here', isDeleted: false };
+  assert.deepEqual(getVisibleThreadComments({
+    comments: [
+      { id: 1, isDeleted: true },
+      visible,
+    ],
+  }), [visible]);
+});
+
+test('getVisibleThreadComments — keeps comments without an explicit deleted flag', () => {
+  const comment = { id: 1, content: 'Visible' };
+  assert.deepEqual(getVisibleThreadComments({ comments: [comment] }), [comment]);
+});
+
+test('getVisibleThreadComments — returns empty for all-deleted or malformed threads', () => {
+  assert.deepEqual(getVisibleThreadComments({ comments: [{ id: 1, isDeleted: true }] }), []);
+  assert.deepEqual(getVisibleThreadComments({ comments: [null, undefined] }), []);
+  assert.deepEqual(getVisibleThreadComments({}), []);
+  assert.deepEqual(getVisibleThreadComments(null), []);
 });
 
 // ───────────────────────────────────────────────────────────────────────────

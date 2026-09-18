@@ -62,6 +62,7 @@ Priority applies to the shared user outcome:
 | Show resolved state and collapse resolved threads by default | ✅ | ✅ |
 | Write with a Markdown toolbar, Write/Preview tabs, auto-grow, and Cmd/Ctrl+Enter | ✅ | ✅ |
 | Render deleted-comment placeholders safely | ✅ | ✅ |
+| Hide a thread after its last visible comment is deleted | N/A — deleted comments are omitted by the host response | ✅ ADO Unreleased |
 | Preserve reading position while thread actions update the page | ✅ | ✅ |
 
 ### Changes, Threads, and Outline

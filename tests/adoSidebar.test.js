@@ -36,7 +36,7 @@ test('ADO manifest loads shared sidebar and Changes helpers before content.js', 
 });
 
 test('ADO exposes a runtime revision for live loaded-script verification', () => {
-  assert.match(content, /const RUNTIME_REVISION = '2026-09-17-thread-loading-message-r27'/);
+  assert.match(content, /const RUNTIME_REVISION = '2026-09-17-hide-deleted-threads-r28'/);
   assert.match(content, /revision: RUNTIME_REVISION/);
 });
 

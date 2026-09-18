@@ -4,6 +4,10 @@ All notable user-visible changes to the Azure DevOps browser extension are recor
 
 ## [Unreleased]
 
+### Fixed
+
+- **Threads disappear after their final comment is deleted.** Empty conversations no longer remain in Preview, sidebar totals, or keyboard navigation as distracting **0 comments** entries; threads with an undeleted reply remain available.
+
 ## [1.2.0] — 2026-09-17
 
 ### Added

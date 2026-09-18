@@ -121,7 +121,7 @@ Threads are returned by `GET /threads`:
 
 **Comment editing** = PATCH `/threads/{id}/comments/{id}` with `{ content }`. `lastContentUpdatedDate !== publishedDate` marks an edit, which we render as `(edited)` next to the timestamp.
 
-**Comment deletion** is soft. DELETE returns 200 with an empty body; the comment stays in the thread with `isDeleted: true`. We render it as `(This comment was deleted.)`.
+**Comment deletion** is soft. DELETE returns 200 with an empty body; the comment stays in the thread with `isDeleted: true`. Deleted-comment placeholders remain inside threads that have another visible comment so replies retain their context. Once every comment is deleted, the retained empty thread record is excluded from inline rendering, sidebar totals, Outline attribution, and navigation.
 
 ## Native `@mention` discovery — endpoint verified, payload pending
 

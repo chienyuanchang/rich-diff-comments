@@ -362,7 +362,32 @@ test.describe('ADO rendered review surface', () => {
       .toHaveText(`@${fixtures.MENTION_USER.displayName}`);
   });
 
-  test('requires inline confirmation before deleting an own comment', async ({ page }) => {
+  test('keeps a thread with a deleted root when an undeleted reply remains', async ({ page }) => {
+    const threads = fixtures.defaultThreads();
+    delete threads[0].comments[0].content;
+    threads[0].comments[0].isDeleted = true;
+    threads[0].comments.push({
+      id: 2,
+      parentCommentId: 1,
+      commentType: 1,
+      content: 'The remaining reply stays actionable.',
+      author: fixtures.OTHER_USER,
+      publishedDate: '2026-08-20T10:05:00.000Z',
+      lastContentUpdatedDate: '2026-08-20T10:05:00.000Z',
+      isDeleted: false,
+    });
+    await setupAdoExtensionPage(page, { threads });
+
+    await expect(page.locator('.adrc-thread-badge[data-thread-id="101"]')).toContainText('1 comment');
+    await expect(page.locator('.adrc-thread-panel[data-thread-id="101"] .adrc-thread-comment-deleted'))
+      .toHaveText('(This comment was deleted.)');
+    await expect(page.locator('.adrc-thread-panel[data-thread-id="101"] .adrc-thread-comment-body'))
+      .toContainText(['(This comment was deleted.)', 'The remaining reply stays actionable.']);
+    await expect(page.locator('.adrc-sidebar-thread-card[data-thread-id="101"] .adrc-sidebar-thread-snippet'))
+      .toHaveText('The remaining reply stays actionable.');
+  });
+
+  test('requires inline confirmation before hiding an all-deleted thread', async ({ page }) => {
     const { server } = await setupAdoExtensionPage(page);
     const panel = page.locator('.adrc-thread-panel[data-thread-id="101"]');
     const deleteButton = panel.locator('.adrc-delete-comment');
@@ -372,8 +397,9 @@ test.describe('ADO rendered review surface', () => {
 
     await deleteButton.click();
     await expect.poll(() => matchingRequests(server, 'DELETE', '/threads/101/comments/1').length).toBe(1);
-    await expect(page.locator('.adrc-thread-panel[data-thread-id="101"] .adrc-thread-comment-deleted'))
-      .toHaveText('(This comment was deleted.)');
-    await expect(page.locator('.adrc-thread-badge[data-thread-id="101"]')).toContainText('0 comments');
+    await expect(page.locator('.adrc-thread-panel[data-thread-id="101"]')).toHaveCount(0);
+    await expect(page.locator('.adrc-thread-badge[data-thread-id="101"]')).toHaveCount(0);
+    await expect(page.locator('.adrc-sidebar-thread-card[data-thread-id="101"]')).toHaveCount(0);
+    await expect(page.locator('[data-count="threads"]')).toHaveText('2');
   });
 });

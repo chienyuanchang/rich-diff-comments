@@ -34,6 +34,7 @@ For the original port sequence and detailed acceptance records, see the [ADO ada
 - Shared frontmatter masking is loaded by the ADO target, but ADO-specific frontmatter rendering and line mapping do not yet have dedicated fixture coverage; the shared roadmap therefore records partial confidence rather than full parity.
 - ADO has no direct equivalent of GitHub's author-association roles. Identity GUIDs can establish comment ownership but not Owner, Member, or Contributor badges.
 - ADO thread tracking differs from GitHub's outdated-thread model; status should be presented using ADO semantics rather than forced into GitHub labels.
+- ADO soft-deletes individual comments rather than deleting the thread record. A thread remains visible while it has any undeleted reply, preserving deleted-comment placeholders for context; after its last visible comment is deleted, it is omitted from inline review, sidebar counts, and navigation.
 - Mention autocomplete queries active IdentityPicker users and inserts ADO's native identity token in new comments, replies, and edits. Multi-word search, keyboard/mouse selection, readable inline rendering, Threads snippets, edits, and cross-file navigation are live validated. Notification delivery from the mentioned account remains an acceptance check.
 - The sidebar intentionally lists Markdown-file threads only. Threads on other file types have no rendered Preview destination in this extension.
 - The sidebar header's × fully hides the panel. A small launcher restores its saved position and size and opens the Threads tab.

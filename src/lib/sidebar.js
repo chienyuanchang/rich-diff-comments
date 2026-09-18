@@ -31,6 +31,15 @@
     return flat.length > max ? flat.slice(0, max).trimEnd() + '\u2026' : flat;
   }
 
+  // ADO soft-deletes comments while retaining their parent thread. Return
+  // only comments that are not marked deleted so an all-deleted thread can be
+  // omitted from badges, counters, and navigation.
+  // A thread with a deleted root and an undeleted reply remains visible.
+  function getVisibleThreadComments(thread) {
+    if (!thread || !Array.isArray(thread.comments)) return [];
+    return thread.comments.filter((comment) => comment && comment.isDeleted !== true);
+  }
+
   // Clamp a candidate sidebar position so at least `margin` pixels stay
   // visible inside the viewport. `rect` is the sidebar's bounding rect at
   // drag start; `mouseDelta` is `{dx, dy}` movement since start; `viewport`
@@ -278,6 +287,7 @@
 
   return {
     buildSnippet,
+    getVisibleThreadComments,
     clampDragPos,
     nextWrappingIndex,
     clampSize,

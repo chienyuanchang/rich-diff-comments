@@ -79,6 +79,57 @@ test.describe('ADO rendered review surface', () => {
     }
   });
 
+  test('marks exact table rows and cycles through multiple row threads', async ({ page }) => {
+    const threads = fixtures.defaultThreads();
+    const makeTableThread = (id, line, content, status = 'active', startLine = line) => ({
+      id,
+      status,
+      threadContext: {
+        filePath: fixtures.DESIGN_PATH,
+        rightFileStart: { line: startLine, offset: 1 },
+        rightFileEnd: { line, offset: 1 },
+      },
+      comments: [{
+        id: 1,
+        parentCommentId: 0,
+        commentType: 1,
+        content,
+        author: fixtures.OTHER_USER,
+        publishedDate: `2026-08-20T13:${id - 200}0:00.000Z`,
+        lastContentUpdatedDate: `2026-08-20T13:${id - 200}0:00.000Z`,
+        isDeleted: false,
+      }],
+    });
+    threads.push(
+      makeTableThread(201, 25, 'First API row thread.'),
+      makeTableThread(202, 25, 'Second API row thread.', 'fixed'),
+      makeTableThread(203, 26, 'UI row thread.'),
+      makeTableThread(204, 25, 'Header-to-API range thread.', 'active', 23)
+    );
+    await setupAdoExtensionPage(page, { threads });
+
+    const table = page.locator('.markdown-preview-container table');
+    const headerRow = table.locator('thead tr');
+    const apiRow = table.locator('tbody tr').filter({ hasText: 'API' });
+    const uiRow = table.locator('tbody tr').filter({ hasText: 'UI' });
+    await expect(headerRow.locator('.adrc-table-thread-marker')).toHaveCount(1);
+    await expect(apiRow.locator('.adrc-table-thread-marker')).toHaveCount(1);
+    await expect(uiRow.locator('.adrc-table-thread-marker')).toHaveCount(1);
+
+    const apiMarker = apiRow.locator('.adrc-table-thread-marker');
+    await expect(apiMarker).toHaveAttribute('aria-label', 'Open review threads on this table row; 3 threads');
+    await expect(apiMarker).toHaveAttribute('data-count', '3');
+    await expect(apiRow).toHaveText('APIPlatform');
+
+    await apiMarker.click();
+    await expect(page.locator('.adrc-thread-badge[data-thread-id="204"]')).toBeFocused();
+    await apiMarker.press('Enter');
+    await expect(page.locator('.adrc-thread-badge[data-thread-id="201"]')).toBeFocused();
+    await apiMarker.press('Enter');
+    await expect(page.locator('.adrc-thread-badge[data-thread-id="202"]')).toBeFocused();
+    await expect(page.locator('.adrc-thread-panel[data-thread-id="202"]')).toBeVisible();
+  });
+
   test('excludes non-Markdown threads and discards their stale pending jumps', async ({ page }) => {
     const threads = fixtures.defaultThreads();
     threads.push({

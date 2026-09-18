@@ -156,6 +156,57 @@ th.adrc-hoverable .adrc-comment-btn {
   transform: none;
 }
 
+/* A table thread body must stay below the complete table, so mark its exact
+   source row with a compact button in the first cell. Reserving space on only
+   marked cells prevents the control from covering cell text. */
+td.adrc-table-thread-marker-host,
+th.adrc-table-thread-marker-host {
+  position: relative;
+  padding-right: 30px !important;
+}
+
+.adrc-table-thread-marker {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 20px;
+  height: 20px;
+  padding: 0 3px;
+  border: 1px solid var(--adrc-accent);
+  border-radius: 10px;
+  background: var(--adrc-bg);
+  color: var(--adrc-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  z-index: 90;
+}
+
+.adrc-table-thread-marker:hover {
+  background: var(--adrc-accent-tint);
+}
+
+.adrc-table-thread-marker:focus-visible {
+  outline: 2px solid var(--adrc-focus);
+  outline-offset: 2px;
+}
+
+.adrc-table-thread-marker svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+.adrc-table-thread-marker[data-count]::after {
+  content: attr(data-count);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
 /* Wide code blocks — keep the button reachable at the left edge.
    Reset the negative-margin trick so the block doesn't shift. */
 pre.adrc-hoverable {
@@ -1805,6 +1856,7 @@ body.adrc-dragging {
   .adrc-thread-panel,
   .adrc-toast,
   .adrc-comment-btn,
+  .adrc-table-thread-marker,
   .adrc-collapse-toggle {
     forced-color-adjust: none;
   }

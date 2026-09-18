@@ -36,8 +36,13 @@ test('ADO manifest loads shared sidebar and Changes helpers before content.js', 
 });
 
 test('ADO exposes a runtime revision for live loaded-script verification', () => {
-  assert.match(content, /const RUNTIME_REVISION = '2026-09-17-thread-loading-message-r27'/);
+  assert.match(content, /const RUNTIME_REVISION = '2026-09-18-table-thread-markers-r28'/);
   assert.match(content, /revision: RUNTIME_REVISION/);
+});
+
+test('ADO table thread markers are treated as extension-injected DOM', () => {
+  const injectedNodeGuard = content.match(/function isOurInjectedNode\(el\) \{[\s\S]*?\n  \}/)?.[0] || '';
+  assert.match(injectedNodeGuard, /cl\.contains\('adrc-table-thread-marker'\)/);
 });
 
 test('ADO reloads with fresh state when SPA navigation changes pull requests', () => {

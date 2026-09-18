@@ -4,6 +4,10 @@ All notable user-visible changes to the Azure DevOps browser extension are recor
 
 ## [Unreleased]
 
+### Added
+
+- **Table comments now identify their exact row.** A persistent marker appears on each table row with review threads; when several conversations share a row, the marker shows their count and cycles through them by mouse or keyboard.
+
 ## [1.2.0] — 2026-09-17
 
 ### Added

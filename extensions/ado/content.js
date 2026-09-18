@@ -14,7 +14,7 @@
   'use strict';
 
   const LOG = '[ADRC]';
-  const RUNTIME_REVISION = '2026-09-17-thread-loading-message-r27';
+  const RUNTIME_REVISION = '2026-09-18-table-thread-markers-r28';
   const adapter = (typeof window !== 'undefined' && window.ADORC) || null;
   const startupTiming = {
     scriptLoadedAt: performance.now(),
@@ -1465,6 +1465,79 @@
   }
 
   /**
+   * Add one persistent marker to each table row that has visible review
+   * threads. The marker lives in the first cell (valid table markup), while
+   * the full thread badges remain below the table. Repeated activation cycles
+   * through multiple threads on the same row without collapsing an open one.
+   */
+  function renderTableRowThreadMarkers(anchoredThreads) {
+    const rows = new Map();
+    (Array.isArray(anchoredThreads) ? anchoredThreads : []).forEach(({ thread, block }) => {
+      if (!thread || !block) return;
+      const visibleComments = (thread.comments || []).filter((comment) => comment && !comment.isDeleted);
+      if (visibleComments.length === 0) return;
+      const tc = thread.threadContext || {};
+      const startLine = tc.rightFileStart && tc.rightFileStart.line;
+      const endLine = tc.rightFileEnd && Number.isFinite(tc.rightFileEnd.line)
+        ? tc.rightFileEnd.line
+        : startLine;
+      const affectedRows = new Set();
+      if (Number.isFinite(startLine) && Number.isFinite(endLine)) {
+        for (let line = Math.min(startLine, endLine); line <= Math.max(startLine, endLine); line++) {
+          const candidate = currentLineToBlock.get(line);
+          if (candidate && candidate.tagName === 'TR') affectedRows.add(candidate);
+        }
+      } else if (block.tagName === 'TR') {
+        affectedRows.add(block);
+      }
+      affectedRows.forEach((row) => {
+        if (!rows.has(row)) rows.set(row, []);
+        if (!rows.get(row).some((item) => String(item.id) === String(thread.id))) {
+          rows.get(row).push(thread);
+        }
+      });
+    });
+
+    rows.forEach((threads, row) => {
+      const host = row.querySelector(':scope > th, :scope > td');
+      if (!host) return;
+      const marker = document.createElement('button');
+      marker.type = 'button';
+      marker.className = 'adrc-table-thread-marker';
+      marker.dataset.threadIds = threads.map((thread) => String(thread.id)).join(',');
+      marker.dataset.activeIndex = '0';
+      const count = threads.length;
+      if (count > 1) marker.dataset.count = String(count);
+      marker.setAttribute('aria-label', count === 1
+        ? 'Open the review thread on this table row'
+        : `Open review threads on this table row; ${count} threads`);
+      marker.title = count === 1
+        ? '1 review thread on this row'
+        : `${count} review threads on this row · click to cycle`;
+      marker.innerHTML =
+        '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h11v8h-6l-3.5 3v-3H2.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+
+      marker.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const index = Math.max(0, Math.min(threads.length - 1, Number(marker.dataset.activeIndex) || 0));
+        const thread = threads[index];
+        marker.dataset.activeIndex = String((index + 1) % threads.length);
+        const badge = document.querySelector(`.adrc-thread-badge[data-thread-id="${thread.id}"]`);
+        if (!badge) return;
+        const panel = document.querySelector(`.adrc-thread-panel[data-thread-id="${thread.id}"]`);
+        if (!panel) badge.click();
+        badge.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        badge.focus({ preventScroll: true });
+      });
+
+      host.classList.add('adrc-table-thread-marker-host');
+      row.classList.add('adrc-table-thread-marked');
+      host.appendChild(marker);
+    });
+  }
+
+  /**
    * Mark every commentable block whose source line falls inside a
    * multi-line thread's range with `.adrc-range-permanent` so reviewers
    * can see the extent of the thread at a glance. Uses `currentLineToBlock`
@@ -1525,6 +1598,11 @@
     // the active Preview, avoiding visible badge churn during navigation.
     renderContainer.querySelectorAll('.adrc-thread-badge, .adrc-thread-panel')
       .forEach((el) => el.remove());
+    renderContainer.querySelectorAll('.adrc-table-thread-marker').forEach((el) => el.remove());
+    renderContainer.querySelectorAll('.adrc-table-thread-marker-host')
+      .forEach((el) => el.classList.remove('adrc-table-thread-marker-host'));
+    renderContainer.querySelectorAll('.adrc-table-thread-marked')
+      .forEach((el) => el.classList.remove('adrc-table-thread-marked'));
     renderContainer.querySelectorAll('.adrc-range-permanent')
       .forEach((el) => el.classList.remove('adrc-range-permanent'));
 
@@ -1574,6 +1652,7 @@
         paintPermanentRange(s, e);
       }
     });
+    renderTableRowThreadMarkers(sorted);
     console.log(`${LOG} rendered ${rendered} thread badge${rendered !== 1 ? 's' : ''} for ${renderPath}`);
     updateActiveSidebarThread();
 
@@ -1610,6 +1689,7 @@
            cl.contains('adrc-thread-panel') ||
            cl.contains('adrc-editor') ||
            cl.contains('adrc-comment-btn') ||
+          cl.contains('adrc-table-thread-marker') ||
           cl.contains('adrc-collapse-toggle') ||
           cl.contains('adrc-sidebar') ||
           cl.contains('adrc-sidebar-launcher') ||

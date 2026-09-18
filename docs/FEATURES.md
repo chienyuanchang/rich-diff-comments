@@ -118,12 +118,17 @@ Priority applies to the shared user outcome:
   - **GitHub:** ✅ No equivalent alignment issue observed.
   - **ADO:** ✅ ADO v1.2.0. List-item buttons center on the first rendered line, including items with nested content.
 
-- [ ] **P0 — Inline markers for table rows and code lines that already have comments**
-  - **Outcome:** a reviewer can see which exact row or code line has a conversation even though the thread body must remain below the containing table or code block.
+- [ ] **P0 — Inline markers for table rows that already have comments**
+  - **Outcome:** a reviewer can see which exact table row has a conversation even though the thread body remains below the complete table.
   - **GitHub:** 📋 Planned.
-  - **ADO:** 📋 Planned.
-  - **MVP:** persistent accent rail/background on every affected row or line; clicking the marker scrolls to and expands the corresponding thread.
-  - **Constraint:** do not inject invalid children into table rows or split syntax-highlighted code DOM.
+  - **ADO:** ✅ ADO Unreleased. One persistent, keyboard-accessible marker in the row's first cell displays the thread count and cycles through that row's conversations when activated.
+  - **Constraint:** keep valid table structure, preserve the existing `+` control, and omit threads with no visible comments.
+
+- [ ] **P0 — Inline markers for code lines that already have comments**
+  - **Outcome:** a reviewer can see which exact code line has a conversation even though the thread body remains below the complete code block.
+  - **GitHub:** 📋 Planned.
+  - **ADO:** 📋 Prototype after table-row markers are live validated; wrapping and syntax-highlighter row compression can make visual line positioning approximate.
+  - **Constraint:** use a non-destructive overlay and never split or rewrite syntax-highlighted code DOM.
 
 - [ ] **P1 — Improve rendered-block text-match accuracy**
   - **Outcome:** fewer comments rely on approximate fallback lines, especially in nested lists, blockquotes, fenced prose, and HTML-backed Markdown.

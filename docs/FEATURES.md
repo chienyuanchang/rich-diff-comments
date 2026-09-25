@@ -53,7 +53,7 @@ No other scope is committed to v1.5.0 yet. Work-item creation, reactions, and si
 
 ### GitHub v1.12.0
 
-- [ ] **Copy Markdown for every rendered comment** — expose the same raw-body behavior as GitHub's native action from the rendered-review comment header.
+- [x] **Copy Markdown for every rendered comment** — implemented, browser-tested, and live-validated; release pending. Copies only the original Markdown body, matching GitHub's native action without generated attribution, timestamps, links, or quote wrappers.
 
 ---
 
@@ -179,7 +179,7 @@ No other scope is committed to v1.5.0 yet. Work-item creation, reactions, and si
 
 - [ ] **P2 — Copy a comment as Markdown**
   - **Outcome:** reviewers can copy the original Markdown body of a comment for reuse in another discussion or document.
-  - **GitHub:** 📋 Targeted for GitHub v1.12.0, matching native **Copy Markdown** behavior.
+  - **GitHub:** △ Implemented, browser-tested, and live-validated for GitHub v1.12.0; release pending. Matches native **Copy Markdown** behavior.
   - **ADO:** ✅ ADO v1.4.0. Added as a parity convenience even though it is absent from the captured native toolbar.
   - **Constraint:** copy only the stored Markdown body. Do not add generated attribution, timestamps, links, or quote markers; keep this distinct from Copy link, which copies a navigable destination.
 

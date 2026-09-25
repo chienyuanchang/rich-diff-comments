@@ -823,10 +823,11 @@ li.grdc-hoverable .grdc-comment-btn {
   border-left: 3px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
 }
 
-/* Compact comment-header actions. Copy link is available on every visible
-   comment; Edit/Delete remain limited to the user's own comments, and Delete
-   keeps GitHub's destructive colour. */
+/* Compact comment-header actions. Copy link and Copy Markdown are available
+  on every visible comment; Edit/Delete remain limited to the user's own
+  comments, and Delete keeps GitHub's destructive colour. */
 .grdc-comment-copy-link,
+.grdc-comment-copy-markdown,
 .grdc-comment-edit-link,
 .grdc-comment-delete-link {
   background: transparent;
@@ -845,12 +846,14 @@ li.grdc-hoverable .grdc-comment-btn {
   margin-left: auto;
 }
 
+.grdc-comment-copy-markdown,
 .grdc-comment-edit-link,
 .grdc-comment-delete-link {
   margin-left: 8px;
 }
 
 .grdc-comment-copy-link:hover,
+.grdc-comment-copy-markdown:hover,
 .grdc-comment-edit-link:hover,
 .grdc-comment-delete-link:hover {
   text-decoration: underline;
@@ -861,6 +864,7 @@ li.grdc-hoverable .grdc-comment-btn {
 }
 
 .grdc-comment-copy-link:disabled,
+.grdc-comment-copy-markdown:disabled,
 .grdc-comment-edit-link:disabled,
 .grdc-comment-delete-link:disabled {
   cursor: default;

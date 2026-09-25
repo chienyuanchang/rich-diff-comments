@@ -2733,6 +2733,10 @@
       const copyLinkMarkup = commentLink
         ? '<button class="grdc-comment-copy-link" title="Copy link to this comment">Copy link</button>'
         : '';
+      // Copy Markdown is also available regardless of ownership. Copy the
+      // stored source body verbatim rather than rendered HTML, attribution,
+      // timestamps, links, or generated quote wrappers.
+      const copyMarkdownMarkup = '<button class="grdc-comment-copy-markdown" title="Copy this comment\'s Markdown source">Copy Markdown</button>';
       // Avatar — 20×20 circle next to the username. Falls back to a
       // GitHub-hosted avatar URL by login if no explicit URL was captured.
       // The login-based URL (`https://avatars.githubusercontent.com/<login>`)
@@ -2770,6 +2774,7 @@
           ${authorMarkup}
           <span class="grdc-comment-time">${escapeHtml(timeAgo)}</span>
           ${copyLinkMarkup}
+          ${copyMarkdownMarkup}
           ${editLinkMarkup}
           ${deleteLinkMarkup}
         </div>
@@ -2797,6 +2802,26 @@
           }, 1600);
         });
       }
+      const copyMarkdownBtn = comment.querySelector('.grdc-comment-copy-markdown');
+      copyMarkdownBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        copyMarkdownBtn.disabled = true;
+        try {
+          await copyTextToClipboard(String(c.body == null ? '' : c.body));
+          copyMarkdownBtn.textContent = 'Copied!';
+          copyMarkdownBtn.title = 'Comment Markdown copied';
+        } catch (error) {
+          console.log('[GRDC] Failed to copy comment Markdown:', error && error.message ? error.message : error);
+          copyMarkdownBtn.textContent = 'Copy failed';
+          copyMarkdownBtn.title = 'Could not copy comment Markdown';
+        }
+        setTimeout(() => {
+          if (!copyMarkdownBtn.isConnected) return;
+          copyMarkdownBtn.textContent = 'Copy Markdown';
+          copyMarkdownBtn.title = "Copy this comment's Markdown source";
+          copyMarkdownBtn.disabled = false;
+        }, 1600);
+      });
       // Wire up direct edit / delete affordances for the user's own comments.
       if (isOwn) {
         const editLinkBtn = comment.querySelector('.grdc-comment-edit-link');

@@ -26,6 +26,7 @@ GitHub rich diff and Azure DevOps Preview render Markdown beautifully, but neith
 - **Outline tab** in the sidebar shows the heading tree of every changed `.md` file with comment-count pills, per-section folding, and bulk `Fold H1 / H2 / H3` / `Expand all` controls.
 - **Changes tab** in the sidebar lists every changed block (paragraph / list item / table row / code block / heading / blockquote) with a `+` / `−` / `±` kind glyph, file:line, and a snippet. The header also gets a `◀ N/M ▶` counter so you can step through changes without opening the tab. Best way to scan a Markdown PR for the first time without re-reading the unchanged prose.
 - **Native file navigation stays synchronized:** clicking a file in either host's file tree updates the rendered review surface and the extension's Changes, Threads, and Outline context; extension navigation selects the corresponding native file.
+- **Copy Markdown:** copy a rendered comment's original Markdown body for reuse in another discussion or document.
 - **Keyboard shortcuts:** `j` / `k` next / previous thread, `h` / `l` first / last thread, `[` / `]` previous / next change, `{` / `}` (Shift+[, Shift+]) first / last change, `1` / `2` / `3` switch sidebar tab (Changes / Threads / Outline), `t` toggle the sidebar, `Shift+T` reset its position.
 - No PAT required — each target uses the existing signed-in session for its service.
 
@@ -38,7 +39,6 @@ GitHub rich diff and Azure DevOps Preview render Markdown beautifully, but neith
 
 - **Open Markdown Preview in one click:** select the current or first changed Markdown file and retain Preview mode while moving between files.
 - **Preview change highlighting:** added sections are green, modified sections use a warm warning highlight, and new files receive a subtle marker.
-- **Copy Markdown:** copy only a rendered comment's original Markdown body for reuse without generated attribution or links.
 - **PR-wide source analysis before Preview visits:** build Changes and Outline from pull-request source data before every Markdown file has been opened in Preview.
 
 See the shared [feature parity roadmap](docs/FEATURES.md) for both targets and the small [GitHub](docs/github/FEATURES.md) / [Azure DevOps](docs/ado/FEATURES.md) platform notes for host-specific behavior.

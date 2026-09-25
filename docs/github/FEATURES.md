@@ -26,7 +26,7 @@ For durable GitHub architecture decisions, see [Approach](./APPROACH.md). For en
 
 ## Current platform constraints
 
-- Comment actions differ in scope. Edit and Delete apply only to the reviewer's own comments, while Copy link must work for any visible comment. GitHub exposes a comment-specific destination, and its native menu also offers Copy Markdown, Quote reply, Reference in a new issue, and permission-gated Hide. Implement Copy link first; issue creation should open GitHub's normal new-issue form with a reference prefilled. Keep Hide delegated to GitHub rather than reproducing moderation permissions and reason selection.
+- Comment actions differ in scope. Edit and Delete apply only to the reviewer's own comments, while Copy link and Copy Markdown work for every visible comment. Copy Markdown uses the stored raw body without generated attribution or links. GitHub's native menu also offers Quote reply, Reference in a new issue, and permission-gated Hide. Keep issue creation exploratory until there is evidence of demand, and keep Hide delegated to GitHub rather than reproducing moderation permissions and reason selection.
 - Rich diff is enabled separately for each Markdown file, which is why GitHub needs the render-all action. Azure DevOps Preview is PR-wide and sticky instead.
 - Outline bulk controls currently apply Fold H1/H2/H3 and Expand all across every rendered Markdown file in the pull request. This is useful for PR-wide triage but broader than ADO's current-file behavior; labels do not yet make that scope explicit.
 - The sidebar can collapse to its header and can be toggled with the keyboard, but unlike ADO it has no × control that fully hides it and no compact launcher for restoring it.

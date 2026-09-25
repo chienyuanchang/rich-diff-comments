@@ -53,7 +53,7 @@ No other scope is committed to v1.5.0 yet. Work-item creation, reactions, and si
 
 ### GitHub v1.12.0
 
-- [ ] **Copy Markdown for every rendered comment** — expose the same raw-body behavior as GitHub's native action from the rendered-review comment header.
+- [x] **Copy Markdown for every rendered comment** — ✅ GitHub v1.12.0. Copies only the original Markdown body, matching GitHub's native action without generated attribution, timestamps, links, or quote wrappers.
 
 ---
 
@@ -171,15 +171,9 @@ No other scope is committed to v1.5.0 yet. Work-item creation, reactions, and si
   - **GitHub:** 📋 Planned; native reactions exist, but the mutation endpoint needs validation.
   - **ADO:** 📋 Planned; the native thread surface exposes a Like/thumbs-up action, but extension support needs endpoint investigation.
 
-- [ ] **P2 — Quote a comment into a reply**
-  - **Outcome:** one action opens the rendered reply editor with the selected comment represented as a Markdown quote.
-  - **GitHub:** 📋 Planned to match native **Quote reply** behavior.
-  - **ADO:** 📋 Planned as a shared editor convenience; no equivalent action was present in the captured native toolbar.
-  - Preserve attribution where useful, keep the quote editable, and use the existing reply submission path.
-
-- [ ] **P2 — Copy a comment as Markdown**
+- [x] **P2 — Copy a comment as Markdown**
   - **Outcome:** reviewers can copy the original Markdown body of a comment for reuse in another discussion or document.
-  - **GitHub:** 📋 Targeted for GitHub v1.12.0, matching native **Copy Markdown** behavior.
+  - **GitHub:** ✅ GitHub v1.12.0. Matches native **Copy Markdown** behavior.
   - **ADO:** ✅ ADO v1.4.0. Added as a parity convenience even though it is absent from the captured native toolbar.
   - **Constraint:** copy only the stored Markdown body. Do not add generated attribution, timestamps, links, or quote markers; keep this distinct from Copy link, which copies a navigable destination.
 

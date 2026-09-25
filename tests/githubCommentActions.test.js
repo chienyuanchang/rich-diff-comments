@@ -16,6 +16,19 @@ test('owned comments expose Edit and Delete as direct header actions', () => {
   assert.doesNotMatch(content, /grdc-comment-menu|grdc-menu-delete|GitHub ↗/);
 });
 
+test('every rendered comment exposes Copy Markdown using its stored raw body', () => {
+  assert.match(content, /const copyMarkdownMarkup = '<button class="grdc-comment-copy-markdown"/);
+  assert.match(content, /\$\{copyLinkMarkup\}\s*\$\{copyMarkdownMarkup\}\s*\$\{editLinkMarkup\}/);
+  assert.match(content, /await copyTextToClipboard\(String\(c\.body == null \? '' : c\.body\)\)/);
+  assert.doesNotMatch(content, /copyTextToClipboard\(c\.bodyHTML\)/);
+});
+
+test('Copy Markdown reports success or failure and restores its action', () => {
+  assert.match(content, /copyMarkdownBtn\.disabled = true;[\s\S]*copyMarkdownBtn\.textContent = 'Copied!'/);
+  assert.match(content, /copyMarkdownBtn\.textContent = 'Copy failed';[\s\S]*copyMarkdownBtn\.title = 'Could not copy comment Markdown'/);
+  assert.match(content, /copyMarkdownBtn\.textContent = 'Copy Markdown';[\s\S]*copyMarkdownBtn\.disabled = false;[\s\S]*}, 1600\);/);
+});
+
 test('direct Delete keeps confirmation and disables while deleting', () => {
   assert.match(content, /deleteLinkBtn\.addEventListener\('click', async/);
   assert.match(content, /if \(!confirm\('Delete this comment\?'\)\) return;/);
@@ -25,5 +38,6 @@ test('direct Delete keeps confirmation and disables while deleting', () => {
 
 test('Delete retains destructive styling without overflow-menu CSS', () => {
   assert.match(styles, /\.grdc-comment-delete-link\s*\{[\s\S]*?color:\s*var\(--fgColor-danger/);
+  assert.match(styles, /\.grdc-comment-copy-link,\s*\.grdc-comment-copy-markdown,/);
   assert.doesNotMatch(styles, /\.grdc-comment-menu|\.grdc-menu-delete|\.grdc-comment-link/);
 });

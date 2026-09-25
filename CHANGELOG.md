@@ -4,6 +4,8 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+## [1.12.0] — 2026-09-25
+
 ### Added
 
 - **Every rendered comment now has a Copy Markdown action.** Copy the comment's original Markdown body from its header for reuse in another discussion or document.

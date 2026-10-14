@@ -53,6 +53,7 @@ The targets version and release independently. These lists summarize the intende
 ### GitHub v1.13.0
 
 - [ ] **Collapse or expand all inline conversations** — add a Threads-toolbar toggle across all currently rendered Markdown files while keeping comment badges and markers visible.
+- [ ] **Make bulk rich-diff rendering faster, observable, and cancellable** — adapt to GitHub's lazy-mounted file controls, show real progress, allow Cancel or `Escape`, and restore the reviewer's starting position when the modal render sweep ends.
 
 ---
 
@@ -208,6 +209,12 @@ The targets version and release independently. These lists summarize the intende
   - Evaluate the reduced click cost against the permanent vertical space added to every expanded thread.
 
 ### Navigation and focus
+
+- [ ] **P1 — Make bulk rich-diff rendering faster, observable, and cancellable**
+  - **Outcome:** reviewers can activate every eligible Markdown file with clear progress, less waiting, and a way to stop without leaving the page in an uncertain state.
+  - **GitHub:** 📋 Planned. Replace fixed per-step delays with an adaptive mount-and-render sweep that advances after GitHub exposes new file controls, reports real progress such as `Rendering 4 of 7 Markdown files`, stops early when the expected files are accounted for, and supports cancellation.
+  - **ADO:** — Preview activates one selected Markdown file without a scroll-based render sweep.
+  - **Acceptance:** continue visiting intermediate viewports so lazy-mounted files are not skipped; combine animation-frame scheduling with DOM observation and a bounded timeout rather than relying on DOM silence alone. Treat the loading surface as modal: block pointer actions and extension navigation shortcuts while rendering, with Cancel and `Escape` as the only exits. Cancellation must stop further scrolling and clicks, remove loading UI, preserve files already rendered, restore the pre-sweep position, and leave the sidebar consistent with the visible page.
 
 - [ ] **P2 — Use discoverable sidebar collapse instead of full dismissal**
   - **Outcome:** reviewers can reclaim page space without creating a fully hidden state that is difficult to discover or recover from.

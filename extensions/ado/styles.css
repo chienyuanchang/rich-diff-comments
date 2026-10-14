@@ -478,10 +478,6 @@ body.adrc-dragging {
   box-sizing: border-box;
 }
 
-.adrc-sidebar-hidden {
-  display: none !important;
-}
-
 .adrc-sidebar-route-hidden {
   display: none !important;
 }
@@ -662,8 +658,8 @@ body.adrc-dragging {
 .adrc-outline-label:focus-visible,
 .adrc-outline-fold-level:focus-visible,
 .adrc-outline-expand-all:focus-visible,
-.adrc-sidebar-open-preview:focus-visible,
-.adrc-sidebar-launcher:focus-visible {
+.adrc-threads-toggle-all:focus-visible,
+.adrc-sidebar-open-preview:focus-visible {
   outline: 2px solid var(--adrc-focus);
   outline-offset: -2px;
 }
@@ -671,10 +667,6 @@ body.adrc-dragging {
 .adrc-sidebar-icon svg {
   width: 16px;
   height: 16px;
-}
-
-.adrc-sidebar-hide {
-  font-size: 18px;
 }
 
 .adrc-sidebar-tabs {
@@ -1065,25 +1057,6 @@ body.adrc-dragging {
   100% { outline: 0 solid transparent; outline-offset: 6px; }
 }
 
-.adrc-sidebar-launcher {
-  position: fixed;
-  top: 80px;
-  right: 16px;
-  z-index: 9998;
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--adrc-border);
-  border-radius: 6px;
-  color: var(--adrc-accent);
-  background: var(--adrc-bg);
-  box-shadow: 0 3px 12px var(--adrc-shadow-secondary);
-  cursor: pointer;
-}
-
-.adrc-sidebar-launcher:hover {
-  background: var(--adrc-accent-tint);
-}
-
 .adrc-sidebar-target-pulse {
   animation: adrc-sidebar-target-pulse 1.4s ease-out;
 }
@@ -1093,7 +1066,8 @@ body.adrc-dragging {
   100% { box-shadow: none; }
 }
 
-.adrc-outline-toolbar {
+.adrc-outline-toolbar,
+.adrc-threads-toolbar {
   display: flex;
   gap: 4px;
   padding: 6px 8px;
@@ -1103,7 +1077,8 @@ body.adrc-dragging {
 }
 
 .adrc-outline-fold-level,
-.adrc-outline-expand-all {
+.adrc-outline-expand-all,
+.adrc-threads-toggle-all {
   min-width: 0;
   padding: 3px 6px;
   border: 1px solid var(--adrc-border);
@@ -1116,9 +1091,15 @@ body.adrc-dragging {
 }
 
 .adrc-outline-fold-level:hover,
-.adrc-outline-expand-all:hover {
+.adrc-outline-expand-all:hover,
+.adrc-threads-toggle-all:hover:not(:disabled) {
   color: var(--adrc-accent);
   background: var(--adrc-accent-tint);
+}
+
+.adrc-threads-toggle-all:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .adrc-outline-body {
@@ -1897,7 +1878,6 @@ body.adrc-dragging {
   }
 
   .adrc-sidebar,
-  .adrc-sidebar-launcher,
   .adrc-editor,
   .adrc-thread-badge,
   .adrc-thread-panel,

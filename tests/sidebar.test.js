@@ -476,6 +476,18 @@ test('adoTreeEntryMatchesPath — accepts exact href and full-label paths', () =
   assert.equal(adoTreeEntryMatchesPath(entries[1], '/docs/guide.md'), true);
 });
 
+test('adoTreeEntryMatchesPath — orphaned nested basename cannot impersonate a root file', () => {
+  const entries = buildAdoTreePathEntries([
+    { label: 'README.md', level: 2, folder: false },
+    { label: 'README.md', level: 1, folder: false },
+  ]);
+  assert.equal(entries[0].reconstructedPath, '/README.md');
+  assert.equal(entries[0].hierarchyComplete, false);
+  assert.equal(adoTreeEntryMatchesPath(entries[0], '/README.md'), false);
+  assert.equal(entries[1].hierarchyComplete, true);
+  assert.equal(adoTreeEntryMatchesPath(entries[1], '/README.md'), true);
+});
+
 test('findDeepestAdoTreeAncestor — chooses the deepest exact collapsed path prefix', () => {
   const entries = buildAdoTreePathEntries([
     { label: 'public', level: 1, folder: true, expanded: true },

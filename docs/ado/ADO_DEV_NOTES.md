@@ -389,6 +389,20 @@ Remembered entries are path snapshots only: activation requires the matched row
 index to be present in the current paint, and the row is revalidated immediately
 before each click, Enter, or double-click gesture.
 
+**2026-09-29 v1.5 development regression: an orphaned nested leaf is not a root
+file.** This behavior was not present in released v1.4. During v1.5 live
+validation, navigation to the repository-root `README.md` first selected a
+nested `README.md`, waited through the native activation attempts, then used the
+exact route fallback and refreshed onto the correct file. A virtualized TreeEx
+paint can expose a level-2-or-deeper leaf while its parent rows are absent;
+rebuilding that partial paint from the basename alone produced the misleading
+path `/README.md`. Reconstructed-path evidence is now accepted only when the
+aria-level parent chain is complete. Exact href or full-path labels remain valid
+even when parents are outside the current paint, and the full-tree materializer
+continues to accumulate parent descriptors across virtualized pages. Because
+the regression was found and corrected before v1.5 shipped, it is recorded here
+rather than in the user-facing changelog.
+
 **2026-09-16 root cause: ADO's selected-file model is separate from the URL.**
 The repeatable sequence is: select a non-Markdown file, use extension navigation
 to request Markdown, and observe ADO remain pinned to the non-Markdown file;

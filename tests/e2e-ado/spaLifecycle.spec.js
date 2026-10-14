@@ -197,7 +197,7 @@ test.describe('ADO SPA lifecycle and cross-file navigation', () => {
       history.pushState({}, '', url.href);
     });
     await expect(page.locator('.adrc-sidebar')).toBeHidden({ timeout: 1500 });
-    await expect(page.locator('.adrc-sidebar-launcher')).toBeHidden();
+    await expect(page.locator('.adrc-sidebar-launcher')).toHaveCount(0);
   });
 
   test('Preview action switches the selected Markdown file from Inline to Preview', async ({ page }) => {
@@ -335,6 +335,30 @@ test.describe('ADO SPA lifecycle and cross-file navigation', () => {
     expect(root.map((entry) => entry.rowId)).toEqual(['probe-root-security']);
     expect(nested.map((entry) => entry.rowId)).toEqual(['probe-nested-security']);
     expect(missing).toEqual([]);
+  });
+
+  test('an orphaned nested README row cannot intercept root README navigation', async ({ page }) => {
+    await setupAdoExtensionPage(page);
+    await page.evaluate(() => {
+      const tree = document.querySelector('.fixture-tree');
+      const nested = document.createElement('div');
+      nested.id = 'probe-orphaned-nested-readme';
+      nested.className = 'bolt-tree-row';
+      nested.setAttribute('role', 'treeitem');
+      nested.setAttribute('aria-level', '2');
+      nested.innerHTML = '<div class="bolt-tree-cell"><div class="bolt-table-cell-content"><span class="bolt-list-cell-text">README.md</span></div></div>';
+      const root = document.createElement('div');
+      root.id = 'probe-root-readme';
+      root.className = 'bolt-tree-row';
+      root.setAttribute('role', 'treeitem');
+      root.setAttribute('aria-level', '1');
+      root.innerHTML = '<div class="bolt-tree-cell"><div class="bolt-table-cell-content"><span class="bolt-list-cell-text">README.md</span></div></div>';
+      tree.prepend(root);
+      tree.prepend(nested);
+    });
+
+    const targets = await page.evaluate(() => window.ADORC_probe.fileTargets('/README.md'));
+    expect(targets.map((entry) => entry.rowId)).toEqual(['probe-root-readme']);
   });
 
   test('an unmaterialized file row falls back to the exact same-PR route', async ({ page }) => {
@@ -602,7 +626,7 @@ test.describe('ADO SPA lifecycle and cross-file navigation', () => {
     await expect(page.locator('.markdown-preview-container h1')).toContainText('Design Review');
     await expect(page.locator('.adrc-thread-badge')).toHaveCount(2);
     await expect(page.locator('.adrc-sidebar')).toHaveCount(1);
-    await expect(page.locator('.adrc-sidebar-launcher')).toHaveCount(1);
+    await expect(page.locator('.adrc-sidebar-launcher')).toHaveCount(0);
 
     const outline = await page.evaluate(() => window.ADORC_probe.outline());
     expect(outline.cachedFilePath).toBe(fixtures.DESIGN_PATH);

@@ -37,6 +37,37 @@ test.describe('ADO sidebar and keyboard navigation', () => {
     expect(state.height).toBe(480);
   });
 
+  test('uses collapse as the only space-saving state', async ({ page }) => {
+    const sidebar = page.locator('.adrc-sidebar');
+    await expect(sidebar.locator('.adrc-sidebar-hide')).toHaveCount(0);
+    await expect(page.locator('.adrc-sidebar-launcher')).toHaveCount(0);
+
+    await page.evaluate(() => window.ADORC_probe.sidebar('hide'));
+    await expect(sidebar).toBeVisible();
+    await expect(sidebar).toHaveClass(/adrc-sidebar-collapsed/);
+  });
+
+  test('collapses and expands every conversation in the current Preview', async ({ page }) => {
+    await page.keyboard.press('2');
+    const toggle = page.locator('.adrc-threads-toggle-all');
+    const badges = page.locator('.markdown-preview-container .adrc-thread-badge');
+
+    await expect(toggle).toHaveText('Collapse all conversations');
+    await toggle.click();
+    await expect(page.locator('.markdown-preview-container .adrc-thread-panel')).toHaveCount(0);
+    await expect(badges).toHaveCount(2);
+    await expect(toggle).toHaveText('Expand all conversations');
+
+    await toggle.click();
+    await expect(page.locator('.markdown-preview-container .adrc-thread-panel')).toHaveCount(2);
+    await expect(badges.locator('.adrc-thread-badge-chevron')).toHaveText(['▼', '▼']);
+    await expect(toggle).toHaveText('Collapse all conversations');
+
+    await badges.nth(0).click();
+    await expect(page.locator('.markdown-preview-container .adrc-thread-panel')).toHaveCount(1);
+    await expect(toggle).toHaveText('Collapse all conversations');
+  });
+
   test('does not hijack sidebar shortcuts while the user is typing', async ({ page }) => {
     const sidebar = page.locator('.adrc-sidebar');
     const before = await page.evaluate(() => window.ADORC_probe.sidebar().state);
@@ -75,7 +106,7 @@ test.describe('ADO sidebar and keyboard navigation', () => {
   test('filters resolved threads without changing the PR-wide total', async ({ page }) => {
     await page.keyboard.press('2');
     const filter = page.locator('.adrc-sidebar-filter');
-    await filter.click();
+    await filter.dispatchEvent('click');
 
     await expect(page.locator('.adrc-sidebar-thread-card')).toHaveCount(2);
     await expect(page.locator('.adrc-sidebar-thread-card[data-thread-id="102"]')).toHaveCount(0);
@@ -85,7 +116,7 @@ test.describe('ADO sidebar and keyboard navigation', () => {
     const filtered = await page.evaluate(() => window.ADORC_probe.sidebar());
     expect(filtered.visibleThreadCount).toBe(2);
 
-    await filter.click();
+    await filter.dispatchEvent('click');
     await expect(page.locator('.adrc-sidebar-thread-card')).toHaveCount(3);
     await expect(filter).toHaveAttribute('aria-pressed', 'false');
   });

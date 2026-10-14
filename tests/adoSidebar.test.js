@@ -258,6 +258,24 @@ test('ADO keyboard t toggles and Shift+T resets while preserving tab/filter', ()
   assert.match(content, /collapse\.setAttribute\('aria-label', sidebarState\.collapsed \? 'Expand sidebar' : 'Collapse sidebar'\)/);
 });
 
+test('ADO v1.5 uses sidebar collapse instead of full dismissal', () => {
+  assert.doesNotMatch(content, /adrc-sidebar-hide|adrc-sidebar-launcher|function hideSidebar/);
+  assert.doesNotMatch(css, /\.adrc-sidebar-hidden|\.adrc-sidebar-launcher|\.adrc-sidebar-hide/);
+  assert.match(content, /next\.visible = true/);
+  assert.match(content, /function toggleSidebarCollapsed\(\)[\s\S]*?saveSidebarState\(\{ collapsed: !sidebarState\.collapsed \}\)/);
+});
+
+test('ADO Threads toolbar toggles all current-Preview conversations', () => {
+  assert.match(content, /class="adrc-threads-toggle-all"/);
+  assert.match(content, /function currentPreviewThreadBadges\(\)/);
+  assert.match(content, /function toggleAllConversations\(\)/);
+  assert.match(content, /getCurrentPreviewContainer\(\)/);
+  assert.match(content, /const action = hasExpanded \? 'Collapse' : 'Expand'/);
+  assert.match(content, /button\.textContent = `\$\{action\} all conversations`/);
+  assert.match(css, /\.adrc-threads-toolbar/);
+  assert.match(css, /\.adrc-threads-toggle-all/);
+});
+
 test('ADO keyboard guards typing/modifiers and only prevents available list navigation', () => {
   assert.match(content, /isShortcutTypingTarget\(e\.target\)/);
   assert.match(content, /e\.ctrlKey \|\| e\.metaKey \|\| e\.altKey/);

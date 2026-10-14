@@ -4,6 +4,14 @@ All notable user-visible changes to the Azure DevOps browser extension are recor
 
 ## [Unreleased]
 
+### Added
+
+- **Collapse or expand every conversation in the current Markdown Preview at once.** The Threads toolbar can return a comment-heavy document to a compact reading view while keeping comment badges and markers visible, then reopen all conversations when needed.
+
+### Changed
+
+- **The sidebar now uses collapse as its only space-saving state.** The full-hide button and separate restore launcher are gone, so the sidebar remains easy to find while retaining its keyboard toggle and saved layout.
+
 ## [1.4.0] — 2026-09-23
 
 ### Added

@@ -47,8 +47,8 @@ The targets version and release independently. These lists summarize the intende
 
 ### Azure DevOps v1.5.0
 
-- [ ] **Remove full sidebar dismissal and its restore launcher** — keep the sidebar's discoverable collapse/expand behavior instead of allowing it to enter a fully hidden state. Preserve the existing keyboard toggle and saved layout preferences.
-- [ ] **Collapse or expand all inline conversations** — add a Threads-toolbar toggle scoped to the current Markdown Preview while keeping comment badges and markers visible.
+- [x] **Remove full sidebar dismissal and its restore launcher** — implemented and browser-tested; live validation pending. The sidebar now keeps only its discoverable collapse/expand behavior, keyboard toggle, and saved layout preferences.
+- [x] **Collapse or expand all inline conversations** — implemented and browser-tested; live validation pending. The Threads-toolbar toggle is scoped to the current Markdown Preview and keeps comment badges and markers visible.
 
 ### GitHub v1.13.0
 
@@ -174,7 +174,7 @@ The targets version and release independently. These lists summarize the intende
 - [ ] **P2 — Collapse or expand all inline conversations**
   - **Outcome:** reviewers can return a comment-heavy rendered document to a compact reading view in one action, then reopen every conversation when needed.
   - **GitHub:** 📋 Targeted for GitHub v1.13.0. Apply the action across all currently rendered Markdown files in the pull request.
-  - **ADO:** 📋 Targeted for ADO v1.5.0. Apply the action to the current Markdown Preview, matching ADO's one-file-at-a-time review surface.
+  - **ADO:** △ Implemented and browser-tested for ADO v1.5.0; live validation pending. The action applies to the current Markdown Preview, matching ADO's one-file-at-a-time review surface.
   - **Acceptance:** place a **Collapse all conversations** / **Expand all conversations** toggle in the Threads toolbar; collapse only conversation bodies while keeping badges, table-row markers, code-line markers, and the Threads list visible. Do not change resolution state, the unresolved filter, or saved sidebar preferences.
 
 - [ ] **P3 — Expose host-authorized moderation actions only when safely supported**
@@ -209,10 +209,16 @@ The targets version and release independently. These lists summarize the intende
 
 ### Navigation and focus
 
+- [ ] **P3 — Investigate intermittent loss of review controls**
+  - **Outcome:** reviewers can continue using the extension after the host refreshes or restores the active review surface, without force-refreshing the browser tab.
+  - **GitHub:** ⏳ One user reported that the sidebar sometimes disappears while a pull-request change is open, but there is no reproducible sequence or captured page state yet.
+  - **ADO:** ↔ The Preview lifecycle already restores its controls when the host reuses or replaces the Preview container; no corresponding regression is currently reported.
+  - **Evidence gate:** before changing the lifecycle, capture the sidebar count, rendered-diff count, and console output while the failure is present, or obtain a repeatable fixture. If the sidebar is confirmed missing while the changed-files review surface remains active, recovery must not create duplicate controls, reset saved sidebar layout or filters, interrupt an active comment edit, or repeatedly rebuild a healthy review surface.
+
 - [ ] **P2 — Use discoverable sidebar collapse instead of full dismissal**
   - **Outcome:** reviewers can reclaim page space without creating a fully hidden state that is difficult to discover or recover from.
   - **GitHub:** ✅ The existing collapse control and `t` shortcut provide the intended outcome; do not add a full-dismiss button or separate launcher.
-  - **ADO:** 📋 Targeted for ADO v1.5.0. Remove the header × full-dismiss action and separate restore launcher, keeping collapse/expand as the sole space-saving behavior.
+  - **ADO:** △ Implemented and browser-tested for ADO v1.5.0; live validation pending. The header full-dismiss action and separate restore launcher are removed, leaving collapse/expand as the sole space-saving behavior.
   - **Constraint:** preserve the existing keyboard toggle and saved position, size, active tab, filter, and collapsed state. Removing full dismissal must not reset the reviewer's sidebar layout.
 
 - [ ] **P3 — Evaluate active-file prioritization during startup**

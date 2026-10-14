@@ -1526,26 +1526,30 @@
     // Unresolved threads auto-expand so reviewers immediately see what
     // needs attention. Resolved threads stay collapsed as a compact
     // badge; clicking expands them on demand.
-    let panel = null;
     if (willAutoExpand) {
-      panel = buildThreadPanel(thread);
+      const panel = buildThreadPanel(thread);
       badge.parentNode.insertBefore(panel, badge.nextSibling);
     }
 
     badge.addEventListener('click', () => {
       const chevronEl = badge.querySelector('.adrc-thread-badge-chevron');
-      if (panel && panel.parentNode) {
+      const panel = badge.nextElementSibling?.classList.contains('adrc-thread-panel')
+        ? badge.nextElementSibling
+        : null;
+      if (panel) {
         panel.remove();
-        panel = null;
         if (chevronEl) chevronEl.textContent = '▶';
+        updateConversationToggle();
         return;
       }
-      panel = buildThreadPanel(thread);
-      badge.parentNode.insertBefore(panel, badge.nextSibling);
+      badge.parentNode.insertBefore(buildThreadPanel(thread), badge.nextSibling);
       if (chevronEl) chevronEl.textContent = '▼';
+      updateConversationToggle();
     });
 
-    return panel || badge;
+    return badge.nextElementSibling?.classList.contains('adrc-thread-panel')
+      ? badge.nextElementSibling
+      : badge;
   }
 
   /**
@@ -1828,6 +1832,7 @@
     renderCodeLineThreadMarkers(sorted);
     console.log(`${LOG} rendered ${rendered} thread badge${rendered !== 1 ? 's' : ''} for ${renderPath}`);
     updateActiveSidebarThread();
+    updateConversationToggle();
 
     // Restore scroll on the next frame so any layout-affecting reflow
     // (image loads, etc.) has settled first.
@@ -1866,7 +1871,6 @@
            cl.contains('adrc-code-line-thread-marker') ||
           cl.contains('adrc-collapse-toggle') ||
           cl.contains('adrc-sidebar') ||
-          cl.contains('adrc-sidebar-launcher') ||
           cl.contains('adrc-toast');
   }
 
@@ -2030,7 +2034,6 @@
   const OUTLINE_ACTIVE_OFFSET = 140;         // px below viewport top where the "reading line" sits
 
   let sidebarPanel = null;
-  let sidebarLauncher = null;
   let sidebarState = null;
   let sidebarThreadItems = [];
   let sidebarThreadsLoadPromise = null;
@@ -2119,7 +2122,6 @@
   function outlineIsVisible() {
     return !!sidebarPanel &&
       !!sidebarPanel.querySelector('.adrc-outline-body') &&
-      !sidebarPanel.classList.contains('adrc-sidebar-hidden') &&
       !sidebarPanel.classList.contains('adrc-sidebar-collapsed') &&
       sidebarState && sidebarState.tab === 'outline';
   }
@@ -2143,6 +2145,9 @@
       const raw = localStorage.getItem(SIDEBAR_STORAGE_KEY);
       const parsed = raw ? JSON.parse(raw) : {};
       const next = Object.assign(defaults, parsed || {});
+      // v1.5 removes full dismissal. Recover users whose previous saved
+      // state would otherwise leave the sidebar permanently hidden.
+      next.visible = true;
       if (next.tab !== 'changes' && next.tab !== 'threads' && next.tab !== 'outline') {
         next.tab = 'changes';
       }
@@ -2353,9 +2358,7 @@
 
   function applySidebarState() {
     if (!sidebarPanel || !sidebarState) return;
-    sidebarPanel.classList.toggle('adrc-sidebar-hidden', sidebarState.visible === false);
     sidebarPanel.classList.toggle('adrc-sidebar-collapsed', sidebarState.collapsed === true);
-    if (sidebarLauncher) sidebarLauncher.hidden = sidebarState.visible !== false;
     applySidebarGeometry();
 
     const collapse = sidebarPanel.querySelector('.adrc-sidebar-collapse');
@@ -2368,15 +2371,13 @@
     updateSidebarFilterUI();
     updateSidebarNavigation();
 
-    if (sidebarState.visible !== false) attachOutlineScrollListener();
-    else detachOutlineScrollListener();
+    attachOutlineScrollListener();
     applySidebarRouteVisibility();
   }
 
   function applySidebarRouteVisibility() {
     const hidden = !isAdoFilesRoute();
     if (sidebarPanel) sidebarPanel.classList.toggle('adrc-sidebar-route-hidden', hidden);
-    if (sidebarLauncher) sidebarLauncher.classList.toggle('adrc-sidebar-route-hidden', hidden);
   }
 
   const SIDEBAR_DIFF_NAV_SVG = [
@@ -2528,6 +2529,54 @@
     });
   }
 
+  function currentPreviewThreadBadges() {
+    const container = getCurrentPreviewContainer();
+    return container
+      ? Array.from(container.querySelectorAll('.adrc-thread-badge[data-thread-id]'))
+      : [];
+  }
+
+  function updateConversationToggle() {
+    const button = sidebarPanel?.querySelector('.adrc-threads-toggle-all');
+    if (!button) return;
+    const badges = currentPreviewThreadBadges();
+    const hasExpanded = badges.some((badge) =>
+      badge.nextElementSibling?.classList.contains('adrc-thread-panel')
+    );
+    const action = hasExpanded ? 'Collapse' : 'Expand';
+    button.textContent = `${action} all conversations`;
+    button.title = `${action} all conversations in the current Markdown Preview`;
+    button.disabled = badges.length === 0;
+  }
+
+  function toggleAllConversations() {
+    const badges = currentPreviewThreadBadges();
+    const shouldCollapse = badges.some((badge) =>
+      badge.nextElementSibling?.classList.contains('adrc-thread-panel')
+    );
+    badges.forEach((badge) => {
+      const panel = badge.nextElementSibling?.classList.contains('adrc-thread-panel')
+        ? badge.nextElementSibling
+        : null;
+      const chevron = badge.querySelector('.adrc-thread-badge-chevron');
+      if (shouldCollapse) {
+        if (panel) panel.remove();
+        if (chevron) chevron.textContent = '▶';
+        return;
+      }
+      if (!panel) {
+        const item = sidebarThreadItems.find((candidate) =>
+          String(candidate.id) === String(badge.dataset.threadId)
+        );
+        if (item?.thread) {
+          badge.parentNode.insertBefore(buildThreadPanel(item.thread), badge.nextSibling);
+        }
+      }
+      if (chevron) chevron.textContent = '▼';
+    });
+    updateConversationToggle();
+  }
+
   function buildSidebarPanel() {
     if (sidebarPanel && sidebarPanel.isConnected) {
       applySidebarState();
@@ -2564,7 +2613,6 @@
       '  <button type="button" class="adrc-sidebar-icon adrc-sidebar-filter" aria-pressed="false" title="Show unresolved threads only">',
       '    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5v4l-3 1V8L2 3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
       '  </button>',
-      '  <button type="button" class="adrc-sidebar-icon adrc-sidebar-hide" aria-label="Hide sidebar" title="Hide sidebar">\u00d7</button>',
       '</div>',
       '<div class="adrc-sidebar-tabs" role="tablist">',
       '    <button type="button" class="adrc-sidebar-tab" data-tab="changes" role="tab">Changes <span class="adrc-sidebar-tab-count" data-count="changes">0</span></button>',
@@ -2582,6 +2630,9 @@
       '  </section>',
       '  <section class="adrc-sidebar-pane adrc-sidebar-pane-threads" data-pane="threads" role="tabpanel">',
       '    <div class="adrc-sidebar-pane-header"><span class="adrc-sidebar-pane-title">Pull request threads</span><span class="adrc-sidebar-pane-summary"></span></div>',
+      '    <div class="adrc-threads-toolbar" aria-label="Conversation display controls">',
+      '      <button type="button" class="adrc-threads-toggle-all" title="Collapse all conversations in the current Markdown Preview">Collapse all conversations</button>',
+      '    </div>',
       '    <div class="adrc-sidebar-thread-list"></div>',
       '  </section>',
       '  <section class="adrc-sidebar-pane adrc-sidebar-pane-outline" data-pane="outline" role="tabpanel">',
@@ -2597,16 +2648,7 @@
     ].join('\n');
     document.body.appendChild(panel);
 
-    const launcher = document.createElement('button');
-    launcher.type = 'button';
-    launcher.className = 'adrc-sidebar-launcher';
-    launcher.title = 'Show review sidebar';
-    launcher.setAttribute('aria-label', 'Show review sidebar');
-    launcher.textContent = '\u2630';
-    document.body.appendChild(launcher);
-
     sidebarPanel = panel;
-    sidebarLauncher = launcher;
     outlinePanel = panel;
 
     panel.querySelector('.adrc-sidebar-collapse').addEventListener('click', () => {
@@ -2614,7 +2656,6 @@
       applySidebarState();
     });
     panel.querySelector('.adrc-sidebar-outline-shortcut').addEventListener('click', showOutlineAndEnsurePreview);
-    panel.querySelector('.adrc-sidebar-hide').addEventListener('click', hideSidebar);
     panel.querySelector('.adrc-sidebar-filter').addEventListener('click', () => {
       saveSidebarState({ unresolvedOnly: !sidebarState.unresolvedOnly, tab: 'threads' });
       updateSidebarFilterUI();
@@ -2628,6 +2669,7 @@
     panel.querySelector('.adrc-sidebar-prev-thread').addEventListener('click', () => jumpSidebarThread(-1));
     panel.querySelector('.adrc-sidebar-next-thread').addEventListener('click', () => jumpSidebarThread(1));
     panel.querySelector('.adrc-sidebar-thread-count').addEventListener('click', () => showSidebar('threads'));
+    panel.querySelector('.adrc-threads-toggle-all').addEventListener('click', toggleAllConversations);
     panel.querySelector('.adrc-sidebar-open-preview').addEventListener('click', openMarkdownPreviewFromSidebar);
     panel.querySelectorAll('.adrc-sidebar-tab').forEach((tab) => {
       tab.addEventListener('click', () => {
@@ -2638,13 +2680,13 @@
       button.addEventListener('click', () => foldOutlineAtLevel(parseInt(button.dataset.level, 10)));
     });
     panel.querySelector('.adrc-outline-expand-all').addEventListener('click', expandAllOutlineSections);
-    launcher.addEventListener('click', () => showSidebar('threads'));
 
     wireSidebarDrag(panel);
     wireSidebarResize(panel);
     window.addEventListener('resize', applySidebarGeometry, { passive: true });
     applySidebarState();
     renderThreadsSidebar();
+    updateConversationToggle();
     renderOutlineRows();
     updateSidebarSetupState();
     if (startupTiming.shellMountedAt == null) startupTiming.shellMountedAt = performance.now();
@@ -2743,18 +2785,11 @@
   function showSidebar(tab) {
     buildSidebarPanel();
     saveSidebarState({
-      visible: true,
       collapsed: false,
       tab: tab === 'outline' || tab === 'threads' || tab === 'changes'
         ? tab
         : sidebarState.tab
     });
-    applySidebarState();
-  }
-
-  function hideSidebar() {
-    if (!sidebarPanel) return;
-    saveSidebarState({ visible: false });
     applySidebarState();
   }
 
@@ -2894,11 +2929,7 @@
 
   function toggleSidebarCollapsed() {
     buildSidebarPanel();
-    if (sidebarState.visible === false) {
-      saveSidebarState({ visible: true, collapsed: false });
-    } else {
-      saveSidebarState({ collapsed: !sidebarState.collapsed });
-    }
+    saveSidebarState({ collapsed: !sidebarState.collapsed });
     applySidebarState();
   }
 
@@ -5607,7 +5638,9 @@
   }
 
   function hideOutlinePanel() {
-    hideSidebar();
+    buildSidebarPanel();
+    saveSidebarState({ collapsed: true });
+    applySidebarState();
   }
 
   function toggleOutlinePanel() {
@@ -5934,7 +5967,7 @@
       debounceTimer = null;
     }
     clearPrScopedSessionState();
-    document.querySelectorAll('.adrc-sidebar, .adrc-sidebar-launcher, .adrc-toast')
+    document.querySelectorAll('.adrc-sidebar, .adrc-toast')
       .forEach((element) => element.remove());
     console.log(`${LOG} pull request changed; reloading with a fresh context`, {
       from: loadedPrIdentity,
@@ -5951,7 +5984,7 @@
     if (reloadForChangedPr()) return;
     const relevant = records.some((record) => {
       const target = record.target && record.target.nodeType === 1 ? record.target : null;
-      if (target && target.closest('.adrc-sidebar, .adrc-sidebar-launcher')) return false;
+      if (target && target.closest('.adrc-sidebar')) return false;
       const changed = [...record.addedNodes, ...record.removedNodes];
       if (changed.length === 0) return false;
       return changed.some((node) => {
@@ -6167,7 +6200,10 @@
     sidebar(action) {
       buildSidebarPanel();
       if (action === 'show') showSidebar();
-      else if (action === 'hide') hideSidebar();
+      else if (action === 'hide') {
+        saveSidebarState({ collapsed: true });
+        applySidebarState();
+      }
       else if (action === 'threads') showSidebar('threads');
       else if (action === 'outline') showSidebar('outline');
       else if (action === 'collapse') {

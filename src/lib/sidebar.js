@@ -265,6 +265,10 @@
       const label = labelParts[labelParts.length - 1] || '';
       folderPaths.length = Math.max(0, level - 1);
       const parentPath = level > 1 ? folderPaths[level - 2] || '' : '';
+      // A virtualized TreeEx viewport can expose a nested leaf without its
+      // parent rows. Its basename alone must not be reconstructed as a root
+      // path (for example, nested README.md becoming /README.md).
+      const hierarchyComplete = level === 1 || !!parentPath;
       const reconstructedPath = !labelPath
         ? parentPath
         : parentPath && !labelPath.startsWith(parentPath + '/')
@@ -277,7 +281,8 @@
         normalizedLabel: label,
         hrefPath,
         fullLabelPath,
-        reconstructedPath
+        reconstructedPath,
+        hierarchyComplete
       });
       if (value.folder === true && label) {
         folderPaths[level - 1] = reconstructedPath;
@@ -294,7 +299,7 @@
     if (!target || !entry || entry.folder === true) return false;
     return entry.hrefPath === target ||
       entry.fullLabelPath === target ||
-      entry.reconstructedPath === target;
+      (entry.hierarchyComplete !== false && entry.reconstructedPath === target);
   }
 
   // Return the deepest currently visible collapsed folder that is an exact

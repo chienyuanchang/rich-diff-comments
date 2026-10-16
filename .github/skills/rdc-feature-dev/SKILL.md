@@ -89,20 +89,40 @@ When the feature is working, before declaring done:
 1. **Identify pure logic** that was inlined in `content.js`. If it has clear inputs/outputs and no DOM/fetch, lift it to `src/lib/<area>.js`.
 2. **Add unit tests** in `tests/<area>.test.js` using Node's built-in `node:test`. Cover happy paths, boundaries, defensive null/invalid input. Aim for 5–15 tests per helper.
 3. **Register new lib files** in every target manifest that consumes them. Run `.\scripts\dev-sync.ps1 -Target github` and/or `-Target ado` so the browser dev-load folders receive the shared source. (`package.ps1` and `preflight.ps1` synchronize automatically.)
-4. **Re-run all tests:** `node --test (Get-ChildItem tests/*.test.js)` should be 100% green.
+4. **Re-run all tests:** use the captured Node and browser commands below; both the exit sentinel and complete summary must be green.
 5. **Re-run manual tests** against the affected target's developer notes and release checklist.
 
-### Capturing long Playwright results on Windows
+### Capturing test results on Windows
 
-VS Code terminal execution can return partial Playwright output when its idle detector fires before the child process exits. Never infer success or failure from a truncated test list, and do not start a duplicate suite just because streamed output stopped.
+VS Code terminal execution can return partial output when its idle detector fires before the child process exits. Persistent terminals can also lose their expected working directory or `PATH`. Never infer success or failure from a truncated test list, and do not start a duplicate suite just because streamed output stopped.
 
-For a long GitHub E2E run, remove stale artifacts, redirect the full output, and write the real exit code to a separate sentinel after Node exits:
+Use these known-good commands from any working directory. Each removes stale artifacts, changes to the repository explicitly, invokes the portable runtime explicitly, redirects the full output, and writes the real exit code only after the child exits.
+
+Node suite:
+
+```powershell
+C:\Windows\System32\cmd.exe /v:on /d /c "del /q %TEMP%\grdc-node-test-result.txt %TEMP%\grdc-node-test-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\npm.cmd test > %TEMP%\grdc-node-test-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-node-test-exit.txt"
+```
+
+Focused GitHub E2E (replace the basename only; do not pass `tests/e2e/...` through `cmd.exe`):
+
+```powershell
+C:\Windows\System32\cmd.exe /v:on /d /c "del /q %TEMP%\grdc-focused-e2e-result.txt %TEMP%\grdc-focused-e2e-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe .\node_modules\@playwright\test\cli.js test --config=playwright.config.js bulkRenderSweep.spec.js > %TEMP%\grdc-focused-e2e-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-focused-e2e-exit.txt"
+```
+
+Full GitHub E2E:
 
 ```powershell
 C:\Windows\System32\cmd.exe /v:on /d /c "del /q %TEMP%\grdc-github-e2e-result.txt %TEMP%\grdc-github-e2e-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe .\node_modules\@playwright\test\cli.js test --config=playwright.config.js > %TEMP%\grdc-github-e2e-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-github-e2e-exit.txt"
 ```
 
-If the terminal tool returns early, continue other work instead of polling or rerunning. Later, read both files directly. The run is successful only when the exit sentinel contains `0` and the result file ends with the complete Playwright summary (for example, `39 passed`). Use target-specific filenames and `playwright.ado.config.js` for ADO.
+If the terminal tool returns early, continue other work instead of polling or rerunning. Later, inspect a capture with the bundled helper, passing its result and sentinel files:
+
+```powershell
+C:\Windows\System32\cmd.exe /d /c "%LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe C:\Local\local_repos\rich-diff-comments\.github\skills\rdc-feature-dev\scripts\summarize-test-result.js %TEMP%\grdc-github-e2e-result.txt %TEMP%\grdc-github-e2e-exit.txt"
+```
+
+`CAPTURE_RUNNING` means the sentinel does not exist yet: do not rerun or poll. Success requires `CAPTURE_EXIT=0` plus the complete test summary. Use target-specific filenames and `playwright.ado.config.js` for ADO. For Git operations, use `git -C C:\Local\local_repos\rich-diff-comments ...` instead of relying on `Set-Location` or the terminal's current directory.
 
 The goal isn't 100% coverage — it's "every algorithm a future change might break has a regression test."
 

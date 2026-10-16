@@ -49,17 +49,36 @@ async function startSweep(page) {
 
 test('bulk render discovers lazy-mounted files and reports real progress', async ({ page }) => {
   await setupBulkRenderPage(page);
-  await page.evaluate(() => window.scrollTo(0, 180));
-  const startingScroll = await page.evaluate(() => window.scrollY);
+  await page.evaluate(() => {
+    window.__bulkFirstRenderedHeight = 1600;
+    window.__bulkRenderDelay = 150;
+    window.__bulkRenderedGrowthDelay = 250;
+    document.body.style.paddingBottom = '1200px';
+    window.scrollTo(0, 500);
+  });
+  await expect(page.locator('#diff-second')).toBeVisible();
+  const startingPosition = await page.evaluate(() => {
+    const container = document.querySelector('#diff-second');
+    window.scrollTo(0, window.scrollY + container.getBoundingClientRect().top - 120);
+    return {
+      scrollY: window.scrollY,
+      fileTop: Math.round(container.getBoundingClientRect().top),
+    };
+  });
 
   await startSweep(page);
   await expect(page.locator('.grdc-render-overlay')).toHaveCount(0, { timeout: 5000 });
 
   await expect(page.locator('button[aria-label="Display the rich diff"][aria-pressed="true"]')).toHaveCount(2);
+  await expect(page.locator('.prose-diff')).toHaveCount(2);
   const progress = await page.evaluate(() => window.__renderProgress);
   expect(progress.some((text) => /Discovering Markdown files: \d+ of 2/.test(text))).toBe(true);
   expect(progress.some((text) => /Rendering Markdown files as rich diff: 2 of 2/.test(text))).toBe(true);
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(startingScroll);
+  expect(progress.some((text) => /Finishing rich diff: \d+ of 2/.test(text))).toBe(true);
+  await expect.poll(() => page.locator('#diff-second').evaluate((container) => (
+    Math.round(container.getBoundingClientRect().top)
+  ))).toBe(startingPosition.fileTop);
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(startingPosition.scrollY);
 });
 
 test('Cancel stops the sweep, blocks navigation shortcuts, and restores scroll', async ({ page }) => {

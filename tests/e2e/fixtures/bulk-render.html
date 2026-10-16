@@ -35,12 +35,25 @@
       if (!button) return;
       button.setAttribute('aria-pressed', 'true');
       const container = button.closest('[data-tagsearch-path]');
-      if (!container.querySelector('.prose-diff')) {
+      const renderRichDiff = () => {
+        if (container.querySelector('.prose-diff')) return;
         const rendered = document.createElement('div');
         rendered.className = 'prose-diff';
         rendered.innerHTML = '<div class="markdown-body"><h1>Rendered file</h1><p>Rendered content.</p></div>';
+        if (container.id === 'diff-first' && window.__bulkFirstRenderedHeight) {
+          if (window.__bulkRenderedGrowthDelay) {
+            rendered.style.height = '100px';
+            setTimeout(() => {
+              rendered.style.height = `${window.__bulkFirstRenderedHeight}px`;
+            }, window.__bulkRenderedGrowthDelay);
+          } else {
+            rendered.style.height = `${window.__bulkFirstRenderedHeight}px`;
+          }
+        }
         container.appendChild(rendered);
-      }
+      };
+      if (window.__bulkRenderDelay) setTimeout(renderRichDiff, window.__bulkRenderDelay);
+      else renderRichDiff();
     }
 
     document.addEventListener('click', activateToggle);

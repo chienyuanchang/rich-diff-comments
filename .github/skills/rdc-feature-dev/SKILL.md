@@ -1,4 +1,5 @@
 ---
+name: rdc-feature-dev
 description: Iterative feature-development loop for the GitHub and Azure DevOps Markdown PR Comments browser extensions. Use when starting a new feature or bug fix — defines one shared outcome and both target statuses in FEATURES.md, records only necessary target differences, then builds, tests, and updates docs.
 ---
 
@@ -91,6 +92,18 @@ When the feature is working, before declaring done:
 4. **Re-run all tests:** `node --test (Get-ChildItem tests/*.test.js)` should be 100% green.
 5. **Re-run manual tests** against the affected target's developer notes and release checklist.
 
+### Capturing long Playwright results on Windows
+
+VS Code terminal execution can return partial Playwright output when its idle detector fires before the child process exits. Never infer success or failure from a truncated test list, and do not start a duplicate suite just because streamed output stopped.
+
+For a long GitHub E2E run, remove stale artifacts, redirect the full output, and write the real exit code to a separate sentinel after Node exits:
+
+```powershell
+C:\Windows\System32\cmd.exe /v:on /d /c "del /q %TEMP%\grdc-github-e2e-result.txt %TEMP%\grdc-github-e2e-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe .\node_modules\@playwright\test\cli.js test --config=playwright.config.js > %TEMP%\grdc-github-e2e-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-github-e2e-exit.txt"
+```
+
+If the terminal tool returns early, continue other work instead of polling or rerunning. Later, read both files directly. The run is successful only when the exit sentinel contains `0` and the result file ends with the complete Playwright summary (for example, `39 passed`). Use target-specific filenames and `playwright.ado.config.js` for ADO.
+
 The goal isn't 100% coverage — it's "every algorithm a future change might break has a regression test."
 
 ### Step 8 — Update the documentation sources
@@ -107,7 +120,7 @@ After the feature ships:
   - Add newly captured payloads, DOM discoveries, or "I thought X but actually Y" entries to the affected target only.
 - [CHANGELOG.md](../../../CHANGELOG.md) or [CHANGELOG_ADO.md](../../../CHANGELOG_ADO.md):
   - Append to `[Unreleased]` under `### Added` / `### Fixed`.
-  - **User-facing language only.** Write each bullet like a feature announcement to someone who has never opened the source. No file/function/class names, no CSS selectors, no DOM-shape detail, no specific line numbers from a bug repro file. Stick to *what the user sees, when they'd notice it, why it's better.* Full rules and examples in [rdc-publish-check → CHANGELOG / release-notes writing rules](../rdc-publish-check/SKILL.md#changelog--release-notes-writing-rules).
+  - **User-facing language only.** Write each bullet like a feature announcement to someone who has never opened the source. No file/function/class names, no CSS selectors, no DOM-shape detail, no specific line numbers from a bug repro file. Stick to *what the user sees, when they'd notice it, why it's better.* See the CHANGELOG / release-notes writing rules in [rdc-publish-check](../rdc-publish-check/SKILL.md) for full rules and examples.
 
 Then commit, push, and the user moves to the next iteration.
 

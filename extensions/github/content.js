@@ -1108,13 +1108,101 @@
   function updateRenderSweepProgress(session, phase, completed, expected) {
     if (!session.status) return;
     const total = expected || '?';
-    session.status.textContent = phase === 'discovering'
+    const text = phase === 'discovering'
       ? `Discovering Markdown files: ${completed} of ${total}`
-      : `Rendering Markdown files as rich diff: ${completed} of ${total}`;
+      : phase === 'finishing'
+        ? `Finishing rich diff: ${completed} of ${total}`
+        : `Rendering Markdown files as rich diff: ${completed} of ${total}`;
+    if (session.status.textContent !== text) session.status.textContent = text;
     if (session.progress && expected) {
       session.progress.max = expected;
       session.progress.value = Math.min(completed, expected);
     }
+  }
+
+  function waitForRenderedRichDiffs(session, paths, maxMs) {
+    const expectedPaths = new Set(paths);
+    if (expectedPaths.size === 0) return Promise.resolve();
+    return new Promise((resolve) => {
+      let finished = false;
+      let frameId = 0;
+      let lastLayout = '';
+      let stableSince = 0;
+
+      function finish() {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timeoutId);
+        cancelAnimationFrame(frameId);
+        resolve();
+      }
+
+      function check(now) {
+        if (session.cancelled) return finish();
+        const renderedPaths = new Set();
+        const layout = [document.documentElement.scrollHeight, document.body.scrollHeight];
+        let mediaReady = true;
+        for (const container of findFileContainers()) {
+          const path = getContainerPath(container);
+          if (!expectedPaths.has(path)) continue;
+          const roots = Array.from(container.querySelectorAll('.prose-diff, .rich-diff-level-one'))
+            .filter(root => root.offsetParent || root === document.body);
+          if (roots.length === 0) continue;
+          renderedPaths.add(path);
+          layout.push(path, Math.round(container.getBoundingClientRect().height * 10) / 10);
+          for (const root of roots) {
+            if (Array.from(root.querySelectorAll('img')).some(image => !image.complete)) {
+              mediaReady = false;
+            }
+          }
+        }
+        updateRenderSweepProgress(session, 'finishing', renderedPaths.size, expectedPaths.size);
+        const fontsReady = !document.fonts || document.fonts.status === 'loaded';
+        const layoutSignature = layout.join('|');
+        if (renderedPaths.size < expectedPaths.size || layoutSignature !== lastLayout) {
+          lastLayout = layoutSignature;
+          stableSince = now;
+        } else if (mediaReady && fontsReady && now - stableSince >= 400) {
+          return finish();
+        }
+        frameId = requestAnimationFrame(check);
+      }
+
+      const timeoutId = setTimeout(finish, maxMs);
+      frameId = requestAnimationFrame(check);
+    });
+  }
+
+  function captureRenderSweepPosition() {
+    const path = getCurrentViewFilePath();
+    if (!path) return null;
+    const container = findFileContainers().find(candidate => getContainerPath(candidate) === path);
+    if (!container) return null;
+    const rect = container.getBoundingClientRect();
+    if (rect.height <= 0) return null;
+    const stickyOffset = 120;
+    const viewportY = Math.max(rect.top, Math.min(stickyOffset, rect.bottom));
+    return {
+      path,
+      progress: Math.max(0, Math.min(1, (viewportY - rect.top) / rect.height)),
+      viewportY,
+    };
+  }
+
+  function restoreRenderSweepPosition(anchor, fallbackScroll) {
+    if (!anchor) {
+      window.scrollTo({ top: fallbackScroll, behavior: 'instant' });
+      return;
+    }
+    const container = findFileContainers().find(candidate => getContainerPath(candidate) === anchor.path);
+    if (!container) {
+      window.scrollTo({ top: fallbackScroll, behavior: 'instant' });
+      return;
+    }
+    const rect = container.getBoundingClientRect();
+    const pointInFile = rect.height * anchor.progress;
+    const top = window.scrollY + rect.top + pointInFile - anchor.viewportY;
+    window.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
   }
 
   // Click every per-file "render rich-diff" toggle on the page whose
@@ -1129,6 +1217,7 @@
     const discovered = new Set();
     let clicked = 0;
     const origScroll = window.scrollY;
+    const origPosition = captureRenderSweepPosition();
     const startPath = window.location.pathname;
     const docHeight = () => Math.max(
       document.documentElement.scrollHeight,
@@ -1232,12 +1321,15 @@
           guard++;
         }
         console.log(`[GRDC] flipAllMdToRichDiff: phase 2 (click sweep) done — ${seen.size}/${expectedMd || '?'}`);
+        if (!session.cancelled) {
+          await waitForRenderedRichDiffs(session, seen, 8000);
+        }
       }
     } finally {
       overlay.remove();
       try { previousFocus?.focus?.({ preventScroll: true }); } catch (_) {}
       if (window.location.pathname === startPath) {
-        window.scrollTo({ top: origScroll, behavior: 'instant' });
+        restoreRenderSweepPosition(origPosition, origScroll);
       }
       if (activeRenderSweep === session) activeRenderSweep = null;
     }

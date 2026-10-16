@@ -1112,6 +1112,8 @@
       ? `Discovering Markdown files: ${completed} of ${total}`
       : phase === 'finishing'
         ? `Finishing rich diff: ${completed} of ${total}`
+        : phase === 'syncing'
+          ? 'Loading review threads…'
         : `Rendering Markdown files as rich diff: ${completed} of ${total}`;
     if (session.status.textContent !== text) session.status.textContent = text;
     if (session.progress && expected) {
@@ -1325,6 +1327,11 @@
           await waitForRenderedRichDiffs(session, seen, 8000);
         }
       }
+      if (!session.cancelled && clicked > 0 && window.location.pathname === startPath) {
+        updateRenderSweepProgress(session, 'syncing', seen.size, expectedMd);
+        await init();
+        await waitForRenderedRichDiffs(session, seen, 3000);
+      }
     } finally {
       overlay.remove();
       try { previousFocus?.focus?.({ preventScroll: true }); } catch (_) {}
@@ -1334,7 +1341,11 @@
       if (activeRenderSweep === session) activeRenderSweep = null;
     }
     console.log(`[GRDC] flipAllMdToRichDiff: scanned ${seen.size}/${expectedMd || '?'} md file(s); clicked ${clicked}`);
-    setTimeout(() => { try { buildThreadsSidebar(); } catch (_) {} }, 400);
+    if (session.cancelled && clicked > 0 && window.location.pathname === startPath) {
+      setTimeout(() => { init().catch(() => {}); }, 0);
+    } else {
+      setTimeout(() => { try { buildThreadsSidebar(); } catch (_) {} }, 400);
+    }
     return clicked;
   }
 

@@ -18,7 +18,26 @@ const routeData = {
     path,
     pathDigest: `bulk${index}`,
     changeType: 'MODIFIED',
+    markersMap: index === 0 ? { R3: { threads: [{ id: 'bulk-thread' }] } } : {},
   })),
+  markers: {
+    threads: {
+      'bulk-thread': {
+        id: 'bulk-thread',
+        subjectType: 'LINE',
+        viewerCanReply: true,
+        viewerCanResolve: true,
+        commentsData: {
+          comments: [{
+            databaseId: 9001,
+            body: 'Thread loaded after bulk rich-diff rendering.',
+            author: { login: 'reviewer', avatarUrl: '' },
+            createdAt: '2026-10-16T10:00:00.000Z',
+          }],
+        },
+      },
+    },
+  },
   comparison: { fullDiff: { headOid: 'a'.repeat(40) } },
 };
 
@@ -49,6 +68,7 @@ async function startSweep(page) {
 
 test('bulk render discovers lazy-mounted files and reports real progress', async ({ page }) => {
   await setupBulkRenderPage(page);
+  await expect(page.locator('.grdc-existing-thread')).toHaveCount(0);
   await page.evaluate(() => {
     window.__bulkFirstRenderedHeight = 1600;
     window.__bulkRenderDelay = 150;
@@ -69,7 +89,7 @@ test('bulk render discovers lazy-mounted files and reports real progress', async
   await expect(page.locator('.grdc-sidebar')).toHaveClass(/grdc-sidebar-collapsed/);
 
   await startSweep(page);
-  await expect(page.locator('.grdc-render-overlay')).toHaveCount(0, { timeout: 5000 });
+  await expect(page.locator('.grdc-render-overlay')).toHaveCount(0, { timeout: 8000 });
 
   await expect(page.locator('button[aria-label="Display the rich diff"][aria-pressed="true"]')).toHaveCount(2);
   await expect(page.locator('.prose-diff')).toHaveCount(2);
@@ -77,6 +97,9 @@ test('bulk render discovers lazy-mounted files and reports real progress', async
   expect(progress.some((text) => /Discovering Markdown files: \d+ of 2/.test(text))).toBe(true);
   expect(progress.some((text) => /Rendering Markdown files as rich diff: 2 of 2/.test(text))).toBe(true);
   expect(progress.some((text) => /Finishing rich diff: \d+ of 2/.test(text))).toBe(true);
+  expect(progress).toContain('Loading review threads…');
+  await expect(page.locator('.grdc-existing-thread')).toHaveCount(1);
+  await expect(page.locator('.grdc-sidebar-list .grdc-sidebar-card')).toHaveCount(1);
   await expect.poll(() => page.locator('#diff-second').evaluate((container) => (
     Math.round(container.getBoundingClientRect().top)
   ))).toBe(startingPosition.fileTop);

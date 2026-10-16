@@ -1024,9 +1024,15 @@
   // clicks performed in this pass; populates `seen` so future passes
   // skip files we already handled (including ones that were already
   // pressed). Used by `flipAllMdToRichDiff` across multiple scroll steps.
-  function clickRichTogglesOnce(seen) {
+  let activeRenderSweep = null;
+
+  function cancelActiveRenderSweep() {
+    if (activeRenderSweep) activeRenderSweep.cancelled = true;
+  }
+
+  function richToggleCandidates() {
+    const candidates = [];
     const buttons = document.querySelectorAll('button, a[role="button"], [data-tab-item]');
-    let count = 0;
     for (const btn of buttons) {
       if (!looksLikeDiffToggle(btn)) continue;
       const haystack = resolveButtonHaystack(btn);
@@ -1036,12 +1042,20 @@
       const container = btn.closest('div[id^="diff-"], [data-tagsearch-path], .file[data-path]');
       const path = container ? getContainerPath(container) : '';
       if (!isMarkdownPath(path)) continue;
-      if (seen.has(path)) continue;
       const pressed = btn.getAttribute('aria-pressed') === 'true' ||
                       btn.getAttribute('aria-current') === 'true' ||
                       btn.getAttribute('aria-current') === 'page' ||
                       btn.classList.contains('selected') ||
                       btn.classList.contains('SegmentedControl-item--selected');
+      candidates.push({ btn, path, pressed });
+    }
+    return candidates;
+  }
+
+  function clickRichTogglesOnce(seen) {
+    let count = 0;
+    for (const { btn, path, pressed } of richToggleCandidates()) {
+      if (seen.has(path)) continue;
       seen.add(path);
       if (pressed) {
         renderedMarkdownPaths.add(path);
@@ -1055,6 +1069,54 @@
     return count;
   }
 
+  function waitForRenderSweepDom(session, action, maxMs) {
+    return new Promise((resolve) => {
+      let finished = false;
+      let frameCount = 0;
+      let sawMutation = false;
+      const startedAt = performance.now();
+      let lastMutationAt = startedAt;
+      const observer = new MutationObserver(() => {
+        sawMutation = true;
+        lastMutationAt = performance.now();
+      });
+
+      function finish() {
+        if (finished) return;
+        finished = true;
+        observer.disconnect();
+        resolve();
+      }
+
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+      action();
+
+      function check(now) {
+        frameCount++;
+        if (session.cancelled) return finish();
+        const mutationSettled = sawMutation && now - lastMutationAt >= 32;
+        const noMutationGraceElapsed = !sawMutation && now - startedAt >= 100;
+        if ((frameCount >= 2 && (mutationSettled || noMutationGraceElapsed)) || now - startedAt >= maxMs) {
+          return finish();
+        }
+        requestAnimationFrame(check);
+      }
+      requestAnimationFrame(check);
+    });
+  }
+
+  function updateRenderSweepProgress(session, phase, completed, expected) {
+    if (!session.status) return;
+    const total = expected || '?';
+    session.status.textContent = phase === 'discovering'
+      ? `Discovering Markdown files: ${completed} of ${total}`
+      : `Rendering Markdown files as rich diff: ${completed} of ${total}`;
+    if (session.progress && expected) {
+      session.progress.max = expected;
+      session.progress.value = Math.min(completed, expected);
+    }
+  }
+
   // Click every per-file "render rich-diff" toggle on the page whose
   // owning file container belongs to a Markdown file. GitHub lazy-renders
   // file headers as the user scrolls, so a single top-of-page scan only
@@ -1062,9 +1124,12 @@
   // after each step so newly-rendered file headers are caught, then
   // restore the user's original scroll position when done.
   async function flipAllMdToRichDiff() {
+    if (activeRenderSweep) return 0;
     const seen = new Set();
+    const discovered = new Set();
     let clicked = 0;
     const origScroll = window.scrollY;
+    const startPath = window.location.pathname;
     const docHeight = () => Math.max(
       document.documentElement.scrollHeight,
       document.body.scrollHeight
@@ -1077,8 +1142,23 @@
 
     const overlay = document.createElement('div');
     overlay.className = 'grdc-render-overlay';
-    overlay.innerHTML = '<div class="grdc-render-overlay-card">Rendering Markdown files as rich-diff…</div>';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Rendering Markdown files');
+    overlay.innerHTML = '<div class="grdc-render-overlay-card"><div class="grdc-render-overlay-status" aria-live="polite"></div><progress class="grdc-render-overlay-progress" value="0"></progress><button type="button" class="grdc-render-overlay-cancel">Cancel</button></div>';
+    const previousFocus = document.activeElement;
     document.body.appendChild(overlay);
+    const session = {
+      cancelled: false,
+      overlay,
+      status: overlay.querySelector('.grdc-render-overlay-status'),
+      progress: overlay.querySelector('.grdc-render-overlay-progress'),
+    };
+    activeRenderSweep = session;
+    const cancelButton = overlay.querySelector('.grdc-render-overlay-cancel');
+    cancelButton.addEventListener('click', cancelActiveRenderSweep);
+    cancelButton.focus();
+    updateRenderSweepProgress(session, 'discovering', 0, expectedMd);
 
     try {
       // Two-phase approach:
@@ -1098,7 +1178,6 @@
       // every click expanded the file inline, shifting later files
       // down past the scroll cursor before their headers mounted.
       // Separating the phases sidesteps that race entirely.
-      const dwell = 100;
       const step = Math.max(500, window.innerHeight * 0.8);
 
       // Phase 1: mount-only sweep. No clicks. Just scroll through the
@@ -1107,42 +1186,60 @@
       {
         let y = 0;
         let guard = 0;
-        while (y < docHeight() && guard < 80) {
-          window.scrollTo({ top: y, behavior: 'instant' });
-          await new Promise((r) => setTimeout(r, dwell));
+        while (!session.cancelled && y < docHeight() && guard < 80) {
+          await waitForRenderSweepDom(session, () => {
+            window.scrollTo({ top: y, behavior: 'instant' });
+          }, 240);
+          for (const { path } of richToggleCandidates()) discovered.add(path);
+          updateRenderSweepProgress(session, 'discovering', discovered.size, expectedMd);
+          if (expectedMd && discovered.size >= expectedMd) break;
           y += step;
           guard++;
         }
         // Final touch at the very bottom for the last header.
-        window.scrollTo({ top: docHeight(), behavior: 'instant' });
-        await new Promise((r) => setTimeout(r, 200));
+        if (!session.cancelled && (!expectedMd || discovered.size < expectedMd)) {
+          await waitForRenderSweepDom(session, () => {
+            window.scrollTo({ top: docHeight(), behavior: 'instant' });
+          }, 320);
+          for (const { path } of richToggleCandidates()) discovered.add(path);
+          updateRenderSweepProgress(session, 'discovering', discovered.size, expectedMd);
+        }
         console.log(`[GRDC] flipAllMdToRichDiff: phase 1 (mount sweep) done`);
       }
 
       // Phase 2: click sweep. All headers should now be in the DOM, so
       // a single top→bottom pass with clicks is enough.
-      {
+      if (!session.cancelled) {
         let y = 0;
         let guard = 0;
         // First scan from current position (bottom of doc) before
         // scrolling back to top — catches any toggles still in view.
         clicked += clickRichTogglesOnce(seen);
-        window.scrollTo({ top: 0, behavior: 'instant' });
-        await new Promise((r) => setTimeout(r, dwell));
+        updateRenderSweepProgress(session, 'rendering', seen.size, expectedMd);
+        await waitForRenderSweepDom(session, () => {
+          window.scrollTo({ top: 0, behavior: 'instant' });
+        }, 240);
         clicked += clickRichTogglesOnce(seen);
-        while (y < docHeight() && guard < 80) {
+        updateRenderSweepProgress(session, 'rendering', seen.size, expectedMd);
+        while (!session.cancelled && y < docHeight() && guard < 80) {
           if (expectedMd && seen.size >= expectedMd) break;
-          window.scrollTo({ top: y, behavior: 'instant' });
-          await new Promise((r) => setTimeout(r, dwell));
+          await waitForRenderSweepDom(session, () => {
+            window.scrollTo({ top: y, behavior: 'instant' });
+          }, 240);
           clicked += clickRichTogglesOnce(seen);
+          updateRenderSweepProgress(session, 'rendering', seen.size, expectedMd);
           y += step;
           guard++;
         }
         console.log(`[GRDC] flipAllMdToRichDiff: phase 2 (click sweep) done — ${seen.size}/${expectedMd || '?'}`);
       }
     } finally {
-      window.scrollTo({ top: origScroll, behavior: 'instant' });
       overlay.remove();
+      try { previousFocus?.focus?.({ preventScroll: true }); } catch (_) {}
+      if (window.location.pathname === startPath) {
+        window.scrollTo({ top: origScroll, behavior: 'instant' });
+      }
+      if (activeRenderSweep === session) activeRenderSweep = null;
     }
     console.log(`[GRDC] flipAllMdToRichDiff: scanned ${seen.size}/${expectedMd || '?'} md file(s); clicked ${clicked}`);
     setTimeout(() => { try { buildThreadsSidebar(); } catch (_) {} }, 400);
@@ -5121,6 +5218,27 @@
   // Skipped when the user is typing into any input / textarea /
   // contenteditable. Bound once at script load so it survives re-inits.
   document.addEventListener('keydown', (e) => {
+    const renderOverlay = document.querySelector('.grdc-render-overlay');
+    if (renderOverlay) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        cancelActiveRenderSweep();
+        return;
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        renderOverlay.querySelector('.grdc-render-overlay-cancel')?.focus();
+        return;
+      }
+      const cancelButton = e.target.closest?.('.grdc-render-overlay-cancel');
+      if (cancelButton && (e.key === 'Enter' || e.key === ' ')) return;
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+      return;
+    }
     // Ignore when typing into any input/textarea/contenteditable.
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
@@ -5517,6 +5635,7 @@
           if (node.classList?.contains('markdown-body') ||
               node.classList?.contains('rich-diff-level-one') ||
               node.querySelector?.('.prose-diff .markdown-body')) {
+            if (activeRenderSweep) continue;
             scheduleReinit();
             return;
           }

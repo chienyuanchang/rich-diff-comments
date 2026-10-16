@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Test fixture: lazy-mounted Markdown files</title>
+  <style>
+    body { margin: 0; }
+    .file-spacer { height: 1200px; }
+  </style>
+</head>
+<body>
+  <div class="repository-content">
+    <div id="files">
+      <div id="diff-first" data-tagsearch-path="docs/first.md">
+        <div class="file-header">
+          <a href="/test-owner/test-repo/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/docs/first.md">docs/first.md</a>
+          <button type="button" aria-label="Display the rich diff" aria-pressed="false">Rendered</button>
+        </div>
+      </div>
+      <div class="file-spacer"></div>
+      <div id="lazy-file-mount"></div>
+    </div>
+  </div>
+  <template id="second-file-template">
+    <div id="diff-second" data-tagsearch-path="docs/second.md">
+      <div class="file-header">
+        <a href="/test-owner/test-repo/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/docs/second.md">docs/second.md</a>
+        <button type="button" aria-label="Display the rich diff" aria-pressed="false">Rendered</button>
+      </div>
+    </div>
+  </template>
+  <script>
+    function activateToggle(event) {
+      const button = event.target.closest('button[aria-label="Display the rich diff"]');
+      if (!button) return;
+      button.setAttribute('aria-pressed', 'true');
+      const container = button.closest('[data-tagsearch-path]');
+      if (!container.querySelector('.prose-diff')) {
+        const rendered = document.createElement('div');
+        rendered.className = 'prose-diff';
+        rendered.innerHTML = '<div class="markdown-body"><h1>Rendered file</h1><p>Rendered content.</p></div>';
+        container.appendChild(rendered);
+      }
+    }
+
+    document.addEventListener('click', activateToggle);
+    window.addEventListener('scroll', function mountSecondFile() {
+      if (window.scrollY < (window.__bulkMountThreshold || 400)) return;
+      const template = document.getElementById('second-file-template');
+      document.getElementById('lazy-file-mount').appendChild(template.content.cloneNode(true));
+      window.removeEventListener('scroll', mountSecondFile);
+    });
+  </script>
+</body>
+</html>

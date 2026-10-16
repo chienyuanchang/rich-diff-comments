@@ -65,6 +65,8 @@ test('bulk render discovers lazy-mounted files and reports real progress', async
       fileTop: Math.round(container.getBoundingClientRect().top),
     };
   });
+  await page.locator('.grdc-sidebar-collapse').click();
+  await expect(page.locator('.grdc-sidebar')).toHaveClass(/grdc-sidebar-collapsed/);
 
   await startSweep(page);
   await expect(page.locator('.grdc-render-overlay')).toHaveCount(0, { timeout: 5000 });
@@ -79,6 +81,12 @@ test('bulk render discovers lazy-mounted files and reports real progress', async
     Math.round(container.getBoundingClientRect().top)
   ))).toBe(startingPosition.fileTop);
   expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(startingPosition.scrollY);
+  await expect(page.locator('.grdc-sidebar')).toHaveClass(/grdc-sidebar-collapsed/);
+  await expect(page.locator('.grdc-sidebar-tab[data-grdc-tab="outline"]')).toHaveClass(/grdc-sidebar-tab-active/);
+  expect(await page.evaluate(() => localStorage.getItem('grdc_sidebar_collapsed'))).toBe('1');
+
+  await page.locator('.grdc-sidebar-collapse').click();
+  await expect(page.locator('.grdc-sidebar-pane-outline')).toBeVisible();
 });
 
 test('Cancel stops the sweep, blocks navigation shortcuts, and restores scroll', async ({ page }) => {

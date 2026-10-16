@@ -114,6 +114,21 @@ test.describe('keyboard shortcuts', () => {
     await expect(page.locator('.grdc-sidebar-tab[data-grdc-tab="changes"]')).not.toHaveClass(/grdc-sidebar-tab-active/);
   });
 
+  test('pressing `b` prepares Outline without expanding a collapsed sidebar', async ({ page }) => {
+    const sidebar = page.locator('.grdc-sidebar');
+    const startsCollapsed = await sidebar.evaluate((el) =>
+      el.classList.contains('grdc-sidebar-collapsed')
+    );
+    if (!startsCollapsed) await page.keyboard.press('t');
+    await expect(sidebar).toHaveClass(/grdc-sidebar-collapsed/);
+
+    await page.keyboard.press('b');
+
+    await expect(sidebar).toHaveClass(/grdc-sidebar-collapsed/);
+    await expect(page.locator('.grdc-sidebar-tab[data-grdc-tab="outline"]')).toHaveClass(/grdc-sidebar-tab-active/);
+    expect(await page.evaluate(() => localStorage.getItem('grdc_sidebar_collapsed'))).toBe('1');
+  });
+
   test('pressing `2` returns the sidebar to the Threads tab', async ({ page }) => {
     // 1.5.0 tab order is Changes (1) / Threads (2) / Outline (3).
     await expect(page.locator('.grdc-sidebar')).toBeVisible();

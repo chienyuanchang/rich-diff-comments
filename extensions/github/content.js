@@ -3756,10 +3756,6 @@
       btn.setAttribute('title', 'Rendering Markdown files as rich-diff…');
       btn.setAttribute('disabled', 'true');
     }
-    if (sidebar.classList.contains('grdc-sidebar-collapsed')) {
-      sidebar.classList.remove('grdc-sidebar-collapsed');
-      try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, '0'); } catch (_) {}
-    }
     try {
       const n = await flipAllMdToRichDiff();
       // CRITICAL: wait for GitHub to actually mount the rich-diff prose
@@ -3847,7 +3843,7 @@
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75Zm0 5A.75.75 0 0 1 1.75 7h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.75Zm0 5a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1-.75-.75Z"/></svg>
           </button>
           <span class="grdc-sidebar-separator" aria-hidden="true"></span>
-          <button class="grdc-sidebar-render-md" title="Show Outline — also renders Markdown files (b)" aria-label="Show Outline">
+          <button class="grdc-sidebar-render-md" title="Render Markdown and select Outline (b)" aria-label="Show Outline">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"/></svg>
           </button>
           <span class="grdc-sidebar-separator" aria-hidden="true"></span>
@@ -3998,15 +3994,11 @@
         cb.dispatchEvent(new Event('change', { bubbles: true }));
       });
 
-      // Book button = "Show Outline" per the v2 spec. Side effect: also
-      // renders any not-yet-rendered .md files, since the Outline pane is
-      // only meaningful once headings exist in the rendered DOM. The two
-      // actions naturally pair with one user intent: "navigate this PR by
-      // document structure". Implementation:
-      //   1. Expand the panel (if collapsed) and render all .md files
-      //      via `expandAndRenderAllMd` (shared with the empty-state CTAs).
-      //   2. Switch to the Outline tab so the user lands on the result.
-      // Clicking again while already on Outline is a no-op (idempotent).
+      // Book button = render any not-yet-rendered .md files, then select
+      // Outline. It intentionally preserves the collapsed state: the
+      // neighboring collapse control owns panel size, while the book owns
+      // content preparation and tab selection. Expanding later reveals the
+      // prepared Outline. Clicking again is idempotent.
       sidebar.querySelector('.grdc-sidebar-render-md').addEventListener('click', async (e) => {
         e.preventDefault();
         await expandAndRenderAllMd(sidebar);
@@ -5350,10 +5342,9 @@
       toggleSidebarCollapsed();
       return;
     }
-    // `b` — "book" / show Outline. Mirrors clicking the header book
-    // button: expand the panel (if collapsed), render all .md files,
-    // then switch to the Outline tab. Idempotent: pressing `b` again
-    // while already on Outline does the render-check and stays put.
+    // `b` — "book" / prepare Outline. Mirrors clicking the header book
+    // button: preserve the panel's collapsed state, render all .md files,
+    // then select the Outline tab. Idempotent when repeated.
     if (e.key === 'b' && !e.shiftKey) {
       const sidebar = document.querySelector('.grdc-sidebar');
       if (!sidebar) return;

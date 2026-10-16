@@ -116,13 +116,15 @@ Full GitHub E2E:
 C:\Windows\System32\cmd.exe /v:on /d /c "del /q %TEMP%\grdc-github-e2e-result.txt %TEMP%\grdc-github-e2e-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe .\node_modules\@playwright\test\cli.js test --config=playwright.config.js > %TEMP%\grdc-github-e2e-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-github-e2e-exit.txt"
 ```
 
-If the terminal tool returns early, continue other work instead of polling or rerunning. Later, inspect a capture with the bundled helper, passing its result and sentinel files:
+If the terminal tool returns early, continue other work instead of polling or rerunning. The authoritative check does not execute another shell command: use the editor's `read_file` tool to read the exit sentinel directly, then read the result file's final summary lines. For current suite sizes, the useful result ranges are approximately lines 450–500 for Node and 35–70 for GitHub E2E. If a range is empty, read an earlier range; do not rerun the suite.
+
+The bundled helper is an optional convenience only when executable resolution is healthy:
 
 ```powershell
 C:\Windows\System32\cmd.exe /d /c "%LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe C:\Local\local_repos\rich-diff-comments\.github\skills\rdc-feature-dev\scripts\summarize-test-result.js %TEMP%\grdc-github-e2e-result.txt %TEMP%\grdc-github-e2e-exit.txt"
 ```
 
-`CAPTURE_RUNNING` means the sentinel does not exist yet: do not rerun or poll. Success requires `CAPTURE_EXIT=0` plus the complete test summary. Use target-specific filenames and `playwright.ado.config.js` for ADO. For Git operations, use `git -C C:\Local\local_repos\rich-diff-comments ...` instead of relying on `Set-Location` or the terminal's current directory.
+An absent exit sentinel means the capture is still running: do not rerun or poll. Success requires sentinel value `0` plus the complete result-file summary. If the summary helper reports `CAPTURE_RUNNING`, or any terminal/runner rejects an executable that is known to exist, fall back to `read_file`; that is an execution-environment failure, not a test failure. Use target-specific filenames and `playwright.ado.config.js` for ADO. For Git operations, use `git -C C:\Local\local_repos\rich-diff-comments ...` instead of relying on `Set-Location` or the terminal's current directory.
 
 The goal isn't 100% coverage — it's "every algorithm a future change might break has a regression test."
 

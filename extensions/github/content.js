@@ -3410,14 +3410,14 @@
   // Timestamp (ms) until which the Outline IntersectionObserver should NOT
   // call `jumpSidebarListsToFile` on file-boundary crossings. Bumped by any
   // explicit user click that scrolls the page (Changes cards, NEW FILE /
-  // DELETED cards). Without this guard, the IO fires *during* the smooth-
-  // scroll animation, sees the previous file's heading still topmost in
+  // DELETED cards). Without this guard, scroll-follow fires while semantic
+  // navigation is still settling, sees the previous file's heading topmost in
   // the viewport, and yanks the sidebar selection back to the previous
   // file — undoing the user's click. Especially bad for ADDED files that
   // have no headings of their own (e.g. a `.md` with only a code block),
   // because then no heading in the new file ever "wins" the topmost
-  // contest. 1500ms covers the typical smooth-scroll duration on a long
-  // page; after that, IO is back in charge.
+  // contest. The shared page navigator extends this guard through its bounded
+  // correction window; after that, scroll-follow is back in charge.
   let scrollFollowSuppressedUntil = 0;
 
   // Same idea for the Outline pane's active-section highlight. After an
@@ -3429,10 +3429,9 @@
   // heading still above the sticky line at ~y=100). Without this pin the
   // scroll listener's "last heading whose top is above the sticky line"
   // rule would pick the previous file's heading and the user would see
-  // a highlight from the wrong file after their click. The pin holds
-  // for 1500ms — long enough for the smooth-scroll to complete and the
-  // user's chosen file's heading to become the true topmost — then the
-  // scroll listener takes over normally.
+  // a highlight from the wrong file after their click. The shared page
+  // navigator holds the pin until scrolling and layout correction settle,
+  // then the scroll listener takes over normally.
   let outlineHighlightPinUntil = 0;
   // Module-scope so `jumpSidebarListsToFile` can update it when it
   // pin-highlights a heading, and the Outline scroll listener sees the
@@ -3441,6 +3440,69 @@
   // real update after the pin expires (because its cached
   // `lastActiveId` would still hold the previous file's id).
   let outlineLastActiveHeadingId = null;
+  let pageNavigationSequence = 0;
+
+  function navigateToPageTarget(resolveTarget, options = {}) {
+    const resolve = typeof resolveTarget === 'function' ? resolveTarget : () => resolveTarget;
+    const block = options.block === 'center' ? 'center' : 'start';
+    const targetY = block === 'center' ? window.innerHeight / 2 : 120;
+    const sequence = ++pageNavigationSequence;
+    const target = resolve();
+    if (!target || !target.isConnected) return;
+
+    function pointFor(element) {
+      const rect = element.getBoundingClientRect();
+      return block === 'center' ? rect.top + rect.height / 2 : rect.top;
+    }
+
+    const initialError = pointFor(target) - targetY;
+    const behavior = Math.abs(initialError) > window.innerHeight * 2 ? 'instant' : 'smooth';
+    scrollFollowSuppressedUntil = Date.now() + 3500;
+    outlineHighlightPinUntil = Date.now() + 3500;
+    window.scrollTo({ top: Math.max(0, window.scrollY + initialError), behavior });
+
+    const startedAt = performance.now();
+    let stableSince = startedAt;
+    let lastScrollY = window.scrollY;
+    let lastPoint = pointFor(target);
+    let corrections = 0;
+
+    function verify(now) {
+      if (sequence !== pageNavigationSequence) return;
+      const current = resolve();
+      if (!current || !current.isConnected) return;
+      const point = pointFor(current);
+      const moved = Math.abs(window.scrollY - lastScrollY) > 0.5 || Math.abs(point - lastPoint) > 0.5;
+      if (moved) stableSince = now;
+      lastScrollY = window.scrollY;
+      lastPoint = point;
+
+      const error = point - targetY;
+      if (now - stableSince >= 120 && Math.abs(error) > 4 && corrections < 4) {
+        corrections++;
+        window.scrollTo({ top: Math.max(0, window.scrollY + error), behavior: 'instant' });
+        stableSince = now;
+      } else if (Math.abs(error) <= 4 && now - stableSince >= 200) {
+        return;
+      }
+
+      if (now - startedAt < 3000) requestAnimationFrame(verify);
+    }
+    requestAnimationFrame(verify);
+  }
+
+  function revealSidebarCard(card) {
+    if (!card) return;
+    const scroller = card.closest('.grdc-sidebar-list, .grdc-sidebar-changes-list');
+    if (!scroller) return;
+    const scrollerRect = scroller.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    if (cardRect.top < scrollerRect.top) {
+      scroller.scrollTop -= scrollerRect.top - cardRect.top;
+    } else if (cardRect.bottom > scrollerRect.bottom) {
+      scroller.scrollTop += cardRect.bottom - scrollerRect.bottom;
+    }
+  }
 
   // Drag-to-move on the header. Position persists in `localStorage` as
   // `{left, top}` in viewport coordinates. We clamp to keep at least 80px
@@ -4352,14 +4414,13 @@
         sidebar.querySelectorAll('.grdc-sidebar-outline-row.grdc-sidebar-outline-active')
           .forEach(r => r.classList.remove('grdc-sidebar-outline-active'));
         row.classList.add('grdc-sidebar-outline-active');
-        // Pin the Outline highlight through the smooth-scroll animation
-        // so the scroll listener's mid-flight `pickActiveHeading()` (which
+        // Pin the Outline highlight through semantic navigation so the
+        // scroll listener's mid-flight `pickActiveHeading()` (which
         // sees the PREVIOUS heading still above the sticky line while we
         // scroll toward the clicked one) can't override it. Also update
         // the module-level cache so the scroll listener doesn't skip the
         // eventual real update as "same as last". Mirrors the pin set by
         // `jumpSidebarListsToFile` for file-label clicks.
-        outlineHighlightPinUntil = Date.now() + 1500;
         outlineLastActiveHeadingId = node.id;
         centerRowInOutlineTree(sidebar, row);
         // Mirror the "current file" cue to GitHub's own file tree so the
@@ -4709,20 +4770,13 @@
     // handler scrolls the document to the thread, but doesn't touch the
     // sidebar's own scroll. Without this, pressing j past the bottom of
     // the visible list leaves the new active card off-screen.
-    cards[sidebarCurrentIdx].scrollIntoView({ block: 'nearest' });
+    revealSidebarCard(cards[sidebarCurrentIdx]);
   }
 
   function scrollToThread(threadEl) {
-    // Same "explicit user click" contract as `scrollToChange` and the
-    // Outline section-label click: pin the Outline highlight through
-    // the smooth-scroll animation so the scroll listener's mid-flight
-    // `pickActiveHeading()` (which sees the previous file's last
-    // heading still above the sticky line) can't override the click.
-    // Also suppresses the counter-follow on file-boundary crossings so
-    // the just-clicked counter selection isn't yanked back.
-    scrollFollowSuppressedUntil = Date.now() + 1500;
-    outlineHighlightPinUntil = Date.now() + 1500;
-    threadEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    // The shared navigator pins scroll-follow and corrects the same target
+    // after GitHub updates lazy file heights.
+    navigateToPageTarget(() => threadEl.isConnected ? threadEl : null, { block: 'center' });
     // Flash the badge so the user sees where they landed.
     const badge = threadEl.querySelector('.grdc-thread-badge') || threadEl;
     badge.classList.add('grdc-thread-flash');
@@ -4751,7 +4805,7 @@
       // would still return the previous file and the counter would render
       // relative to that. The caller knows the intended file; use it.
       updateSidebarCount(filePath);
-      threadCards[threadIdx].scrollIntoView({ block: 'nearest' });
+      revealSidebarCard(threadCards[threadIdx]);
     } else {
       // File has no threads, but the user's intent is still "I'm now on
       // this file" — re-render the counter as `0/0 (T)` (or greyed) so
@@ -4777,7 +4831,7 @@
     if (changeIdx >= 0) {
       changesCurrentIdx = changeIdx;
       updateChangesCount(sidebar, filePath);
-      changeCards[changeIdx].scrollIntoView({ block: 'nearest' });
+      revealSidebarCard(changeCards[changeIdx]);
     } else {
       updateChangesCount(sidebar, filePath);
     }
@@ -4976,7 +5030,7 @@
           changesCurrentIdx = idx;
         }
         cards[idx].click();
-        cards[idx].scrollIntoView({ block: 'nearest' });
+        revealSidebarCard(cards[idx]);
         return;
       }
       console.log(`[GRDC] Header icon → ${listKind}: current file ${path} has no items, falling back to global next`);
@@ -5264,24 +5318,14 @@
     // Keep the active card visible in the Changes list (mirrors sidebarJump).
     const cards = sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card');
     if (cards[changesCurrentIdx]) {
-      cards[changesCurrentIdx].scrollIntoView({ block: 'nearest' });
+      revealSidebarCard(cards[changesCurrentIdx]);
     }
   }
 
   function scrollToChange(blockEl) {
     if (!blockEl) return;
-    // Any explicit "jump to a change" — whether from a Changes-card click,
-    // `[` / `]` keyboard nav, or jump-to-first/last — triggers a smooth
-    // scroll. While that scroll animates, the Outline IntersectionObserver
-    // would otherwise see the *previous* file's heading topmost and yank
-    // the sidebar selection back. Suppress scroll-follow for the duration
-    // of the animation. See the comment on `scrollFollowSuppressedUntil`.
-    scrollFollowSuppressedUntil = Date.now() + 1500;
-    // Also pin the Outline highlight so it doesn't snap back to the
-    // previous heading mid-animation. See `outlineHighlightPinUntil`.
-    outlineHighlightPinUntil = Date.now() + 1500;
-    // Use the same sticky-offset-aware scroll the Outline tab uses so the
-    // change doesn't land under GitHub's sticky file header.
+    // Use the same distance-aware semantic navigation as Outline so lazy
+    // layout changes cannot leave the change above or below the viewport.
     if (typeof scrollToWithStickyOffset === 'function') {
       scrollToWithStickyOffset(blockEl);
     } else {
@@ -5406,7 +5450,7 @@
         scrollToChange(blocks[0]);
         updateChangesCount(sidebar);
         const cards = sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card');
-        if (cards[0]) cards[0].scrollIntoView({ block: 'nearest' });
+        revealSidebarCard(cards[0]);
         return;
       }
     }
@@ -5420,7 +5464,7 @@
         scrollToChange(blocks[last]);
         updateChangesCount(sidebar);
         const cards = sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card');
-        if (cards[last]) cards[last].scrollIntoView({ block: 'nearest' });
+        revealSidebarCard(cards[last]);
         return;
       }
     }
@@ -5446,14 +5490,14 @@
         e.preventDefault();
         sidebarCurrentIdx = 0;
         cards[0].click();
-        cards[0].scrollIntoView({ block: 'nearest' });
+        revealSidebarCard(cards[0]);
         return;
       case 'l':
         // Last thread.
         e.preventDefault();
         sidebarCurrentIdx = cards.length - 1;
         cards[cards.length - 1].click();
-        cards[cards.length - 1].scrollIntoView({ block: 'nearest' });
+        revealSidebarCard(cards[cards.length - 1]);
         return;
     }
   }, true);
@@ -5481,9 +5525,7 @@
   // which is hidden. Shared by the TOC-anchor jump and the Outline tab.
   function scrollToWithStickyOffset(el) {
     if (!el) return;
-    const STICKY_OFFSET = 120;
-    const top = window.scrollY + el.getBoundingClientRect().top - STICKY_OFFSET;
-    window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    navigateToPageTarget(() => el.isConnected ? el : null);
   }
 
   // Center a row inside the Outline pane's own scroll container. Manual

@@ -101,19 +101,19 @@ Use these known-good commands from any working directory. Each removes stale art
 Node suite:
 
 ```powershell
-C:\Windows\System32\cmd.exe /v:on /d /c "del /q %TEMP%\grdc-node-test-result.txt %TEMP%\grdc-node-test-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\npm.cmd test > %TEMP%\grdc-node-test-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-node-test-exit.txt"
+& 'C:\Windows\System32\cmd.exe' /v:on /d /c "del /q %TEMP%\grdc-node-test-result.txt %TEMP%\grdc-node-test-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & set PATH=%LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64;%PATH% & npm.cmd test > %TEMP%\grdc-node-test-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-node-test-exit.txt"
 ```
 
 Focused GitHub E2E (replace the basename only; do not pass `tests/e2e/...` through `cmd.exe`):
 
 ```powershell
-C:\Windows\System32\cmd.exe /v:on /d /c "del /q %TEMP%\grdc-focused-e2e-result.txt %TEMP%\grdc-focused-e2e-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe .\node_modules\@playwright\test\cli.js test --config=playwright.config.js bulkRenderSweep.spec.js > %TEMP%\grdc-focused-e2e-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-focused-e2e-exit.txt"
+& 'C:\Windows\System32\cmd.exe' /v:on /d /c "del /q %TEMP%\grdc-focused-e2e-result.txt %TEMP%\grdc-focused-e2e-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe .\node_modules\@playwright\test\cli.js test --config=playwright.config.js bulkRenderSweep.spec.js > %TEMP%\grdc-focused-e2e-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-focused-e2e-exit.txt"
 ```
 
 Full GitHub E2E:
 
 ```powershell
-C:\Windows\System32\cmd.exe /v:on /d /c "del /q %TEMP%\grdc-github-e2e-result.txt %TEMP%\grdc-github-e2e-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe .\node_modules\@playwright\test\cli.js test --config=playwright.config.js > %TEMP%\grdc-github-e2e-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-github-e2e-exit.txt"
+& 'C:\Windows\System32\cmd.exe' /v:on /d /c "del /q %TEMP%\grdc-github-e2e-result.txt %TEMP%\grdc-github-e2e-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe .\node_modules\@playwright\test\cli.js test --config=playwright.config.js > %TEMP%\grdc-github-e2e-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-github-e2e-exit.txt"
 ```
 
 If the terminal tool returns early, continue other work instead of polling or rerunning. The authoritative check does not execute another shell command: use the editor's `read_file` tool to read the exit sentinel directly, then read the result file's final summary lines. For current suite sizes, the useful result ranges are approximately lines 450–500 for Node and 35–70 for GitHub E2E. If a range is empty, read an earlier range; do not rerun the suite.
@@ -121,7 +121,7 @@ If the terminal tool returns early, continue other work instead of polling or re
 The bundled helper is an optional convenience only when executable resolution is healthy:
 
 ```powershell
-C:\Windows\System32\cmd.exe /d /c "%LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe C:\Local\local_repos\rich-diff-comments\.github\skills\rdc-feature-dev\scripts\summarize-test-result.js %TEMP%\grdc-github-e2e-result.txt %TEMP%\grdc-github-e2e-exit.txt"
+& 'C:\Windows\System32\cmd.exe' /d /c "%LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe C:\Local\local_repos\rich-diff-comments\.github\skills\rdc-feature-dev\scripts\summarize-test-result.js %TEMP%\grdc-github-e2e-result.txt %TEMP%\grdc-github-e2e-exit.txt"
 ```
 
 An absent exit sentinel means the capture is still running: do not rerun or poll. Success requires sentinel value `0` plus the complete result-file summary. If the summary helper reports `CAPTURE_RUNNING`, or any terminal/runner rejects an executable that is known to exist, fall back to `read_file`; that is an execution-environment failure, not a test failure. Use target-specific filenames and `playwright.ado.config.js` for ADO. For Git operations, use `git -C C:\Local\local_repos\rich-diff-comments ...` instead of relying on `Set-Location` or the terminal's current directory.

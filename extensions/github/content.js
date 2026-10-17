@@ -1116,9 +1116,16 @@
           ? 'Loading review threads…'
         : `Rendering Markdown files as rich diff: ${completed} of ${total}`;
     if (session.status.textContent !== text) session.status.textContent = text;
-    if (session.progress && expected) {
-      session.progress.max = expected;
-      session.progress.value = Math.min(completed, expected);
+    if (!session.progress) return;
+    if (phase === 'finishing' || phase === 'syncing') {
+      session.progress.classList.add('grdc-render-overlay-progress-indeterminate');
+      session.progress.removeAttribute('aria-valuenow');
+    } else if (expected) {
+      const value = Math.min(completed, expected);
+      session.progress.classList.remove('grdc-render-overlay-progress-indeterminate');
+      session.progress.setAttribute('aria-valuenow', String(value));
+      session.progress.setAttribute('aria-valuemax', String(expected));
+      session.progress.style.setProperty('--grdc-render-progress', `${(value / expected) * 100}%`);
     }
   }
 
@@ -1236,7 +1243,7 @@
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
     overlay.setAttribute('aria-label', 'Rendering Markdown files');
-    overlay.innerHTML = '<div class="grdc-render-overlay-card"><div class="grdc-render-overlay-status" aria-live="polite"></div><progress class="grdc-render-overlay-progress" value="0"></progress><button type="button" class="grdc-render-overlay-cancel">Cancel</button></div>';
+    overlay.innerHTML = '<div class="grdc-render-overlay-card"><div class="grdc-render-overlay-status" aria-live="polite"></div><div class="grdc-render-overlay-progress" role="progressbar" aria-valuemin="0" aria-valuenow="0"><span></span></div><button type="button" class="grdc-render-overlay-cancel">Cancel</button></div>';
     const previousFocus = document.activeElement;
     document.body.appendChild(overlay);
     const session = {

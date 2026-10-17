@@ -1649,7 +1649,22 @@ li.grdc-hoverable .grdc-comment-btn {
 }
 .grdc-render-overlay-progress {
   width: 100%;
-  accent-color: var(--fgColor-onEmphasis, var(--color-fg-on-emphasis, #ffffff));
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.35);
+}
+.grdc-render-overlay-progress > span {
+  display: block;
+  width: var(--grdc-render-progress, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--fgColor-onEmphasis, var(--color-fg-on-emphasis, #ffffff));
+  transition: width 120ms ease-out;
+}
+.grdc-render-overlay-progress-indeterminate > span {
+  width: 35%;
+  animation: grdc-render-progress-slide 1s ease-in-out infinite;
 }
 .grdc-render-overlay-cancel {
   justify-self: end;
@@ -1670,6 +1685,10 @@ li.grdc-hoverable .grdc-comment-btn {
 @keyframes grdc-overlay-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+@keyframes grdc-render-progress-slide {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(330%); }
 }
 
 /* ── Dark mode overrides ───────────────────────────────────────────────

@@ -94,29 +94,29 @@ When the feature is working, before declaring done:
 
 ### Capturing test results on Windows
 
-VS Code terminal execution can return partial output when its idle detector fires before the child process exits. Persistent terminals can also lose their expected working directory or `PATH`. Never infer success or failure from a truncated test list, and do not start a duplicate suite just because streamed output stopped.
+VS Code terminal execution can return partial output when its idle detector fires before the child process exits. Persistent terminals can also lose their expected working directory or `PATH`, and the terminal label may temporarily become `chrome-headless-shell` while Playwright owns the foreground process. Never infer success or failure from a truncated test list, and do not start a duplicate suite just because streamed output stopped. A visible `chrome-headless-shell` terminal means the existing Playwright run is still active.
 
-Use these known-good commands from any working directory. Each removes stale artifacts, changes to the repository explicitly, invokes the portable runtime explicitly, redirects the full output, and writes the real exit code only after the child exits.
+Use the bundled heartbeat runner from any working directory. It removes stale artifacts, invokes the test process with an explicit working directory, captures complete output, writes the real exit code only after the child exits, prints `CAPTURE_RUNNING` every five seconds so the terminal bridge stays attached, and prints the final 15 non-empty lines on completion.
 
 Node suite:
 
 ```powershell
-& 'C:\Windows\System32\cmd.exe' /v:on /d /c "del /q %TEMP%\grdc-node-test-result.txt %TEMP%\grdc-node-test-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & set PATH=%LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64;%PATH% & npm.cmd test > %TEMP%\grdc-node-test-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-node-test-exit.txt"
+& 'C:\Windows\System32\cmd.exe' /d /c "%LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe C:\Local\local_repos\rich-diff-comments\.github\skills\rdc-feature-dev\scripts\run-test-capture.js --result %TEMP%\grdc-node-test-result.txt --exit %TEMP%\grdc-node-test-exit.txt --cwd C:\Local\local_repos\rich-diff-comments -- %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe --test tests/*.test.js"
 ```
 
 Focused GitHub E2E (replace the basename only; do not pass `tests/e2e/...` through `cmd.exe`):
 
 ```powershell
-& 'C:\Windows\System32\cmd.exe' /v:on /d /c "del /q %TEMP%\grdc-focused-e2e-result.txt %TEMP%\grdc-focused-e2e-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe .\node_modules\@playwright\test\cli.js test --config=playwright.config.js bulkRenderSweep.spec.js > %TEMP%\grdc-focused-e2e-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-focused-e2e-exit.txt"
+& 'C:\Windows\System32\cmd.exe' /d /c "%LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe C:\Local\local_repos\rich-diff-comments\.github\skills\rdc-feature-dev\scripts\run-test-capture.js --result %TEMP%\grdc-focused-e2e-result.txt --exit %TEMP%\grdc-focused-e2e-exit.txt --cwd C:\Local\local_repos\rich-diff-comments -- %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe .\node_modules\@playwright\test\cli.js test --config=playwright.config.js bulkRenderSweep.spec.js"
 ```
 
 Full GitHub E2E:
 
 ```powershell
-& 'C:\Windows\System32\cmd.exe' /v:on /d /c "del /q %TEMP%\grdc-github-e2e-result.txt %TEMP%\grdc-github-e2e-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe .\node_modules\@playwright\test\cli.js test --config=playwright.config.js > %TEMP%\grdc-github-e2e-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-github-e2e-exit.txt"
+& 'C:\Windows\System32\cmd.exe' /d /c "%LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe C:\Local\local_repos\rich-diff-comments\.github\skills\rdc-feature-dev\scripts\run-test-capture.js --result %TEMP%\grdc-github-e2e-result.txt --exit %TEMP%\grdc-github-e2e-exit.txt --cwd C:\Local\local_repos\rich-diff-comments -- %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe .\node_modules\@playwright\test\cli.js test --config=playwright.config.js"
 ```
 
-If the terminal tool returns early, continue other work instead of polling or rerunning. The authoritative check does not execute another shell command: use the editor's `read_file` tool to read the exit sentinel directly, then read the result file's final summary lines. For current suite sizes, the useful result ranges are approximately lines 450–500 for Node and 35–70 for GitHub E2E. If a range is empty, read an earlier range; do not rerun the suite.
+The runner should keep a synchronous terminal call alive with heartbeat output until the child exits. If the terminal tool still returns early, check whether the terminal label is `chrome-headless-shell` or whether a test process is active before doing anything else. Continue other work instead of polling or rerunning while it is active. Once the process is gone, the authoritative check does not execute another test command: use the editor's `read_file` tool to read the exit sentinel directly, then read the result file's final summary lines. For current suite sizes, the useful result ranges are approximately lines 450–500 for Node and 35–70 for GitHub E2E. If a range is empty, read an earlier range; do not rerun the suite.
 
 The bundled helper is an optional convenience only when executable resolution is healthy:
 
@@ -124,7 +124,7 @@ The bundled helper is an optional convenience only when executable resolution is
 & 'C:\Windows\System32\cmd.exe' /d /c "%LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe C:\Local\local_repos\rich-diff-comments\.github\skills\rdc-feature-dev\scripts\summarize-test-result.js %TEMP%\grdc-github-e2e-result.txt %TEMP%\grdc-github-e2e-exit.txt"
 ```
 
-An absent exit sentinel means the capture is still running: do not rerun or poll. Success requires sentinel value `0` plus the complete result-file summary. If the summary helper reports `CAPTURE_RUNNING`, or any terminal/runner rejects an executable that is known to exist, fall back to `read_file`; that is an execution-environment failure, not a test failure. Use target-specific filenames and `playwright.ado.config.js` for ADO. For Git operations, use `git -C C:\Local\local_repos\rich-diff-comments ...` instead of relying on `Set-Location` or the terminal's current directory.
+An absent exit sentinel while the child is active means the capture is still running: do not rerun or poll. An absent sentinel after both the runner and child have exited is an execution-environment failure; only then may the same command be retried. Success requires sentinel value `0` plus the complete result-file summary. If the summary helper reports `CAPTURE_RUNNING`, or any terminal/runner rejects an executable that is known to exist, fall back to `read_file`; that is an execution-environment failure, not a test failure. Use target-specific filenames and `playwright.ado.config.js` for ADO. For Git operations, use `git -C C:\Local\local_repos\rich-diff-comments ...` instead of relying on `Set-Location` or the terminal's current directory.
 
 The goal isn't 100% coverage — it's "every algorithm a future change might break has a regression test."
 

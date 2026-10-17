@@ -41,8 +41,26 @@ const routeData = {
   comparison: { fullDiff: { headOid: 'a'.repeat(40) } },
 };
 
-async function setupBulkRenderPage(page) {
+async function setupBulkRenderPage(page, options) {
   await setupFixture(page, 'bulk-render', { rawSource, routeData });
+  const sourceDelayMs = options?.sourceDelayMs || 0;
+  if (sourceDelayMs) {
+    await page.route('https://github.com/test-owner/test-repo/blob/**', async (route) => {
+      const url = route.request().url();
+      const match = url.match(/\/blob\/[0-9a-f]{40}\/(.+?)(?:\?.*)?$/);
+      const filePath = match ? decodeURIComponent(match[1]) : '';
+      await new Promise(resolve => setTimeout(resolve, sourceDelayMs));
+      const escaped = (rawSource[filePath] || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html; charset=utf-8',
+        body: `<textarea id="read-only-cursor-text-area">${escaped}</textarea>`,
+      });
+    });
+  }
   await gotoPRPage(page);
   await injectExtension(page);
   await waitForInit(page);
@@ -67,7 +85,7 @@ async function startSweep(page) {
 }
 
 test('bulk render discovers lazy-mounted files and reports real progress', async ({ page }) => {
-  await setupBulkRenderPage(page);
+  await setupBulkRenderPage(page, { sourceDelayMs: 1000 });
   await expect(page.locator('.grdc-existing-thread')).toHaveCount(0);
   await page.evaluate(() => {
     window.__bulkFirstRenderedHeight = 1600;
@@ -90,6 +108,7 @@ test('bulk render discovers lazy-mounted files and reports real progress', async
 
   await startSweep(page);
   await expect(page.locator('.grdc-render-overlay')).toHaveCount(0, { timeout: 8000 });
+  await expect(page.locator('.grdc-existing-thread')).toHaveCount(0);
 
   await expect(page.locator('button[aria-label="Display the rich diff"][aria-pressed="true"]')).toHaveCount(2);
   await expect(page.locator('.prose-diff')).toHaveCount(2);
@@ -97,7 +116,6 @@ test('bulk render discovers lazy-mounted files and reports real progress', async
   expect(progress.some((text) => /Discovering Markdown files: \d+ of 2/.test(text))).toBe(true);
   expect(progress.some((text) => /Rendering Markdown files as rich diff: 2 of 2/.test(text))).toBe(true);
   expect(progress.some((text) => /Finishing rich diff: \d+ of 2/.test(text))).toBe(true);
-  expect(progress).toContain('Loading review threads…');
   await expect(page.locator('.grdc-existing-thread')).toHaveCount(1);
   await expect(page.locator('.grdc-sidebar-list .grdc-sidebar-card')).toHaveCount(1);
   await expect.poll(() => page.locator('#diff-second').evaluate((container) => (

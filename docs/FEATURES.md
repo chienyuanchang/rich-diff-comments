@@ -50,11 +50,14 @@ The targets version and release independently. These lists summarize the intende
 - [ ] **Remove full sidebar dismissal and its restore launcher** — keep the sidebar's discoverable collapse/expand behavior instead of allowing it to enter a fully hidden state. Preserve the existing keyboard toggle and saved layout preferences.
 - [ ] **Collapse or expand all inline conversations** — add a Threads-toolbar toggle scoped to the current Markdown Preview while keeping comment badges and markers visible.
 
-### GitHub v1.13.0
+### GitHub v1.14.0
 
 - [ ] **Collapse or expand all inline conversations** — add a Threads-toolbar toggle across all currently rendered Markdown files while keeping comment badges and markers visible.
-- [ ] **Make bulk rich-diff rendering faster, observable, and cancellable** — adapt to GitHub's lazy-mounted file controls, show real progress, allow Cancel or `Escape`, restore the same file-relative reading position when the modal render sweep ends, and preserve a collapsed sidebar when the book action prepares Outline. In GitHub's virtualized large-PR mode, offer a one-file action that opens the first unrendered Markdown file and switches it to rich diff without starting a PR-wide sweep.
-- [ ] **Make sidebar navigation reach its target in one action** — keep Threads, Changes, Outline, and TOC jumps attached to their semantic target when GitHub recalculates intermediate file heights during a long scroll.
+
+### GitHub v1.13.0
+
+- [x] **Make bulk rich-diff rendering observable and cancellable** — adapt to GitHub's lazy-mounted file controls, show real progress, allow Cancel or `Escape`, restore the same file-relative reading position when the modal render sweep ends, and preserve a collapsed sidebar when the book action prepares Outline. Continue withholding the PR-wide action in GitHub's virtualized large-PR mode, where offscreen rendered state is not retained.
+- [x] **Make sidebar navigation reach its target in one action** — keep Threads, Changes, Outline, and TOC jumps attached to their semantic target when GitHub recalculates intermediate file heights during a long scroll.
 
 ---
 
@@ -175,7 +178,7 @@ The targets version and release independently. These lists summarize the intende
 
 - [ ] **P2 — Collapse or expand all inline conversations**
   - **Outcome:** reviewers can return a comment-heavy rendered document to a compact reading view in one action, then reopen every conversation when needed.
-  - **GitHub:** 📋 Targeted for GitHub v1.13.0. Apply the action across all currently rendered Markdown files in the pull request.
+  - **GitHub:** 📋 Targeted for GitHub v1.14.0. Apply the action across all currently rendered Markdown files in the pull request.
   - **ADO:** 📋 Targeted for ADO v1.5.0. Apply the action to the current Markdown Preview, matching ADO's one-file-at-a-time review surface.
   - **Acceptance:** place a **Collapse all conversations** / **Expand all conversations** toggle in the Threads toolbar; collapse only conversation bodies while keeping badges, table-row markers, code-line markers, and the Threads list visible. Do not change resolution state, the unresolved filter, or saved sidebar preferences.
 
@@ -211,15 +214,15 @@ The targets version and release independently. These lists summarize the intende
 
 ### Navigation and focus
 
-- [ ] **P1 — Make bulk rich-diff rendering faster, observable, and cancellable**
+- [x] **P1 — Make bulk rich-diff rendering observable and cancellable**
   - **Outcome:** reviewers can activate every eligible Markdown file with clear progress, less waiting, and a way to stop without leaving the page in an uncertain state.
-  - **GitHub:** 📋 Planned for GitHub v1.13.0. Replace fixed per-step delays with an adaptive mount-and-render sweep that advances after GitHub exposes new file controls, reports real progress such as `Rendering 4 of 7 Markdown files`, stops early when the expected files are accounted for, and supports cancellation. When GitHub virtualizes a large pull request, replace the unavailable bulk action with **Review first Markdown file**, which navigates to the first unrendered Markdown file and enables rich diff for that file only.
+  - **GitHub:** ✅ GitHub v1.13.0. Uses an adaptive mount-and-render sweep that advances after GitHub exposes new file controls, reports real progress such as `Rendering 4 of 7 Markdown files`, stops early when the expected files are accounted for, and supports cancellation. GitHub's virtualized large-PR mode retains one-file guidance because it discards offscreen rendered state.
   - **ADO:** — Preview activates one selected Markdown file without a scroll-based render sweep.
-  - **Acceptance:** continue visiting intermediate viewports so lazy-mounted files are not skipped; combine animation-frame scheduling with DOM observation and a bounded timeout rather than relying on DOM silence alone. Treat the loading surface as modal: block pointer actions and extension navigation shortcuts while rendering, with Cancel and `Escape` as the only exits. Cancellation must stop further scrolling and clicks, remove loading UI, preserve files already rendered, and leave the sidebar consistent with the visible page. After activated rich content settles into layout, explicitly refresh review data so Threads and comment markers load even though sweep-time DOM mutations are intentionally suppressed; then restore the same file and relative reading position even when rich diff changes preceding content height. The book action selects Outline without overriding the reviewer's collapsed sidebar preference; expanding later reveals the prepared Outline. In large-PR mode, never start the scroll sweep: resolve the first unrendered Markdown path in PR order, use an already-mounted file container or GitHub's native file navigation to mount it, wait a bounded time for its rich-diff control, then activate only that file. If no eligible path or native destination can be resolved, retain the explanatory guidance without showing a dead action.
+  - **Acceptance:** continue visiting intermediate viewports so lazy-mounted files are not skipped; combine animation-frame scheduling with DOM observation and a bounded timeout rather than relying on DOM silence alone. Treat the loading surface as modal: block pointer actions and extension navigation shortcuts while rendering, with Cancel and `Escape` as the only exits. Cancellation must stop further scrolling and clicks, remove loading UI, preserve files already rendered, and leave the sidebar consistent with the visible page. After activated rich content settles into layout, explicitly refresh review data so Threads and comment markers load even though sweep-time DOM mutations are intentionally suppressed; then restore the same file and relative reading position even when rich diff changes preceding content height. The book action selects Outline without overriding the reviewer's collapsed sidebar preference; expanding later reveals the prepared Outline. In large-PR mode, never start the scroll sweep; retain explanatory one-file guidance instead of showing an action whose rendered state GitHub will discard.
 
-- [ ] **P1 — Make sidebar navigation reach its target in one action**
+- [x] **P1 — Make sidebar navigation reach its target in one action**
   - **Outcome:** selecting a distant thread, change, or heading lands on that target without requiring repeated clicks when intervening files change height during navigation.
-  - **GitHub:** 📋 Planned for GitHub v1.13.0. Replace one-shot coordinate scrolling with semantic target tracking and bounded post-layout correction; keep sidebar-list scrolling isolated from the page.
+  - **GitHub:** ✅ GitHub v1.13.0. Uses semantic target tracking and bounded post-layout correction while keeping sidebar-list scrolling isolated from the page.
   - **ADO:** — Preview navigation selects one file at a time through its host adapter and does not use GitHub's multi-file page scroll.
   - **Acceptance:** use instant movement for long cross-file jumps and retain smooth movement for nearby targets; after scrolling and layout settle, re-resolve the same target and correct any remaining offset. A newer user navigation cancels older pending correction. Scrolling the selected card into the sidebar viewport must not scroll the document. Cover a target that moves after the initial scroll begins and verify one click reaches the final sticky-header position.
 

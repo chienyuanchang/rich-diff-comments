@@ -4,6 +4,18 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+## [1.13.0] — 2026-10-16
+
+### Changed
+
+- **Rendering all Markdown files now shows live progress and can be cancelled.** Cancel or press `Escape` to stop the sweep while keeping files that have already finished rendering.
+- **Opening Outline no longer expands a collapsed sidebar.** The Outline is prepared in the background and is ready when you expand the sidebar yourself.
+
+### Fixed
+
+- **Bulk rendering now returns you to the same file and reading position.** Changes in rendered content height no longer leave you elsewhere in the pull request after rendering completes.
+- **Threads, Changes, Outline, and rendered Table of Contents links now reach distant targets in one action.** Navigation stays attached to the selected item while GitHub recalculates file heights during the jump.
+
 ## [1.12.0] — 2026-09-25
 
 ### Added

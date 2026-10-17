@@ -1643,6 +1643,29 @@ li.grdc-hoverable .grdc-comment-btn {
   font-size: 14px;
   font-weight: 500;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  min-width: min(320px, calc(100vw - 32px));
+  display: grid;
+  gap: 10px;
+}
+.grdc-render-overlay-progress {
+  width: 100%;
+  accent-color: var(--fgColor-onEmphasis, var(--color-fg-on-emphasis, #ffffff));
+}
+.grdc-render-overlay-cancel {
+  justify-self: end;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  padding: 5px 12px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.grdc-render-overlay-cancel:hover,
+.grdc-render-overlay-cancel:focus-visible {
+  background: rgba(255, 255, 255, 0.16);
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }
 @keyframes grdc-overlay-fade-in {
   from { opacity: 0; }

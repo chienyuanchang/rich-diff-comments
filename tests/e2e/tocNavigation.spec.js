@@ -62,6 +62,26 @@ test.describe('rich-diff Table of Contents navigation', () => {
     await waitForHeadingAtStickyOffset(page, 'Change Log');
   });
 
+  test('one click follows a heading that moves after navigation starts', async ({ page }) => {
+    await page.evaluate(() => {
+      const changeLog = Array.from(document.querySelectorAll('h2'))
+        .find((heading) => heading.textContent.includes('Change Log'));
+      const shift = document.createElement('div');
+      shift.id = 'late-layout-shift';
+      changeLog.before(shift);
+      window.addEventListener('scroll', function applyLateShift() {
+        if (window.scrollY < 200) return;
+        shift.style.height = '1200px';
+        window.removeEventListener('scroll', applyLateShift);
+      });
+    });
+
+    await page.locator('#toc-change-log').click();
+
+    await expect(page.locator('#late-layout-shift')).toHaveCSS('height', '1200px');
+    await waitForHeadingAtStickyOffset(page, 'Change Log');
+  });
+
   test('different TOC links and browser history retain normal navigation', async ({ page }) => {
     await page.locator('#toc-change-log').click();
     await waitForHeadingAtStickyOffset(page, 'Change Log');

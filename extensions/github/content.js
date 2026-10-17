@@ -1024,9 +1024,15 @@
   // clicks performed in this pass; populates `seen` so future passes
   // skip files we already handled (including ones that were already
   // pressed). Used by `flipAllMdToRichDiff` across multiple scroll steps.
-  function clickRichTogglesOnce(seen) {
+  let activeRenderSweep = null;
+
+  function cancelActiveRenderSweep() {
+    if (activeRenderSweep) activeRenderSweep.cancelled = true;
+  }
+
+  function richToggleCandidates() {
+    const candidates = [];
     const buttons = document.querySelectorAll('button, a[role="button"], [data-tab-item]');
-    let count = 0;
     for (const btn of buttons) {
       if (!looksLikeDiffToggle(btn)) continue;
       const haystack = resolveButtonHaystack(btn);
@@ -1036,12 +1042,20 @@
       const container = btn.closest('div[id^="diff-"], [data-tagsearch-path], .file[data-path]');
       const path = container ? getContainerPath(container) : '';
       if (!isMarkdownPath(path)) continue;
-      if (seen.has(path)) continue;
       const pressed = btn.getAttribute('aria-pressed') === 'true' ||
                       btn.getAttribute('aria-current') === 'true' ||
                       btn.getAttribute('aria-current') === 'page' ||
                       btn.classList.contains('selected') ||
                       btn.classList.contains('SegmentedControl-item--selected');
+      candidates.push({ btn, path, pressed });
+    }
+    return candidates;
+  }
+
+  function clickRichTogglesOnce(seen) {
+    let count = 0;
+    for (const { btn, path, pressed } of richToggleCandidates()) {
+      if (seen.has(path)) continue;
       seen.add(path);
       if (pressed) {
         renderedMarkdownPaths.add(path);
@@ -1055,6 +1069,144 @@
     return count;
   }
 
+  function waitForRenderSweepDom(session, action, maxMs) {
+    return new Promise((resolve) => {
+      let finished = false;
+      let frameCount = 0;
+      let sawMutation = false;
+      const startedAt = performance.now();
+      let lastMutationAt = startedAt;
+      const observer = new MutationObserver(() => {
+        sawMutation = true;
+        lastMutationAt = performance.now();
+      });
+
+      function finish() {
+        if (finished) return;
+        finished = true;
+        observer.disconnect();
+        resolve();
+      }
+
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+      action();
+
+      function check(now) {
+        frameCount++;
+        if (session.cancelled) return finish();
+        const mutationSettled = sawMutation && now - lastMutationAt >= 32;
+        const noMutationGraceElapsed = !sawMutation && now - startedAt >= 100;
+        if ((frameCount >= 2 && (mutationSettled || noMutationGraceElapsed)) || now - startedAt >= maxMs) {
+          return finish();
+        }
+        requestAnimationFrame(check);
+      }
+      requestAnimationFrame(check);
+    });
+  }
+
+  function updateRenderSweepProgress(session, phase, completed, expected) {
+    if (!session.status) return;
+    const total = expected || '?';
+    const text = phase === 'discovering'
+      ? `Discovering Markdown files: ${completed} of ${total}`
+      : phase === 'finishing'
+        ? `Finishing rich diff: ${completed} of ${total}`
+        : phase === 'syncing'
+          ? 'Loading review threads…'
+        : `Rendering Markdown files as rich diff: ${completed} of ${total}`;
+    if (session.status.textContent !== text) session.status.textContent = text;
+    if (session.progress && expected) {
+      session.progress.max = expected;
+      session.progress.value = Math.min(completed, expected);
+    }
+  }
+
+  function waitForRenderedRichDiffs(session, paths, maxMs) {
+    const expectedPaths = new Set(paths);
+    if (expectedPaths.size === 0) return Promise.resolve();
+    return new Promise((resolve) => {
+      let finished = false;
+      let frameId = 0;
+      let lastLayout = '';
+      let stableSince = 0;
+
+      function finish() {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timeoutId);
+        cancelAnimationFrame(frameId);
+        resolve();
+      }
+
+      function check(now) {
+        if (session.cancelled) return finish();
+        const renderedPaths = new Set();
+        const layout = [document.documentElement.scrollHeight, document.body.scrollHeight];
+        let mediaReady = true;
+        for (const container of findFileContainers()) {
+          const path = getContainerPath(container);
+          if (!expectedPaths.has(path)) continue;
+          const roots = Array.from(container.querySelectorAll('.prose-diff, .rich-diff-level-one'))
+            .filter(root => root.offsetParent || root === document.body);
+          if (roots.length === 0) continue;
+          renderedPaths.add(path);
+          layout.push(path, Math.round(container.getBoundingClientRect().height * 10) / 10);
+          for (const root of roots) {
+            if (Array.from(root.querySelectorAll('img')).some(image => !image.complete)) {
+              mediaReady = false;
+            }
+          }
+        }
+        updateRenderSweepProgress(session, 'finishing', renderedPaths.size, expectedPaths.size);
+        const fontsReady = !document.fonts || document.fonts.status === 'loaded';
+        const layoutSignature = layout.join('|');
+        if (renderedPaths.size < expectedPaths.size || layoutSignature !== lastLayout) {
+          lastLayout = layoutSignature;
+          stableSince = now;
+        } else if (mediaReady && fontsReady && now - stableSince >= 400) {
+          return finish();
+        }
+        frameId = requestAnimationFrame(check);
+      }
+
+      const timeoutId = setTimeout(finish, maxMs);
+      frameId = requestAnimationFrame(check);
+    });
+  }
+
+  function captureRenderSweepPosition() {
+    const path = getCurrentViewFilePath();
+    if (!path) return null;
+    const container = findFileContainers().find(candidate => getContainerPath(candidate) === path);
+    if (!container) return null;
+    const rect = container.getBoundingClientRect();
+    if (rect.height <= 0) return null;
+    const stickyOffset = 120;
+    const viewportY = Math.max(rect.top, Math.min(stickyOffset, rect.bottom));
+    return {
+      path,
+      progress: Math.max(0, Math.min(1, (viewportY - rect.top) / rect.height)),
+      viewportY,
+    };
+  }
+
+  function restoreRenderSweepPosition(anchor, fallbackScroll) {
+    if (!anchor) {
+      window.scrollTo({ top: fallbackScroll, behavior: 'instant' });
+      return;
+    }
+    const container = findFileContainers().find(candidate => getContainerPath(candidate) === anchor.path);
+    if (!container) {
+      window.scrollTo({ top: fallbackScroll, behavior: 'instant' });
+      return;
+    }
+    const rect = container.getBoundingClientRect();
+    const pointInFile = rect.height * anchor.progress;
+    const top = window.scrollY + rect.top + pointInFile - anchor.viewportY;
+    window.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
+  }
+
   // Click every per-file "render rich-diff" toggle on the page whose
   // owning file container belongs to a Markdown file. GitHub lazy-renders
   // file headers as the user scrolls, so a single top-of-page scan only
@@ -1062,9 +1214,13 @@
   // after each step so newly-rendered file headers are caught, then
   // restore the user's original scroll position when done.
   async function flipAllMdToRichDiff() {
+    if (activeRenderSweep) return 0;
     const seen = new Set();
+    const discovered = new Set();
     let clicked = 0;
     const origScroll = window.scrollY;
+    const origPosition = captureRenderSweepPosition();
+    const startPath = window.location.pathname;
     const docHeight = () => Math.max(
       document.documentElement.scrollHeight,
       document.body.scrollHeight
@@ -1077,8 +1233,23 @@
 
     const overlay = document.createElement('div');
     overlay.className = 'grdc-render-overlay';
-    overlay.innerHTML = '<div class="grdc-render-overlay-card">Rendering Markdown files as rich-diff…</div>';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Rendering Markdown files');
+    overlay.innerHTML = '<div class="grdc-render-overlay-card"><div class="grdc-render-overlay-status" aria-live="polite"></div><progress class="grdc-render-overlay-progress" value="0"></progress><button type="button" class="grdc-render-overlay-cancel">Cancel</button></div>';
+    const previousFocus = document.activeElement;
     document.body.appendChild(overlay);
+    const session = {
+      cancelled: false,
+      overlay,
+      status: overlay.querySelector('.grdc-render-overlay-status'),
+      progress: overlay.querySelector('.grdc-render-overlay-progress'),
+    };
+    activeRenderSweep = session;
+    const cancelButton = overlay.querySelector('.grdc-render-overlay-cancel');
+    cancelButton.addEventListener('click', cancelActiveRenderSweep);
+    cancelButton.focus();
+    updateRenderSweepProgress(session, 'discovering', 0, expectedMd);
 
     try {
       // Two-phase approach:
@@ -1098,7 +1269,6 @@
       // every click expanded the file inline, shifting later files
       // down past the scroll cursor before their headers mounted.
       // Separating the phases sidesteps that race entirely.
-      const dwell = 100;
       const step = Math.max(500, window.innerHeight * 0.8);
 
       // Phase 1: mount-only sweep. No clicks. Just scroll through the
@@ -1107,45 +1277,75 @@
       {
         let y = 0;
         let guard = 0;
-        while (y < docHeight() && guard < 80) {
-          window.scrollTo({ top: y, behavior: 'instant' });
-          await new Promise((r) => setTimeout(r, dwell));
+        while (!session.cancelled && y < docHeight() && guard < 80) {
+          await waitForRenderSweepDom(session, () => {
+            window.scrollTo({ top: y, behavior: 'instant' });
+          }, 240);
+          for (const { path } of richToggleCandidates()) discovered.add(path);
+          updateRenderSweepProgress(session, 'discovering', discovered.size, expectedMd);
+          if (expectedMd && discovered.size >= expectedMd) break;
           y += step;
           guard++;
         }
         // Final touch at the very bottom for the last header.
-        window.scrollTo({ top: docHeight(), behavior: 'instant' });
-        await new Promise((r) => setTimeout(r, 200));
+        if (!session.cancelled && (!expectedMd || discovered.size < expectedMd)) {
+          await waitForRenderSweepDom(session, () => {
+            window.scrollTo({ top: docHeight(), behavior: 'instant' });
+          }, 320);
+          for (const { path } of richToggleCandidates()) discovered.add(path);
+          updateRenderSweepProgress(session, 'discovering', discovered.size, expectedMd);
+        }
         console.log(`[GRDC] flipAllMdToRichDiff: phase 1 (mount sweep) done`);
       }
 
       // Phase 2: click sweep. All headers should now be in the DOM, so
       // a single top→bottom pass with clicks is enough.
-      {
+      if (!session.cancelled) {
         let y = 0;
         let guard = 0;
         // First scan from current position (bottom of doc) before
         // scrolling back to top — catches any toggles still in view.
         clicked += clickRichTogglesOnce(seen);
-        window.scrollTo({ top: 0, behavior: 'instant' });
-        await new Promise((r) => setTimeout(r, dwell));
+        updateRenderSweepProgress(session, 'rendering', seen.size, expectedMd);
+        await waitForRenderSweepDom(session, () => {
+          window.scrollTo({ top: 0, behavior: 'instant' });
+        }, 240);
         clicked += clickRichTogglesOnce(seen);
-        while (y < docHeight() && guard < 80) {
+        updateRenderSweepProgress(session, 'rendering', seen.size, expectedMd);
+        while (!session.cancelled && y < docHeight() && guard < 80) {
           if (expectedMd && seen.size >= expectedMd) break;
-          window.scrollTo({ top: y, behavior: 'instant' });
-          await new Promise((r) => setTimeout(r, dwell));
+          await waitForRenderSweepDom(session, () => {
+            window.scrollTo({ top: y, behavior: 'instant' });
+          }, 240);
           clicked += clickRichTogglesOnce(seen);
+          updateRenderSweepProgress(session, 'rendering', seen.size, expectedMd);
           y += step;
           guard++;
         }
         console.log(`[GRDC] flipAllMdToRichDiff: phase 2 (click sweep) done — ${seen.size}/${expectedMd || '?'}`);
+        if (!session.cancelled) {
+          await waitForRenderedRichDiffs(session, seen, 8000);
+        }
+      }
+      if (!session.cancelled && clicked > 0 && window.location.pathname === startPath) {
+        updateRenderSweepProgress(session, 'syncing', seen.size, expectedMd);
+        await init();
+        await waitForRenderedRichDiffs(session, seen, 3000);
       }
     } finally {
-      window.scrollTo({ top: origScroll, behavior: 'instant' });
       overlay.remove();
+      try { previousFocus?.focus?.({ preventScroll: true }); } catch (_) {}
+      if (window.location.pathname === startPath) {
+        restoreRenderSweepPosition(origPosition, origScroll);
+      }
+      if (activeRenderSweep === session) activeRenderSweep = null;
     }
     console.log(`[GRDC] flipAllMdToRichDiff: scanned ${seen.size}/${expectedMd || '?'} md file(s); clicked ${clicked}`);
-    setTimeout(() => { try { buildThreadsSidebar(); } catch (_) {} }, 400);
+    if (session.cancelled && clicked > 0 && window.location.pathname === startPath) {
+      setTimeout(() => { init().catch(() => {}); }, 0);
+    } else {
+      setTimeout(() => { try { buildThreadsSidebar(); } catch (_) {} }, 400);
+    }
     return clicked;
   }
 
@@ -3221,14 +3421,14 @@
   // Timestamp (ms) until which the Outline IntersectionObserver should NOT
   // call `jumpSidebarListsToFile` on file-boundary crossings. Bumped by any
   // explicit user click that scrolls the page (Changes cards, NEW FILE /
-  // DELETED cards). Without this guard, the IO fires *during* the smooth-
-  // scroll animation, sees the previous file's heading still topmost in
+  // DELETED cards). Without this guard, scroll-follow fires while semantic
+  // navigation is still settling, sees the previous file's heading topmost in
   // the viewport, and yanks the sidebar selection back to the previous
   // file — undoing the user's click. Especially bad for ADDED files that
   // have no headings of their own (e.g. a `.md` with only a code block),
   // because then no heading in the new file ever "wins" the topmost
-  // contest. 1500ms covers the typical smooth-scroll duration on a long
-  // page; after that, IO is back in charge.
+  // contest. The shared page navigator extends this guard through its bounded
+  // correction window; after that, scroll-follow is back in charge.
   let scrollFollowSuppressedUntil = 0;
 
   // Same idea for the Outline pane's active-section highlight. After an
@@ -3240,10 +3440,9 @@
   // heading still above the sticky line at ~y=100). Without this pin the
   // scroll listener's "last heading whose top is above the sticky line"
   // rule would pick the previous file's heading and the user would see
-  // a highlight from the wrong file after their click. The pin holds
-  // for 1500ms — long enough for the smooth-scroll to complete and the
-  // user's chosen file's heading to become the true topmost — then the
-  // scroll listener takes over normally.
+  // a highlight from the wrong file after their click. The shared page
+  // navigator holds the pin until scrolling and layout correction settle,
+  // then the scroll listener takes over normally.
   let outlineHighlightPinUntil = 0;
   // Module-scope so `jumpSidebarListsToFile` can update it when it
   // pin-highlights a heading, and the Outline scroll listener sees the
@@ -3252,6 +3451,69 @@
   // real update after the pin expires (because its cached
   // `lastActiveId` would still hold the previous file's id).
   let outlineLastActiveHeadingId = null;
+  let pageNavigationSequence = 0;
+
+  function navigateToPageTarget(resolveTarget, options = {}) {
+    const resolve = typeof resolveTarget === 'function' ? resolveTarget : () => resolveTarget;
+    const block = options.block === 'center' ? 'center' : 'start';
+    const targetY = block === 'center' ? window.innerHeight / 2 : 120;
+    const sequence = ++pageNavigationSequence;
+    const target = resolve();
+    if (!target || !target.isConnected) return;
+
+    function pointFor(element) {
+      const rect = element.getBoundingClientRect();
+      return block === 'center' ? rect.top + rect.height / 2 : rect.top;
+    }
+
+    const initialError = pointFor(target) - targetY;
+    const behavior = Math.abs(initialError) > window.innerHeight * 2 ? 'instant' : 'smooth';
+    scrollFollowSuppressedUntil = Date.now() + 3500;
+    outlineHighlightPinUntil = Date.now() + 3500;
+    window.scrollTo({ top: Math.max(0, window.scrollY + initialError), behavior });
+
+    const startedAt = performance.now();
+    let stableSince = startedAt;
+    let lastScrollY = window.scrollY;
+    let lastPoint = pointFor(target);
+    let corrections = 0;
+
+    function verify(now) {
+      if (sequence !== pageNavigationSequence) return;
+      const current = resolve();
+      if (!current || !current.isConnected) return;
+      const point = pointFor(current);
+      const moved = Math.abs(window.scrollY - lastScrollY) > 0.5 || Math.abs(point - lastPoint) > 0.5;
+      if (moved) stableSince = now;
+      lastScrollY = window.scrollY;
+      lastPoint = point;
+
+      const error = point - targetY;
+      if (now - stableSince >= 120 && Math.abs(error) > 4 && corrections < 4) {
+        corrections++;
+        window.scrollTo({ top: Math.max(0, window.scrollY + error), behavior: 'instant' });
+        stableSince = now;
+      } else if (Math.abs(error) <= 4 && now - stableSince >= 200) {
+        return;
+      }
+
+      if (now - startedAt < 3000) requestAnimationFrame(verify);
+    }
+    requestAnimationFrame(verify);
+  }
+
+  function revealSidebarCard(card) {
+    if (!card) return;
+    const scroller = card.closest('.grdc-sidebar-list, .grdc-sidebar-changes-list');
+    if (!scroller) return;
+    const scrollerRect = scroller.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    if (cardRect.top < scrollerRect.top) {
+      scroller.scrollTop -= scrollerRect.top - cardRect.top;
+    } else if (cardRect.bottom > scrollerRect.bottom) {
+      scroller.scrollTop += cardRect.bottom - scrollerRect.bottom;
+    }
+  }
 
   // Drag-to-move on the header. Position persists in `localStorage` as
   // `{left, top}` in viewport coordinates. We clamp to keep at least 80px
@@ -3567,10 +3829,6 @@
       btn.setAttribute('title', 'Rendering Markdown files as rich-diff…');
       btn.setAttribute('disabled', 'true');
     }
-    if (sidebar.classList.contains('grdc-sidebar-collapsed')) {
-      sidebar.classList.remove('grdc-sidebar-collapsed');
-      try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, '0'); } catch (_) {}
-    }
     try {
       const n = await flipAllMdToRichDiff();
       // CRITICAL: wait for GitHub to actually mount the rich-diff prose
@@ -3658,7 +3916,7 @@
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75Zm0 5A.75.75 0 0 1 1.75 7h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.75Zm0 5a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1-.75-.75Z"/></svg>
           </button>
           <span class="grdc-sidebar-separator" aria-hidden="true"></span>
-          <button class="grdc-sidebar-render-md" title="Show Outline — also renders Markdown files (b)" aria-label="Show Outline">
+          <button class="grdc-sidebar-render-md" title="Render Markdown and select Outline (b)" aria-label="Show Outline">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"/></svg>
           </button>
           <span class="grdc-sidebar-separator" aria-hidden="true"></span>
@@ -3809,15 +4067,11 @@
         cb.dispatchEvent(new Event('change', { bubbles: true }));
       });
 
-      // Book button = "Show Outline" per the v2 spec. Side effect: also
-      // renders any not-yet-rendered .md files, since the Outline pane is
-      // only meaningful once headings exist in the rendered DOM. The two
-      // actions naturally pair with one user intent: "navigate this PR by
-      // document structure". Implementation:
-      //   1. Expand the panel (if collapsed) and render all .md files
-      //      via `expandAndRenderAllMd` (shared with the empty-state CTAs).
-      //   2. Switch to the Outline tab so the user lands on the result.
-      // Clicking again while already on Outline is a no-op (idempotent).
+      // Book button = render any not-yet-rendered .md files, then select
+      // Outline. It intentionally preserves the collapsed state: the
+      // neighboring collapse control owns panel size, while the book owns
+      // content preparation and tab selection. Expanding later reveals the
+      // prepared Outline. Clicking again is idempotent.
       sidebar.querySelector('.grdc-sidebar-render-md').addEventListener('click', async (e) => {
         e.preventDefault();
         await expandAndRenderAllMd(sidebar);
@@ -4171,14 +4425,13 @@
         sidebar.querySelectorAll('.grdc-sidebar-outline-row.grdc-sidebar-outline-active')
           .forEach(r => r.classList.remove('grdc-sidebar-outline-active'));
         row.classList.add('grdc-sidebar-outline-active');
-        // Pin the Outline highlight through the smooth-scroll animation
-        // so the scroll listener's mid-flight `pickActiveHeading()` (which
+        // Pin the Outline highlight through semantic navigation so the
+        // scroll listener's mid-flight `pickActiveHeading()` (which
         // sees the PREVIOUS heading still above the sticky line while we
         // scroll toward the clicked one) can't override it. Also update
         // the module-level cache so the scroll listener doesn't skip the
         // eventual real update as "same as last". Mirrors the pin set by
         // `jumpSidebarListsToFile` for file-label clicks.
-        outlineHighlightPinUntil = Date.now() + 1500;
         outlineLastActiveHeadingId = node.id;
         centerRowInOutlineTree(sidebar, row);
         // Mirror the "current file" cue to GitHub's own file tree so the
@@ -4528,20 +4781,13 @@
     // handler scrolls the document to the thread, but doesn't touch the
     // sidebar's own scroll. Without this, pressing j past the bottom of
     // the visible list leaves the new active card off-screen.
-    cards[sidebarCurrentIdx].scrollIntoView({ block: 'nearest' });
+    revealSidebarCard(cards[sidebarCurrentIdx]);
   }
 
   function scrollToThread(threadEl) {
-    // Same "explicit user click" contract as `scrollToChange` and the
-    // Outline section-label click: pin the Outline highlight through
-    // the smooth-scroll animation so the scroll listener's mid-flight
-    // `pickActiveHeading()` (which sees the previous file's last
-    // heading still above the sticky line) can't override the click.
-    // Also suppresses the counter-follow on file-boundary crossings so
-    // the just-clicked counter selection isn't yanked back.
-    scrollFollowSuppressedUntil = Date.now() + 1500;
-    outlineHighlightPinUntil = Date.now() + 1500;
-    threadEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    // The shared navigator pins scroll-follow and corrects the same target
+    // after GitHub updates lazy file heights.
+    navigateToPageTarget(() => threadEl.isConnected ? threadEl : null, { block: 'center' });
     // Flash the badge so the user sees where they landed.
     const badge = threadEl.querySelector('.grdc-thread-badge') || threadEl;
     badge.classList.add('grdc-thread-flash');
@@ -4570,7 +4816,7 @@
       // would still return the previous file and the counter would render
       // relative to that. The caller knows the intended file; use it.
       updateSidebarCount(filePath);
-      threadCards[threadIdx].scrollIntoView({ block: 'nearest' });
+      revealSidebarCard(threadCards[threadIdx]);
     } else {
       // File has no threads, but the user's intent is still "I'm now on
       // this file" — re-render the counter as `0/0 (T)` (or greyed) so
@@ -4596,7 +4842,7 @@
     if (changeIdx >= 0) {
       changesCurrentIdx = changeIdx;
       updateChangesCount(sidebar, filePath);
-      changeCards[changeIdx].scrollIntoView({ block: 'nearest' });
+      revealSidebarCard(changeCards[changeIdx]);
     } else {
       updateChangesCount(sidebar, filePath);
     }
@@ -4795,7 +5041,7 @@
           changesCurrentIdx = idx;
         }
         cards[idx].click();
-        cards[idx].scrollIntoView({ block: 'nearest' });
+        revealSidebarCard(cards[idx]);
         return;
       }
       console.log(`[GRDC] Header icon → ${listKind}: current file ${path} has no items, falling back to global next`);
@@ -5083,24 +5329,14 @@
     // Keep the active card visible in the Changes list (mirrors sidebarJump).
     const cards = sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card');
     if (cards[changesCurrentIdx]) {
-      cards[changesCurrentIdx].scrollIntoView({ block: 'nearest' });
+      revealSidebarCard(cards[changesCurrentIdx]);
     }
   }
 
   function scrollToChange(blockEl) {
     if (!blockEl) return;
-    // Any explicit "jump to a change" — whether from a Changes-card click,
-    // `[` / `]` keyboard nav, or jump-to-first/last — triggers a smooth
-    // scroll. While that scroll animates, the Outline IntersectionObserver
-    // would otherwise see the *previous* file's heading topmost and yank
-    // the sidebar selection back. Suppress scroll-follow for the duration
-    // of the animation. See the comment on `scrollFollowSuppressedUntil`.
-    scrollFollowSuppressedUntil = Date.now() + 1500;
-    // Also pin the Outline highlight so it doesn't snap back to the
-    // previous heading mid-animation. See `outlineHighlightPinUntil`.
-    outlineHighlightPinUntil = Date.now() + 1500;
-    // Use the same sticky-offset-aware scroll the Outline tab uses so the
-    // change doesn't land under GitHub's sticky file header.
+    // Use the same distance-aware semantic navigation as Outline so lazy
+    // layout changes cannot leave the change above or below the viewport.
     if (typeof scrollToWithStickyOffset === 'function') {
       scrollToWithStickyOffset(blockEl);
     } else {
@@ -5121,6 +5357,27 @@
   // Skipped when the user is typing into any input / textarea /
   // contenteditable. Bound once at script load so it survives re-inits.
   document.addEventListener('keydown', (e) => {
+    const renderOverlay = document.querySelector('.grdc-render-overlay');
+    if (renderOverlay) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        cancelActiveRenderSweep();
+        return;
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        renderOverlay.querySelector('.grdc-render-overlay-cancel')?.focus();
+        return;
+      }
+      const cancelButton = e.target.closest?.('.grdc-render-overlay-cancel');
+      if (cancelButton && (e.key === 'Enter' || e.key === ' ')) return;
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+      return;
+    }
     // Ignore when typing into any input/textarea/contenteditable.
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
@@ -5140,10 +5397,9 @@
       toggleSidebarCollapsed();
       return;
     }
-    // `b` — "book" / show Outline. Mirrors clicking the header book
-    // button: expand the panel (if collapsed), render all .md files,
-    // then switch to the Outline tab. Idempotent: pressing `b` again
-    // while already on Outline does the render-check and stays put.
+    // `b` — "book" / prepare Outline. Mirrors clicking the header book
+    // button: preserve the panel's collapsed state, render all .md files,
+    // then select the Outline tab. Idempotent when repeated.
     if (e.key === 'b' && !e.shiftKey) {
       const sidebar = document.querySelector('.grdc-sidebar');
       if (!sidebar) return;
@@ -5205,7 +5461,7 @@
         scrollToChange(blocks[0]);
         updateChangesCount(sidebar);
         const cards = sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card');
-        if (cards[0]) cards[0].scrollIntoView({ block: 'nearest' });
+        revealSidebarCard(cards[0]);
         return;
       }
     }
@@ -5219,7 +5475,7 @@
         scrollToChange(blocks[last]);
         updateChangesCount(sidebar);
         const cards = sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card');
-        if (cards[last]) cards[last].scrollIntoView({ block: 'nearest' });
+        revealSidebarCard(cards[last]);
         return;
       }
     }
@@ -5245,14 +5501,14 @@
         e.preventDefault();
         sidebarCurrentIdx = 0;
         cards[0].click();
-        cards[0].scrollIntoView({ block: 'nearest' });
+        revealSidebarCard(cards[0]);
         return;
       case 'l':
         // Last thread.
         e.preventDefault();
         sidebarCurrentIdx = cards.length - 1;
         cards[cards.length - 1].click();
-        cards[cards.length - 1].scrollIntoView({ block: 'nearest' });
+        revealSidebarCard(cards[cards.length - 1]);
         return;
     }
   }, true);
@@ -5280,9 +5536,7 @@
   // which is hidden. Shared by the TOC-anchor jump and the Outline tab.
   function scrollToWithStickyOffset(el) {
     if (!el) return;
-    const STICKY_OFFSET = 120;
-    const top = window.scrollY + el.getBoundingClientRect().top - STICKY_OFFSET;
-    window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    navigateToPageTarget(() => el.isConnected ? el : null);
   }
 
   // Center a row inside the Outline pane's own scroll container. Manual
@@ -5517,6 +5771,7 @@
           if (node.classList?.contains('markdown-body') ||
               node.classList?.contains('rich-diff-level-one') ||
               node.querySelector?.('.prose-diff .markdown-body')) {
+            if (activeRenderSweep) continue;
             scheduleReinit();
             return;
           }

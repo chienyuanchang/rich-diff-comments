@@ -1,4 +1,5 @@
 ---
+name: rdc-feature-dev
 description: Iterative feature-development loop for the GitHub and Azure DevOps Markdown PR Comments browser extensions. Use when starting a new feature or bug fix — defines one shared outcome and both target statuses in FEATURES.md, records only necessary target differences, then builds, tests, and updates docs.
 ---
 
@@ -88,8 +89,42 @@ When the feature is working, before declaring done:
 1. **Identify pure logic** that was inlined in `content.js`. If it has clear inputs/outputs and no DOM/fetch, lift it to `src/lib/<area>.js`.
 2. **Add unit tests** in `tests/<area>.test.js` using Node's built-in `node:test`. Cover happy paths, boundaries, defensive null/invalid input. Aim for 5–15 tests per helper.
 3. **Register new lib files** in every target manifest that consumes them. Run `.\scripts\dev-sync.ps1 -Target github` and/or `-Target ado` so the browser dev-load folders receive the shared source. (`package.ps1` and `preflight.ps1` synchronize automatically.)
-4. **Re-run all tests:** `node --test (Get-ChildItem tests/*.test.js)` should be 100% green.
+4. **Re-run all tests:** use the captured Node and browser commands below; both the exit sentinel and complete summary must be green.
 5. **Re-run manual tests** against the affected target's developer notes and release checklist.
+
+### Capturing test results on Windows
+
+VS Code terminal execution can return partial output when its idle detector fires before the child process exits. Persistent terminals can also lose their expected working directory or `PATH`. Never infer success or failure from a truncated test list, and do not start a duplicate suite just because streamed output stopped.
+
+Use these known-good commands from any working directory. Each removes stale artifacts, changes to the repository explicitly, invokes the portable runtime explicitly, redirects the full output, and writes the real exit code only after the child exits.
+
+Node suite:
+
+```powershell
+& 'C:\Windows\System32\cmd.exe' /v:on /d /c "del /q %TEMP%\grdc-node-test-result.txt %TEMP%\grdc-node-test-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & set PATH=%LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64;%PATH% & npm.cmd test > %TEMP%\grdc-node-test-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-node-test-exit.txt"
+```
+
+Focused GitHub E2E (replace the basename only; do not pass `tests/e2e/...` through `cmd.exe`):
+
+```powershell
+& 'C:\Windows\System32\cmd.exe' /v:on /d /c "del /q %TEMP%\grdc-focused-e2e-result.txt %TEMP%\grdc-focused-e2e-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe .\node_modules\@playwright\test\cli.js test --config=playwright.config.js bulkRenderSweep.spec.js > %TEMP%\grdc-focused-e2e-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-focused-e2e-exit.txt"
+```
+
+Full GitHub E2E:
+
+```powershell
+& 'C:\Windows\System32\cmd.exe' /v:on /d /c "del /q %TEMP%\grdc-github-e2e-result.txt %TEMP%\grdc-github-e2e-exit.txt 2>nul & cd /d C:\Local\local_repos\rich-diff-comments & %LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe .\node_modules\@playwright\test\cli.js test --config=playwright.config.js > %TEMP%\grdc-github-e2e-result.txt 2>&1 & echo !ERRORLEVEL! > %TEMP%\grdc-github-e2e-exit.txt"
+```
+
+If the terminal tool returns early, continue other work instead of polling or rerunning. The authoritative check does not execute another shell command: use the editor's `read_file` tool to read the exit sentinel directly, then read the result file's final summary lines. For current suite sizes, the useful result ranges are approximately lines 450–500 for Node and 35–70 for GitHub E2E. If a range is empty, read an earlier range; do not rerun the suite.
+
+The bundled helper is an optional convenience only when executable resolution is healthy:
+
+```powershell
+& 'C:\Windows\System32\cmd.exe' /d /c "%LOCALAPPDATA%\nodejs-portable\node-v24.18.0-win-x64\node.exe C:\Local\local_repos\rich-diff-comments\.github\skills\rdc-feature-dev\scripts\summarize-test-result.js %TEMP%\grdc-github-e2e-result.txt %TEMP%\grdc-github-e2e-exit.txt"
+```
+
+An absent exit sentinel means the capture is still running: do not rerun or poll. Success requires sentinel value `0` plus the complete result-file summary. If the summary helper reports `CAPTURE_RUNNING`, or any terminal/runner rejects an executable that is known to exist, fall back to `read_file`; that is an execution-environment failure, not a test failure. Use target-specific filenames and `playwright.ado.config.js` for ADO. For Git operations, use `git -C C:\Local\local_repos\rich-diff-comments ...` instead of relying on `Set-Location` or the terminal's current directory.
 
 The goal isn't 100% coverage — it's "every algorithm a future change might break has a regression test."
 
@@ -107,7 +142,7 @@ After the feature ships:
   - Add newly captured payloads, DOM discoveries, or "I thought X but actually Y" entries to the affected target only.
 - [CHANGELOG.md](../../../CHANGELOG.md) or [CHANGELOG_ADO.md](../../../CHANGELOG_ADO.md):
   - Append to `[Unreleased]` under `### Added` / `### Fixed`.
-  - **User-facing language only.** Write each bullet like a feature announcement to someone who has never opened the source. No file/function/class names, no CSS selectors, no DOM-shape detail, no specific line numbers from a bug repro file. Stick to *what the user sees, when they'd notice it, why it's better.* Full rules and examples in [rdc-publish-check → CHANGELOG / release-notes writing rules](../rdc-publish-check/SKILL.md#changelog--release-notes-writing-rules).
+  - **User-facing language only.** Write each bullet like a feature announcement to someone who has never opened the source. No file/function/class names, no CSS selectors, no DOM-shape detail, no specific line numbers from a bug repro file. Stick to *what the user sees, when they'd notice it, why it's better.* See the CHANGELOG / release-notes writing rules in [rdc-publish-check](../rdc-publish-check/SKILL.md) for full rules and examples.
 
 Then commit, push, and the user moves to the next iteration.
 

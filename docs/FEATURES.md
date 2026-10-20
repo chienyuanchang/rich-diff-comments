@@ -48,10 +48,16 @@ The targets version and release independently. These lists summarize the intende
 ### Azure DevOps v1.5.0
 
 - [ ] **Remove full sidebar dismissal and its restore launcher** — keep the sidebar's discoverable collapse/expand behavior instead of allowing it to enter a fully hidden state. Preserve the existing keyboard toggle and saved layout preferences.
+- [ ] **Keep Outline preparation from expanding a collapsed sidebar** — let the book action select and prepare Outline in the background while preserving the reviewer's collapsed layout; keep the `b` shortcut's existing expand-and-show behavior.
+- [ ] **Show non-blocking Preview preparation progress** — keep the page usable while the collapsed or expanded sidebar shows stable, visibly active feedback for opening Preview, preparing review data, or finding files.
+
+### Azure DevOps v1.6.0
+
 - [ ] **Collapse or expand all inline conversations** — add a Threads-toolbar toggle scoped to the current Markdown Preview while keeping comment badges and markers visible.
 
 ### GitHub v1.14.0
 
+- [ ] **Switch the next Markdown file to rich diff in large pull requests** — replace passive one-file guidance with a sequential action that opens the next Markdown file in PR order and activates its rich diff without starting the unsupported PR-wide render sweep.
 - [ ] **Collapse or expand all inline conversations** — add a Threads-toolbar toggle across all currently rendered Markdown files while keeping comment badges and markers visible.
 
 ### GitHub v1.13.0
@@ -179,7 +185,7 @@ The targets version and release independently. These lists summarize the intende
 - [ ] **P2 — Collapse or expand all inline conversations**
   - **Outcome:** reviewers can return a comment-heavy rendered document to a compact reading view in one action, then reopen every conversation when needed.
   - **GitHub:** 📋 Targeted for GitHub v1.14.0. Apply the action across all currently rendered Markdown files in the pull request.
-  - **ADO:** 📋 Targeted for ADO v1.5.0. Apply the action to the current Markdown Preview, matching ADO's one-file-at-a-time review surface.
+  - **ADO:** 📋 Targeted for ADO v1.6.0. Apply the action to the current Markdown Preview, matching ADO's one-file-at-a-time review surface.
   - **Acceptance:** place a **Collapse all conversations** / **Expand all conversations** toggle in the Threads toolbar; collapse only conversation bodies while keeping badges, table-row markers, code-line markers, and the Threads list visible. Do not change resolution state, the unresolved filter, or saved sidebar preferences.
 
 - [ ] **P3 — Expose host-authorized moderation actions only when safely supported**
@@ -214,11 +220,23 @@ The targets version and release independently. These lists summarize the intende
 
 ### Navigation and focus
 
+- [ ] **P1 — Preserve sidebar state and show active feedback while preparing rendered views**
+  - **Outcome:** reviewers can prepare the rendered review surface without losing their compact sidebar layout and can see that longer setup phases are still active.
+  - **GitHub:** ✅ GitHub v1.13.0. The book action prepares Outline without expanding a collapsed sidebar, and long rich-diff finishing phases show continuous activity.
+  - **ADO:** 📋 Targeted for ADO v1.5.0. A book click preserves the collapsed sidebar while selecting and preparing Outline; the `b` shortcut retains its existing expand-and-show behavior. Preparation remains non-blocking and reports progress within both collapsed and expanded sidebar layouts.
+  - **Acceptance:** for ADO, do not add a modal overlay or block page interaction during Preview preparation. Show compact animated activity in the collapsed sidebar and fixed-width animated feedback for `Opening Preview…`, `Preparing…`, and `Finding files…` in the expanded sidebar, keeping visible status text stable for assistive technology. Stop the animation at ready or error states. If the book action starts while the sidebar is collapsed, keep it collapsed throughout preparation and reveal the prepared Outline when the reviewer expands it later.
+
 - [x] **P1 — Make bulk rich-diff rendering observable and cancellable**
   - **Outcome:** reviewers can activate every eligible Markdown file with clear progress, less waiting, and a way to stop without leaving the page in an uncertain state.
   - **GitHub:** ✅ GitHub v1.13.0. Uses an adaptive mount-and-render sweep that advances after GitHub exposes new file controls, reports real progress such as `Rendering 4 of 7 Markdown files`, stops early when the expected files are accounted for, and supports cancellation. GitHub's virtualized large-PR mode retains one-file guidance because it discards offscreen rendered state.
   - **ADO:** — Preview activates one selected Markdown file without a scroll-based render sweep.
-  - **Acceptance:** continue visiting intermediate viewports so lazy-mounted files are not skipped; combine animation-frame scheduling with DOM observation and a bounded timeout rather than relying on DOM silence alone. Treat the loading surface as modal: block pointer actions and extension navigation shortcuts while rendering, with Cancel and `Escape` as the only exits. Cancellation must stop further scrolling and clicks, remove loading UI, preserve files already rendered, and leave the sidebar consistent with the visible page. After activated rich content settles into layout, explicitly refresh review data so Threads and comment markers load even though sweep-time DOM mutations are intentionally suppressed; then restore the same file and relative reading position even when rich diff changes preceding content height. The book action selects Outline without overriding the reviewer's collapsed sidebar preference; expanding later reveals the prepared Outline. In large-PR mode, never start the scroll sweep; retain explanatory one-file guidance instead of showing an action whose rendered state GitHub will discard.
+  - **Acceptance:** continue visiting intermediate viewports so lazy-mounted files are not skipped; combine animation-frame scheduling with DOM observation and a bounded timeout rather than relying on DOM silence alone. Treat the loading surface as modal: block pointer actions and extension navigation shortcuts while rendering, with Cancel and `Escape` as the only exits. Cancellation must stop further scrolling and clicks, remove loading UI, preserve files already rendered, and leave the sidebar consistent with the visible page. After activated rich content settles into layout, explicitly refresh review data so Threads and comment markers load even though sweep-time DOM mutations are intentionally suppressed; then restore the same file and relative reading position even when rich diff changes preceding content height. The book action selects Outline without overriding the reviewer's collapsed sidebar preference; expanding later reveals the prepared Outline. In large-PR mode, never start the scroll sweep; retain explanatory one-file guidance instead of showing a PR-wide action whose rendered state GitHub will discard.
+
+- [ ] **P1 — Switch the next Markdown file to rich diff in virtualized large pull requests**
+  - **Outcome:** reviewers of a large pull request can continue to the next Markdown file in one action instead of manually finding the file and switching its view.
+  - **GitHub:** 📋 Targeted for GitHub v1.14.0. Available only when GitHub's virtualized large-PR mode prevents the PR-wide render sweep.
+  - **ADO:** — Preview already follows the selected file and does not have GitHub's per-file rich-diff mode.
+  - **Acceptance:** replace passive large-PR guidance with a **Switch next Markdown file to rich diff** action. Use the ordered route file inventory to choose the next Markdown file after the current file, navigate through GitHub's native file destination, wait boundedly for that file to mount, and activate only its rich-diff toggle. Keep the page interactive, show progress in the initiating sidebar control, preserve the sidebar's collapsed state and selected tab, and refresh Threads, Changes, Outline, and comment markers after rich content appears. A newer navigation cancels an older pending switch. Do not wrap from the last Markdown file to the first; show that no later Markdown files remain. If navigation, mounting, or activation fails, leave the action retryable and do not start a page-wide scroll sweep. Validate the native destination against a live virtualized pull request before shipping.
 
 - [x] **P1 — Make sidebar navigation reach its target in one action**
   - **Outcome:** selecting a distant thread, change, or heading lands on that target without requiring repeated clicks when intervening files change height during navigation.

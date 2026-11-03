@@ -4,6 +4,10 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+### Added
+
+- **Hide removed content for easier reading in rich diff.** Use the crossed-eye button in the sidebar to hide deletions while keeping added and unchanged content visible, then switch back to the full diff whenever needed. Existing conversations remain accessible in Threads.
+
 ## [1.13.0] — 2026-10-16
 
 ### Changed

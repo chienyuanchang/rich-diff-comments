@@ -912,6 +912,11 @@ li.grdc-hoverable .grdc-comment-btn {
   overflow: hidden;
 }
 
+.prose-diff .grdc-removed-hidden,
+.prose-diff.grdc-removed-hidden {
+  display: none !important;
+}
+
 /* ─── Threads sidebar (v1) ────────────────────────────────────────────────
    Right-docked floating panel listing all existing threads on the page.
    Click a card to jump to that thread. Header carries prev/next nav. */
@@ -1018,10 +1023,10 @@ li.grdc-hoverable .grdc-comment-btn {
    * to a second row would defeat the v2 design's clean horizontal
    * navigation bar. */
   flex-wrap: nowrap;
-  /* Compact v2 spec: 8px between groups (the spec says 16px but that's
-   * too generous for our floating-sidebar footprint). Tighter local
+  /* Compact spacing keeps the removal toggle reachable at minimum width.
+   * Tighter local
    * gaps inside each cluster set per-element below. */
-  gap: 8px;
+  gap: 4px;
   /* Compact horizontal padding. Spec says 16px; we use 8px to fit more
    * content into a reasonable sidebar width. The funnel button adds its
    * own `margin-right` (see `.grdc-sidebar-header-filter` below) so it
@@ -1074,6 +1079,14 @@ li.grdc-hoverable .grdc-comment-btn {
 .grdc-sidebar-header button:active {
   /* Active / pressed state per v2 spec: slightly stronger background. */
   background: rgba(255, 255, 255, 0.2);
+}
+.grdc-sidebar-header .grdc-sidebar-hide-removed {
+  padding: 3px;
+  flex-shrink: 0;
+}
+.grdc-sidebar-hide-removed[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: currentColor;
 }
 .grdc-sidebar-header button svg { display: block; }
 /* 1×22px vertical separator (option B — ~55% of the 40px bar height,

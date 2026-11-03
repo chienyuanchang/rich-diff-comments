@@ -52,6 +52,7 @@
     attributeThreadsToHeadings,
     collapseHeadingsAtLevel,
     findChangeBlocks,
+    findRemovedContent,
     classifyChangeKind,
     buildChangeSnippet,
     nextChangeIndex,
@@ -77,6 +78,9 @@
 
   let prInfo = null; // { owner, repo, pullNumber, commitId }
   let fileLineMap = new Map(); // Map<element, { path, line }>
+  let hideRemovedContent = false;
+  const threadReviewAnchors = new WeakMap();
+  const revealedRemovedContent = new Set();
 
   // ── URL Parsing ────────────────────────────────────────────────────────────
 
@@ -839,6 +843,8 @@
   // requests. Never let one PR's route payload, source files, comments, or
   // mention IDs leak into the next PR's review surface.
   function resetPrScopedState() {
+    hideRemovedContent = false;
+    clearRemovedContentVisibility();
     routeLifecycleGeneration++;
     routeData = null;
     pathDigestMap.clear();
@@ -2845,6 +2851,7 @@
     const headDbId = head.headDbId;
 
     const thread = document.createElement('div');
+    threadReviewAnchors.set(thread, element);
     thread.className = 'grdc-existing-thread' +
       (isResolved ? ' grdc-thread-resolved' : '') +
       (isOutdated ? ' grdc-thread-outdated' : '');
@@ -3392,6 +3399,49 @@
   }
 
   // ── UI: Threads sidebar ────────────────────────────────────────────────────
+
+  function clearRemovedContentVisibility() {
+    document.querySelectorAll('.grdc-removed-hidden').forEach((element) => {
+      element.classList.remove('grdc-removed-hidden');
+    });
+    revealedRemovedContent.clear();
+  }
+
+  function applyRemovedContentVisibility() {
+    if (!hideRemovedContent) return;
+    document.querySelectorAll('.grdc-removed-hidden').forEach((element) => {
+      element.classList.remove('grdc-removed-hidden');
+    });
+    document.querySelectorAll('.prose-diff').forEach((root) => {
+      const body = root.querySelector('.markdown-body') || root;
+      const container = root.closest('div[id^="diff-"], [data-tagsearch-path], .file[data-path]');
+      const path = container ? getFilePath(container) : '';
+      const removed = pathChangeTypeMap.get(path) === 'REMOVED'
+        ? [body]
+        : findRemovedContent(body);
+      removed.forEach((element) => {
+        element.classList.toggle('grdc-removed-hidden', !revealedRemovedContent.has(element));
+      });
+    });
+  }
+
+  function revealRemovedThreadTarget(thread) {
+    if (!hideRemovedContent) return;
+    revealedRemovedContent.clear();
+    applyRemovedContentVisibility();
+    const anchor = threadReviewAnchors.get(thread);
+    for (const target of [anchor, thread]) {
+      if (!target) continue;
+      const hidden = Array.from(target.querySelectorAll('.grdc-removed-hidden'));
+      for (let parent = target; parent && parent.matches('.prose-diff, .prose-diff *'); parent = parent.parentElement) {
+        if (parent.classList.contains('grdc-removed-hidden')) hidden.push(parent);
+      }
+      hidden.forEach((element) => {
+        element.classList.remove('grdc-removed-hidden');
+        revealedRemovedContent.add(element);
+      });
+    }
+  }
   //
   // A right-docked floating panel listing every existing thread in DOM order.
   // Each card scrolls to its thread on click. Header carries prev/next nav
@@ -3988,6 +4038,12 @@
               <path class="grdc-icon-solid" fill="currentColor" d="M.75 3A.75.75 0 0 1 1.5 2.25h13a.75.75 0 0 1 .6 1.2L10 10.25v3.25a.75.75 0 0 1-1.2.6l-2.5-1.88a.75.75 0 0 1-.3-.6V10.25L.9 3.45A.75.75 0 0 1 .75 3Z"/>
             </svg>
           </button>
+          <button type="button" class="grdc-sidebar-hide-removed" title="Hide removed content" aria-label="Hide removed content" aria-pressed="false">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M1 8s2.5-4 7-4 7 4 7 4-2.5 4-7 4-7-4-7-4Zm1-6 12 12"/>
+              <circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/>
+            </svg>
+          </button>
         </div>
         <div class="grdc-sidebar-tabs" role="tablist">
           <button class="grdc-sidebar-tab grdc-sidebar-tab-active" data-grdc-tab="changes" role="tab" aria-selected="true" title="Changes (1)">Changes</button>
@@ -4025,6 +4081,14 @@
       sidebar.querySelector('.grdc-sidebar-collapse').addEventListener('click', () => {
         const isCollapsed = sidebar.classList.toggle('grdc-sidebar-collapsed');
         try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, isCollapsed ? '1' : '0'); } catch (_) {}
+      });
+      sidebar.querySelector('.grdc-sidebar-hide-removed').addEventListener('click', (event) => {
+        hideRemovedContent = !hideRemovedContent;
+        clearRemovedContentVisibility();
+        applyRemovedContentVisibility();
+        event.currentTarget.setAttribute('aria-pressed', String(hideRemovedContent));
+        event.currentTarget.title = hideRemovedContent ? 'Show removed content' : 'Hide removed content';
+        buildChangesPane(sidebar);
       });
       sidebar.querySelector('.grdc-sidebar-prev').addEventListener('click', () => sidebarJump(-1));
       sidebar.querySelector('.grdc-sidebar-next').addEventListener('click', () => sidebarJump(+1));
@@ -4120,6 +4184,9 @@
     if (filterCb.checked !== unresolvedOnly) filterCb.checked = unresolvedOnly;
     const headerFilter = sidebar.querySelector('.grdc-sidebar-header-filter');
     if (headerFilter) headerFilter.setAttribute('aria-pressed', unresolvedOnly ? 'true' : 'false');
+    const hideRemovedButton = sidebar.querySelector('.grdc-sidebar-hide-removed');
+    hideRemovedButton.setAttribute('aria-pressed', String(hideRemovedContent));
+    hideRemovedButton.title = hideRemovedContent ? 'Show removed content' : 'Hide removed content';
 
     // When Threads is empty but Outline still has content, force-switch
     // to the Outline tab. Also rebuild the outline pane since its content
@@ -4792,6 +4859,7 @@
   }
 
   function scrollToThread(threadEl) {
+    revealRemovedThreadTarget(threadEl);
     // The shared navigator pins scroll-follow and corrects the same target
     // after GitHub updates lazy file heights.
     navigateToPageTarget(() => threadEl.isConnected ? threadEl : null, { block: 'center' });
@@ -5101,6 +5169,7 @@
       const fileContainer = root.closest && root.closest('div[id^="diff-"], [data-tagsearch-path], .file[data-path]');
       const path = fileContainer ? (function() { try { return getFilePath(fileContainer) || ''; } catch (_) { return ''; } })() : '';
       const changeType = path && pathChangeTypeMap.get(path);
+      if (hideRemovedContent && changeType === 'REMOVED') return;
       if (changeType === 'ADDED' || changeType === 'REMOVED') {
         // One synthetic block per whole-file change. The block IS the
         // file's `.prose-diff` root; the tag tells the renderer to use
@@ -5111,7 +5180,11 @@
         return;
       }
       const found = findChangeBlocks(root);
-      for (const b of found) blocks.push(b);
+      for (const b of found) {
+        if (hideRemovedContent && (classifyChangeKind(b) === 'removed' ||
+            b.closest('.grdc-removed-hidden'))) continue;
+        blocks.push(b);
+      }
     });
 
     // Tab visibility + empty state:
@@ -5125,9 +5198,19 @@
     //     metadata-only). Hide the tab so we don't show a stale CTA on a
     //     PR that's already rendered. Mirrors the original behaviour.
     if (blocks.length === 0) {
+      sidebar._grdcChangeBlocks = [];
+      changesCurrentIdx = 0;
       const visibleRootCount = Array.from(roots).filter(
         (r) => r.offsetParent || r === document.body
       ).length;
+
+      if (hideRemovedContent && visibleRootCount > 0) {
+        tab.hidden = false;
+        if (headerCluster) headerCluster.hidden = false;
+        list.innerHTML = '<div class="grdc-sidebar-empty"><p class="grdc-sidebar-empty-msg">No added or modified content to navigate. Show removed content to review deletions.</p></div>';
+        updateChangesCount(sidebar);
+        return;
+      }
 
       if (visibleRootCount === 0) {
         // Case A: actionable empty state.
@@ -5689,6 +5772,7 @@
     // Clean up prior renders BEFORE reading any block textContent. Without
     // this, re-init on a page where we've already injected `▾` toggles and
     // `+` buttons feeds polluted text into the matcher.
+    clearRemovedContentVisibility();
     clearInjectedDom();
 
     // Fetch route data first (builds pathDigest map + caches for comments)
@@ -5713,6 +5797,7 @@
     if (initGeneration !== routeLifecycleGeneration) return;
     console.log(`[GRDC] Fetched ${existingComments.length} existing comments`);
     renderExistingComments();
+    applyRemovedContentVisibility();
     buildThreadsSidebar();
 
     // If the page loaded with a heading hash (e.g. user clicked a TOC link
@@ -5762,6 +5847,7 @@
 
   function observe() {
     const observer = new MutationObserver((mutations) => {
+      if (hideRemovedContent) applyRemovedContentVisibility();
       for (const m of mutations) {
         for (const node of m.addedNodes) {
           if (node.nodeType !== 1) continue;
@@ -5776,8 +5862,11 @@
               node.classList?.contains('grdc-comment-edit') ||
               node.classList?.contains('grdc-sidebar')) continue;
           if (node.classList?.contains('markdown-body') ||
+              node.classList?.contains('prose-diff') ||
               node.classList?.contains('rich-diff-level-one') ||
-              node.querySelector?.('.prose-diff .markdown-body')) {
+              node.querySelector?.('.prose-diff .markdown-body') ||
+              (m.target.closest?.('.prose-diff') &&
+               !m.target.closest('.grdc-existing-thread, .grdc-comment-box, .grdc-reply-box, .grdc-comment-edit, .grdc-comment-btn, .grdc-collapse-toggle, .grdc-table-thread-marker, .grdc-code-line-thread-marker'))) {
             if (activeRenderSweep) continue;
             scheduleReinit();
             return;

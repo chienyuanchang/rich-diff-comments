@@ -4,6 +4,10 @@
 > Paste each section into the Edge Partner Center dashboard.
 > Dashboard: <https://partner.microsoft.com/dashboard/microsoftedge>
 
+## Unreleased listing notes (not submitted)
+
+- **Hide removed content for easier reading in rich diff.** Use the crossed-eye button in the sidebar to hide deletions while keeping added and unchanged content visible, then switch back to the full diff whenever needed. Existing conversations remain accessible in Threads.
+
 ## Submission notes (edit before submitting)
 
 v1.13.0 adds cancellable bulk rendering with live progress and makes long-distance sidebar and Table of Contents navigation more reliable. No new permissions or host permissions were added.
@@ -252,6 +256,5 @@ Includes all changes from v1.13.0, v1.12.0, and v1.11.0.
 - **Bulk rendering is offered only while another Markdown file still needs it.** Already-rendered files with no visible threads or changes now show an accurate empty state instead of a redundant action.
 
 <!-- End of submission copy. -->
-
 
 

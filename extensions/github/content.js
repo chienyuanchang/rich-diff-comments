@@ -2415,8 +2415,6 @@
         invalidateRouteData();
         const newComments = threadResponseToComments(result.data, info.path, lineToPost, startLineToPost);
         if (newComments.length) {
-          // For multi-line ranges, also tint every block in the range so the
-          // user gets the same visual treatment as existing range threads.
           // Anchor the badge at the START of the range. GitHub's source-diff
           // anchors at the end line, but in rich-diff there are no visible
           // line numbers — the badge needs to *introduce* the highlighted
@@ -2424,8 +2422,6 @@
           // whole tint band. `element` is the block the user clicked `+` on,
           // which for a drag-selected range is already the start block.
           renderThreadOnElement(element, newComments);
-          renderTableRowThreadMarkers();
-          renderCodeLineThreadMarkers();
           buildThreadsSidebar();
         }
         const success = document.createElement('div');
@@ -5858,33 +5854,32 @@
   }
 
   function observe() {
+    const reviewUiSelector = '.grdc-existing-thread, .grdc-comment-box, .grdc-comment-btn, ' +
+      '.grdc-table-thread-marker, .grdc-code-line-thread-marker, .grdc-collapse-toggle, ' +
+      '.grdc-reply-box, .grdc-comment-edit, .grdc-sidebar';
     const observer = new MutationObserver((mutations) => {
-      if (hideRemovedContent) applyRemovedContentVisibility();
+      let contentChanged = false;
+      let shouldReinit = false;
       for (const m of mutations) {
+        if (m.target.closest?.(reviewUiSelector)) continue;
+        const inRichDiff = !!m.target.closest?.('.prose-diff');
+        if (inRichDiff && Array.from(m.removedNodes).some(
+          (node) => node.nodeType !== 1 || !node.matches(reviewUiSelector)
+        )) contentChanged = true;
         for (const node of m.addedNodes) {
+          if (node.nodeType === 1 && node.matches(reviewUiSelector)) continue;
+          if (inRichDiff) contentChanged = true;
           if (node.nodeType !== 1) continue;
-          // Ignore our own renders to avoid feedback loop
-          if (node.classList?.contains('grdc-existing-thread') ||
-              node.classList?.contains('grdc-comment-box') ||
-              node.classList?.contains('grdc-comment-btn') ||
-              node.classList?.contains('grdc-table-thread-marker') ||
-              node.classList?.contains('grdc-code-line-thread-marker') ||
-              node.classList?.contains('grdc-collapse-toggle') ||
-              node.classList?.contains('grdc-reply-box') ||
-              node.classList?.contains('grdc-comment-edit') ||
-              node.classList?.contains('grdc-sidebar')) continue;
-          if (node.classList?.contains('markdown-body') ||
-              node.classList?.contains('prose-diff') ||
-              node.classList?.contains('rich-diff-level-one') ||
-              node.querySelector?.('.prose-diff .markdown-body') ||
-              (m.target.closest?.('.prose-diff') &&
-               !m.target.closest('.grdc-existing-thread, .grdc-comment-box, .grdc-reply-box, .grdc-comment-edit, .grdc-comment-btn, .grdc-collapse-toggle, .grdc-table-thread-marker, .grdc-code-line-thread-marker'))) {
-            if (activeRenderSweep) continue;
-            scheduleReinit();
-            return;
+          if (inRichDiff ||
+              node.matches('.markdown-body, .prose-diff, .rich-diff-level-one') ||
+              node.querySelector('.prose-diff .markdown-body')) {
+            contentChanged = true;
+            shouldReinit = true;
           }
         }
       }
+      if (hideRemovedContent && contentChanged) applyRemovedContentVisibility();
+      if (shouldReinit && !activeRenderSweep) scheduleReinit();
     });
     observer.observe(document.body, { childList: true, subtree: true });
 

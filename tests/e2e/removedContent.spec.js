@@ -18,6 +18,7 @@ async function setup(page, { deletionsOnly = false } = {}) {
     rawSource: { 'docs/visibility.md': source, 'docs/deleted.md': '' },
     routeData: {
       headOid: 'a'.repeat(40),
+      comparison: { headOid: 'a'.repeat(40), baseOid: 'b'.repeat(40) },
       diffSummaries: [
         { path: 'docs/visibility.md', pathDigest: 'visibility', changeType: 'MODIFIED', markersMap: { R3: { threads: [{ id: '201' }] } } },
         { path: 'docs/deleted.md', pathDigest: 'deleted', changeType: 'REMOVED', markersMap: {} },
@@ -222,6 +223,77 @@ test('toggling preserves an open comment draft and its source-line target', asyn
   await toggleRemovedContent(page);
   await expect(draft).toHaveValue('Draft stays intact.');
   await expect(line).toHaveValue(targetLine);
+});
+
+test('posting a new comment completes and refreshes Threads while removed content is hidden', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await setup(page);
+  let posted = 0;
+  await page.route('**/page_data/create_review_comment', async (route) => {
+    posted++;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ thread: {
+        id: '901',
+        commentsData: { comments: [{
+          databaseId: 9001,
+          body: 'New comment stays visible.',
+          author: { login: 'reviewer' },
+          createdAt: '2026-11-03T19:00:00Z',
+        }] },
+      } }),
+    });
+  });
+  await toggleRemovedContent(page);
+  await page.locator('#mixed').hover();
+  await page.locator('#mixed > .grdc-comment-btn').click();
+  const box = page.locator('.grdc-comment-box');
+  await box.locator('textarea').fill('New comment stays visible.');
+  await box.getByRole('button', { name: 'Comment', exact: true }).click();
+  await expect(box.locator('.grdc-success')).toHaveText('✓ Comment posted');
+  await expect(page.locator('.grdc-existing-thread[data-grdc-thread-id="901"]')).toContainText('New comment stays visible.');
+  await expect(page.locator('.grdc-sidebar-list .grdc-sidebar-card')).toHaveCount(2);
+  await expect(box).toHaveCount(0);
+  await expect(page.locator('#old-block')).toBeHidden();
+  expect(posted).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test('removal visibility ignores unrelated host and review UI updates but follows document changes', async ({ page }) => {
+  await setup(page);
+  await toggleRemovedContent(page);
+  await expect(page.locator('#old-block')).toBeHidden();
+  const scans = await page.evaluate(async () => {
+    let count = 0;
+    const original = document.querySelectorAll;
+    document.querySelectorAll = function (selector) {
+      if (selector === '.grdc-removed-hidden') count++;
+      return original.call(this, selector);
+    };
+    try {
+      for (const target of [
+        document.body,
+        document.querySelector('.grdc-sidebar-header'),
+        document.querySelector('.grdc-thread-body'),
+      ]) {
+        target.appendChild(document.createElement('span'));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      const unrelated = count;
+      Array.from(document.getElementById('only-deletion').childNodes)
+        .filter((node) => node.nodeType === Node.TEXT_NODE)
+        .forEach((node) => node.remove());
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return { unrelated, documentChanges: count - unrelated };
+    } finally {
+      document.querySelectorAll = original;
+    }
+  });
+  expect(scans.unrelated).toBe(0);
+  expect(scans.documentChanges).toBe(1);
+  await expect(page.locator('#only-deletion')).toBeHidden();
 });
 
 test('deletion-only views clear cached Changes stops instead of navigating hidden content', async ({ page }) => {

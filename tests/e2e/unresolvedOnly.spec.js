@@ -92,7 +92,7 @@ async function setViewOption(page, name, checked) {
   await page.keyboard.press('Escape');
 }
 
-test('Unresolved only hides resolved inline threads, range highlights, and resolved-only table markers', async ({ page }) => {
+test('Show resolved comments controls inline threads, range highlights, and resolved-only table markers', async ({ page }) => {
   await setupReview(page);
   await openThreads(page);
   const dataMarker = page.locator('.markdown-body table').last().locator('tbody .grdc-table-thread-marker');
@@ -224,7 +224,7 @@ test('a failed resolve leaves the unresolved thread visible with explicit error 
   await expect(page.locator('.grdc-sidebar-list .grdc-sidebar-card')).toHaveCount(2);
 });
 
-test('filtering preserves drafts and remains independent of Hide removed content', async ({ page }) => {
+test('Show resolved comments preserves drafts and remains independent of Show removed content', async ({ page }) => {
   await setupReview(page);
   await openThreads(page);
   await thread(page, '202').getByRole('button', { name: 'Reply', exact: true }).click();

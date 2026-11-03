@@ -27,6 +27,7 @@ The revision history at the bottom tracks each round of review feedback.
 - [Code Samples](#code-samples)
 - [Nested Lists](#nested-lists)
 - [HTML / Edge Cases](#html--edge-cases)
+- [Authored Strikethrough Visibility](#authored-strikethrough-visibility)
 - [References](#references)
 - [Change Log](#change-log)
 
@@ -34,7 +35,7 @@ The revision history at the bottom tracks each round of review feedback.
 
 ## Overview
 
-This is the **overview paragraph**. It contains _emphasis_, `inline code`, and a [link to the docs](https://example.com/docs). The goal is to have several paragraphs in a row so the text-matcher has to handle ordering across small edits.
+This is the **overview paragraph**. It contains _emphasis_, `inline code`, and a [link to the docs](https://example.com/docs). The goal is to have several paragraphs in a row so the text-matcher has to handle ordering across small edits. The ~~retired API~~ is still documented here for migration guidance; this strikethrough is authored content, not a request to remove these words.
 
 A second paragraph follows directly. Reviewers should be able to:
 
@@ -435,6 +436,44 @@ A horizontal rule:
 ---
 
 A paragraph after the horizontal rule.
+
+---
+
+## Authored Strikethrough Visibility
+
+These examples intentionally remain in the latest document. A strikethrough
+describes their status; it does not mean this PR deleted their text.
+
+Use the ~~deprecated endpoint~~ only for migration; use the **current endpoint** for new clients.
+
+~~This entire paragraph remains part of the document.~~
+
+- Keep ~~legacy configuration~~ visible as migration context.
+- Keep the replacement configuration visible too.
+
+| Status | Guidance |
+|--------|----------|
+| ~~Deprecated~~ | Retain this status text when reading the updated document. |
+| Current | Prefer the replacement endpoint. |
+
+Raw HTML variants: <del>authored HTML del text</del> and <s>authored HTML s text</s>.
+
+Literal syntax in code must remain visible: `~~not rendered as strikethrough~~`.
+
+### Manual check
+
+1. Open this PR in GitHub's rendered rich-diff view with the extension enabled.
+2. With **View options > Show removed content** checked, confirm all examples are visible.
+3. Uncheck **Show removed content**. Every authored example above, including the
+   struck-through words in Overview, must remain visible. Only actual PR deletions
+   elsewhere in the diff should disappear.
+4. Check the option again. All content should return without duplication.
+5. If an authored example disappears, capture its rendered HTML and surrounding
+   rich-diff wrappers with the option checked. Compare these with a real deletion.
+
+This section and the Overview sentence are additions in this PR. They exercise
+authored strikethrough inside added content and a changed paragraph, not a
+strikethrough that was already unchanged in the PR's base document.
 
 ---
 

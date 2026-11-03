@@ -10,6 +10,7 @@ const {
   nextWrappingIndex,
   clampSize,
   isMarkdownPath,
+  findNextMarkdownSummary,
   getMarkdownRenderState,
   formatLineRange,
   filterSidebarThreadItems,
@@ -252,6 +253,30 @@ test('getMarkdownRenderState — ignores non-Markdown and duplicate paths', () =
     getMarkdownRenderState(['README.md', 'README.md', 'app.js'], ['README.md', 'app.js']),
     { expected: 1, rendered: 1, hasUnrendered: false }
   );
+});
+
+test('findNextMarkdownSummary — returns the next Markdown file in route order', () => {
+  const summaries = [
+    { path: 'docs/first.md', pathDigest: 'first' },
+    { path: 'src/app.js', pathDigest: 'app' },
+    { path: 'docs/second.markdown', pathDigest: 'second' },
+  ];
+  assert.equal(findNextMarkdownSummary(summaries, 'docs/first.md'), summaries[2]);
+});
+
+test('findNextMarkdownSummary — starts from the first Markdown when current path is unknown', () => {
+  const summaries = [
+    { path: 'src/app.js' },
+    { path: 'README.md' },
+  ];
+  assert.equal(findNextMarkdownSummary(summaries, 'missing.txt'), summaries[1]);
+  assert.equal(findNextMarkdownSummary(summaries, null), summaries[1]);
+});
+
+test('findNextMarkdownSummary — does not wrap after the final Markdown file', () => {
+  const summaries = [{ path: 'README.md' }, { path: 'src/app.js' }];
+  assert.equal(findNextMarkdownSummary(summaries, 'README.md'), null);
+  assert.equal(findNextMarkdownSummary(null, 'README.md'), null);
 });
 
 test('clampSize — width below floor returns null for width, keeps height', () => {

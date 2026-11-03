@@ -1247,6 +1247,24 @@ li.grdc-hoverable .grdc-comment-btn {
 }
 .grdc-sidebar-empty-cta:hover { filter: brightness(1.08); }
 .grdc-sidebar-empty-cta:active { filter: brightness(0.95); }
+.grdc-sidebar-empty-cta:disabled {
+  cursor: progress;
+  filter: none;
+  opacity: 0.72;
+}
+.grdc-sidebar-render-md.grdc-sidebar-switching svg { display: none; }
+.grdc-sidebar-render-md.grdc-sidebar-switching::before {
+  content: "";
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: grdc-sidebar-spin 0.7s linear infinite;
+}
+@keyframes grdc-sidebar-spin {
+  to { transform: rotate(360deg); }
+}
 .grdc-sidebar-card {
   display: block;
   width: 100%;

@@ -103,6 +103,18 @@
     return /\.(md|markdown)$/i.test(cleaned);
   }
 
+  function findNextMarkdownSummary(summaries, currentPath) {
+    if (!Array.isArray(summaries)) return null;
+    const currentIndex = typeof currentPath === 'string'
+      ? summaries.findIndex((summary) => summary?.path === currentPath)
+      : -1;
+    for (let index = currentIndex + 1; index < summaries.length; index++) {
+      const summary = summaries[index];
+      if (summary && isMarkdownPath(summary.path)) return summary;
+    }
+    return null;
+  }
+
   // Summarize whether PR-wide rich-diff rendering still has useful work to
   // do. Expected paths normally come from the host's change metadata, while
   // rendered paths come from rich-diff roots observed in the live DOM.
@@ -319,6 +331,7 @@
     nextWrappingIndex,
     clampSize,
     isMarkdownPath,
+    findNextMarkdownSummary,
     getMarkdownRenderState,
     formatLineRange,
     filterSidebarThreadItems,

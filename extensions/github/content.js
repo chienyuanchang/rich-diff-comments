@@ -46,6 +46,7 @@
     clampDragPos,
     nextWrappingIndex,
     isMarkdownPath,
+    findNextMarkdownSummary,
     getMarkdownRenderState,
     slugifyHeading,
     buildOutlineTree,
@@ -3814,6 +3815,159 @@
     return 'GitHub is optimizing this large pull request and unloads offscreen files. Review Markdown files one at a time and switch each file to rich diff as needed.';
   }
 
+  let activeLargePrFileSwitch = null;
+  let sidebarTabInteractionGeneration = 0;
+
+  function currentLargePrFilePath() {
+    const visiblePath = getCurrentViewFilePath();
+    if (visiblePath) return visiblePath;
+    const hash = window.location.hash.replace(/^#diff-/, '');
+    return pathDigestMap.get(hash) || '';
+  }
+
+  function findMountedFileContainer(path) {
+    return findFileContainers().find((container) => getContainerPath(container) === path) || null;
+  }
+
+  function waitForLargePrFileMount(path, session, maxMs) {
+    return new Promise((resolve) => {
+      let finished = false;
+      const observer = new MutationObserver(check);
+      const timeoutId = setTimeout(() => finish(null), maxMs);
+
+      function finish(container) {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timeoutId);
+        observer.disconnect();
+        session.cancelWait = null;
+        resolve(container);
+      }
+
+      function check() {
+        if (session.cancelled) return finish(null);
+        const container = findMountedFileContainer(path);
+        if (!container) return;
+        const rendered = Array.from(container.querySelectorAll('.prose-diff'))
+          .some((root) => root.offsetParent || root === document.body);
+        const toggle = findRichDiffToggleIn(container);
+        const actionable = toggle && !toggle.disabled &&
+          toggle.getAttribute('aria-disabled') !== 'true' && toggle.getClientRects().length > 0;
+        if (rendered || actionable) finish(container);
+      }
+
+      session.cancelWait = () => finish(null);
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+      check();
+    });
+  }
+
+  function navigateToLargePrFile(summary) {
+    const expectedHash = summary.pathDigest ? `#diff-${summary.pathDigest}` : '';
+    const destination = Array.from(document.querySelectorAll('a[href], a[title]')).find((link) => {
+      if (link.closest('.grdc-sidebar')) return false;
+      if (link.getAttribute('title') === summary.path) return true;
+      if (!expectedHash) return false;
+      try { return new URL(link.href, window.location.href).hash === expectedHash; } catch (_) { return false; }
+    });
+    if (destination) {
+      destination.click();
+      return true;
+    }
+    if (!expectedHash) return false;
+    window.location.hash = expectedHash;
+    return true;
+  }
+
+  function updateLargePrSwitchButton(button, text) {
+    const controls = document.querySelectorAll('.grdc-sidebar-render-md, .grdc-sidebar-next-md');
+    controls.forEach((control) => {
+      control.disabled = true;
+      control.classList.toggle('grdc-sidebar-switching', control.classList.contains('grdc-sidebar-render-md'));
+      control.setAttribute('aria-label', text.replace(/…/g, ''));
+      const label = control.querySelector('span');
+      if (label) label.textContent = text;
+    });
+  }
+
+  async function switchNextMarkdownToRichDiff(sidebar, button) {
+    const summary = findNextMarkdownSummary(
+      routeData?.diffSummaries,
+      currentLargePrFilePath()
+    );
+    if (!summary) return;
+
+    if (activeLargePrFileSwitch) {
+      activeLargePrFileSwitch.cancelled = true;
+      activeLargePrFileSwitch.cancelWait?.();
+    }
+    const session = { cancelled: false, cancelWait: null };
+    activeLargePrFileSwitch = session;
+    const selectedTab = sidebar?.querySelector('.grdc-sidebar-tab[aria-selected="true"]')?.dataset.grdcTab || 'changes';
+    const tabGeneration = sidebarTabInteractionGeneration;
+    updateLargePrSwitchButton(button, 'Opening next Markdown…');
+
+    try {
+      if (!navigateToLargePrFile(summary)) throw new Error('No native file destination');
+      const container = await waitForLargePrFileMount(summary.path, session, 5000);
+      if (!container || session.cancelled) throw new Error('File did not mount');
+
+      updateLargePrSwitchButton(button, 'Switching to rich diff…');
+      const toggle = findRichDiffToggleIn(container);
+      const alreadyRendered = Array.from(container.querySelectorAll('.prose-diff'))
+        .some((root) => root.offsetParent || root === document.body);
+      if (!toggle && !alreadyRendered) throw new Error('Rich-diff toggle unavailable');
+      if (toggle) {
+        renderedMarkdownPaths.add(summary.path);
+        toggle.click();
+        await waitForRenderedRichDiffs(session, [summary.path], 8000);
+      }
+      if (session.cancelled) return;
+      const currentContainer = findMountedFileContainer(summary.path);
+      const rendered = Array.from(currentContainer?.querySelectorAll('.prose-diff') || [])
+        .some((root) => root.offsetParent || root === document.body);
+      if (!rendered) throw new Error('Rich diff did not render');
+
+      updateLargePrSwitchButton(button, 'Loading review data…');
+      await init();
+      if (session.cancelled) return;
+      if (sidebarTabInteractionGeneration === tabGeneration) {
+        setSidebarTab(document.querySelector('.grdc-sidebar'), selectedTab);
+      }
+    } catch (error) {
+      if (!session.cancelled) {
+        document.querySelectorAll('.grdc-sidebar-render-md, .grdc-sidebar-next-md').forEach((control) => {
+          control.disabled = false;
+          control.classList.remove('grdc-sidebar-switching');
+          control.setAttribute('aria-label', 'Try next Markdown again');
+          const label = control.querySelector('span');
+          if (label) label.textContent = 'Try next Markdown again';
+          control.setAttribute('title', error.message || 'Unable to open the next Markdown file');
+        });
+      }
+      if (!session.cancelled) console.log('[GRDC] Next Markdown switch failed:', error.message);
+    } finally {
+      if (activeLargePrFileSwitch === session) activeLargePrFileSwitch = null;
+    }
+  }
+
+  function renderLargePrNextMarkdownEmpty(empty, sidebar) {
+    const next = findNextMarkdownSummary(routeData?.diffSummaries, currentLargePrFilePath());
+    if (!next) {
+      empty.innerHTML = '<p class="grdc-sidebar-empty-msg">No later Markdown files remain in this pull request.</p>';
+      return;
+    }
+    empty.innerHTML = `
+      <p class="grdc-sidebar-empty-msg">${escapeHtml(largePrRenderHint())}</p>
+      <button type="button" class="grdc-sidebar-empty-cta grdc-sidebar-next-md">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 1 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"/></svg>
+        <span>Switch next Markdown to rich diff</span>
+      </button>`;
+    empty.querySelector('.grdc-sidebar-next-md')?.addEventListener('click', (event) => {
+      switchNextMarkdownToRichDiff(sidebar, event.currentTarget);
+    });
+  }
+
   // Expand the sidebar (if collapsed) and render every `.md` file as
   // rich-diff, with tooltip + disabled feedback on the book button while
   // the work runs. Used by THREE call-sites:
@@ -3906,7 +4060,7 @@
     // deleted all their comments on a long design doc) — keep the sidebar
     // and auto-switch to the Outline tab so the user immediately sees
     // why the sidebar is still there.
-    const forceOutlineTab = threadEls.length === 0 && outlineUseful;
+    const forceOutlineTab = threadEls.length === 0 && outlineUseful && !isVirtualizedLargePrMode();
 
     const unresolvedOnly = localStorage.getItem(SIDEBAR_FILTER_KEY) === '1';
     const collapsed = localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === '1';
@@ -4081,6 +4235,10 @@
       // prepared Outline. Clicking again is idempotent.
       sidebar.querySelector('.grdc-sidebar-render-md').addEventListener('click', async (e) => {
         e.preventDefault();
+        if (isVirtualizedLargePrMode()) {
+          await switchNextMarkdownToRichDiff(sidebar, e.currentTarget);
+          return;
+        }
         await expandAndRenderAllMd(sidebar);
         setSidebarTab(sidebar, 'outline');
       });
@@ -4088,6 +4246,7 @@
       // Tab switching. Active state persists in `localStorage` per origin.
       sidebar.querySelectorAll('.grdc-sidebar-tab').forEach(tab => {
         tab.addEventListener('click', () => {
+          sidebarTabInteractionGeneration++;
           const target = tab.dataset.grdcTab;
           setSidebarTab(sidebar, target);
         });
@@ -4113,8 +4272,22 @@
     const largePrMode = isVirtualizedLargePrMode();
     const renderState = markdownRenderState();
     if (renderAllBtn) {
-      renderAllBtn.hidden = largePrMode;
-      if (largePrMode) renderAllBtn.setAttribute('title', largePrRenderHint());
+      renderAllBtn.hidden = false;
+      renderAllBtn.classList.remove('grdc-sidebar-switching');
+      if (largePrMode) {
+        const next = findNextMarkdownSummary(routeData?.diffSummaries, currentLargePrFilePath());
+        renderAllBtn.disabled = !next;
+        renderAllBtn.setAttribute('title', next
+          ? `Switch ${next.path} to rich diff`
+          : 'No later Markdown files remain in this pull request');
+        renderAllBtn.setAttribute('aria-label', next
+          ? 'Switch next Markdown to rich diff'
+          : 'No later Markdown files remain');
+      } else {
+        renderAllBtn.disabled = false;
+        renderAllBtn.setAttribute('title', 'Render Markdown and select Outline (b)');
+        renderAllBtn.setAttribute('aria-label', 'Show Outline');
+      }
     }
     const filterCb = sidebar.querySelector('.grdc-sidebar-filter-cb');
     if (filterCb.checked !== unresolvedOnly) filterCb.checked = unresolvedOnly;
@@ -4147,7 +4320,7 @@
       const empty = document.createElement('div');
       empty.className = 'grdc-sidebar-empty';
       if (largePrMode) {
-        empty.innerHTML = `<p class="grdc-sidebar-empty-msg">${escapeHtml(largePrRenderHint())}</p>`;
+        renderLargePrNextMarkdownEmpty(empty, sidebar);
         list.appendChild(empty);
       } else {
       const offerBulkRender = threadEls.length === 0 && !unresolvedOnly && renderState.hasUnrendered;
@@ -5142,7 +5315,7 @@
         const empty = document.createElement('div');
         empty.className = 'grdc-sidebar-empty';
         if (isVirtualizedLargePrMode()) {
-          empty.innerHTML = `<p class="grdc-sidebar-empty-msg">${escapeHtml(largePrRenderHint())}</p>`;
+          renderLargePrNextMarkdownEmpty(empty, sidebar);
           list.appendChild(empty);
           updateChangesCount(sidebar);
           return;
@@ -5432,6 +5605,7 @@
       const target = e.key === '1' ? 'changes'
         : e.key === '2' ? 'threads'
         : 'outline';
+      sidebarTabInteractionGeneration++;
       setSidebarTab(sidebar, target);
       return;
     }

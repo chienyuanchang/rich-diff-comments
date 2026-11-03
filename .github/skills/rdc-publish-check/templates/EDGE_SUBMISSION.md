@@ -6,7 +6,9 @@
 
 ## Unreleased listing notes (not submitted)
 
-- **Hide removed content for easier reading in rich diff.** Use the crossed-eye button in the sidebar to hide deletions while keeping added and unchanged content visible, then switch back to the full diff whenever needed. Existing conversations remain accessible in Threads.
+- **Read rich diff with less clutter.** Open View options from the sidebar's funnel icon and uncheck Show removed content to hide deletions while keeping added and unchanged content visible. Check it again to return to the full diff; existing conversations remain accessible in Threads.
+- **Choose which conversations you see.** Uncheck Show resolved comments in View options to hide resolved conversations throughout the document and Threads, including their badges and review markers. Counts update to match; showing them again preserves drafts and resolution state.
+- **Display settings are together in View options.** Two independent checkboxes let you choose whether removed content and resolved comments are visible. The funnel stays highlighted whenever either is hidden, even after you close the menu.
 
 ## Submission notes (edit before submitting)
 
@@ -256,5 +258,3 @@ Includes all changes from v1.13.0, v1.12.0, and v1.11.0.
 - **Bulk rendering is offered only while another Markdown file still needs it.** Already-rendered files with no visible threads or changes now show an accurate empty state instead of a redundant action.
 
 <!-- End of submission copy. -->
-
-

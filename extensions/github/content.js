@@ -2417,7 +2417,6 @@
         if (newComments.length) {
           // For multi-line ranges, also tint every block in the range so the
           // user gets the same visual treatment as existing range threads.
-          paintThreadRange(info.path, startLineToPost, lineToPost);
           // Anchor the badge at the START of the range. GitHub's source-diff
           // anchors at the end line, but in rich-diff there are no visible
           // line numbers — the badge needs to *introduce* the highlighted
@@ -2629,15 +2628,8 @@
         target = best.element;
       }
 
-      // For ranges, also tint every block within [startLine, endLine] so the
-      // range is visually obvious.
-      paintThreadRange(head.path, head.startLine, head.line);
-
       renderThreadOnElement(target, comments);
     });
-
-    renderTableRowThreadMarkers();
-    renderCodeLineThreadMarkers();
 
     const totalRendered = document.querySelectorAll('.grdc-existing-thread').length;
     console.log(`[GRDC] Rendered ${totalRendered} comment threads`);
@@ -2673,7 +2665,7 @@
   // preserve the missing in-place signal. Activating it cycles through the
   // row's conversations, expands a collapsed thread, and moves focus to its
   // badge below the table.
-  function renderTableRowThreadMarkers() {
+  function renderTableRowThreadMarkers(threadEls) {
     clearTableRowThreadMarkers();
 
     const rowsByPath = new Map();
@@ -2684,7 +2676,7 @@
     });
 
     const rowThreads = new Map();
-    document.querySelectorAll('.grdc-existing-thread').forEach((thread) => {
+    threadEls.forEach((thread) => {
       const path = thread.dataset.grdcPath || '';
       const endLine = Number(thread.dataset.grdcLine);
       const rawStartLine = Number(thread.dataset.grdcStartLine);
@@ -2756,7 +2748,7 @@
   // proportionally over the measured fenced-content height. The complete
   // thread bodies remain below the block, where valid markup and the existing
   // ordering logic already place them.
-  function renderCodeLineThreadMarkers() {
+  function renderCodeLineThreadMarkers(threadEls) {
     clearCodeLineThreadMarkers();
     if (typeof codeLineMarkerLayout !== 'function') return;
 
@@ -2771,7 +2763,7 @@
     });
 
     const blockLines = new Map();
-    document.querySelectorAll('.grdc-existing-thread').forEach((thread) => {
+    threadEls.forEach((thread) => {
       const path = thread.dataset.grdcPath || '';
       const endLine = Number(thread.dataset.grdcLine);
       const rawStartLine = Number(thread.dataset.grdcStartLine);
@@ -3262,6 +3254,7 @@
           // Drop cached route data so a re-init reflects the new resolved state.
           invalidateRouteData();
           currentResolved = !currentResolved;
+          comments.forEach((comment) => { comment.isResolved = currentResolved; });
           resolveBtn.textContent = '✓';
           // Update visual state immediately
           thread.classList.toggle('grdc-thread-resolved', currentResolved);
@@ -3280,6 +3273,7 @@
           // behavior where resolved threads start collapsed), expand on
           // unresolve so the user can see what they're un-resolving.
           if (body) body.style.display = currentResolved ? 'none' : 'block';
+          thread.classList.toggle('grdc-thread-collapsed', currentResolved);
           // Refresh the sidebar so the card's "resolved" tag + filter
           // visibility (Unresolved-only) react to the toggle.
           buildThreadsSidebar();
@@ -3446,7 +3440,7 @@
   // A right-docked floating panel listing every existing thread in DOM order.
   // Each card scrolls to its thread on click. Header carries prev/next nav
   // (`↑` / `↓` plus an `n / total` count) and a chord-keyboard binding
-  // (`g j` / `g k`). Includes an "Unresolved only" filter toggle. Hidden
+  // (`g j` / `g k`). Includes a View options dropdown. Hidden
   // entirely when there are 0 threads on the page. Collapsed state and the
   // filter state persist in `localStorage` (per origin, not per repo — a
   // user's preference travels across PRs).
@@ -3960,6 +3954,22 @@
 
     const unresolvedOnly = localStorage.getItem(SIDEBAR_FILTER_KEY) === '1';
     const collapsed = localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === '1';
+    const visible = threadEls.filter(t =>
+      !unresolvedOnly || !t.classList.contains('grdc-thread-resolved'));
+    threadEls.forEach((thread) => {
+      thread.classList.toggle('grdc-resolved-hidden',
+        unresolvedOnly && thread.classList.contains('grdc-thread-resolved'));
+    });
+    document.querySelectorAll('.grdc-thread-range').forEach((element) => {
+      element.classList.remove('grdc-thread-range');
+    });
+    visible.forEach((thread) => {
+      const startLine = Number(thread.dataset.grdcStartLine) || null;
+      const endLine = Number(thread.dataset.grdcLine) || null;
+      paintThreadRange(thread.dataset.grdcPath, startLine, endLine);
+    });
+    renderTableRowThreadMarkers(visible);
+    renderCodeLineThreadMarkers(visible);
 
     // Create shell on first build; reuse it on re-init so user state survives.
     if (!sidebar) {
@@ -4032,18 +4042,17 @@
             </button>
           </span>
           <span class="grdc-sidebar-separator" aria-hidden="true"></span>
-          <button class="grdc-sidebar-header-filter" title="Unresolved only" aria-label="Toggle unresolved only" aria-pressed="false">
+          <button type="button" class="grdc-sidebar-header-filter" title="View options" aria-label="View options" aria-haspopup="dialog" aria-expanded="false" aria-controls="grdc-view-options" popovertarget="grdc-view-options" data-filtered="false">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
               <path class="grdc-icon-outline" fill="currentColor" fill-rule="evenodd" d="M.75 3A.75.75 0 0 1 1.5 2.25h13a.75.75 0 0 1 .6 1.2L10 10.25v3.25a.75.75 0 0 1-1.2.6l-2.5-1.88a.75.75 0 0 1-.3-.6V10.25L.9 3.45A.75.75 0 0 1 .75 3Zm2.25.75 4.6 6.13a.75.75 0 0 1 .15.45v1.69l1 .75v-2.44a.75.75 0 0 1 .15-.45L13.5 3.75h-10.5Z"/>
               <path class="grdc-icon-solid" fill="currentColor" d="M.75 3A.75.75 0 0 1 1.5 2.25h13a.75.75 0 0 1 .6 1.2L10 10.25v3.25a.75.75 0 0 1-1.2.6l-2.5-1.88a.75.75 0 0 1-.3-.6V10.25L.9 3.45A.75.75 0 0 1 .75 3Z"/>
             </svg>
           </button>
-          <button type="button" class="grdc-sidebar-hide-removed" title="Hide removed content" aria-label="Hide removed content" aria-pressed="false">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-              <path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M1 8s2.5-4 7-4 7 4 7 4-2.5 4-7 4-7-4-7-4Zm1-6 12 12"/>
-              <circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/>
-            </svg>
-          </button>
+        </div>
+        <div id="grdc-view-options" class="grdc-view-options" popover role="dialog" aria-label="View options">
+          <div class="grdc-view-options-title">View options</div>
+          <label><input type="checkbox" class="grdc-show-removed" autofocus> Show removed content</label>
+          <label><input type="checkbox" class="grdc-show-resolved"> Show resolved comments</label>
         </div>
         <div class="grdc-sidebar-tabs" role="tablist">
           <button class="grdc-sidebar-tab grdc-sidebar-tab-active" data-grdc-tab="changes" role="tab" aria-selected="true" title="Changes (1)">Changes</button>
@@ -4051,10 +4060,6 @@
           <button class="grdc-sidebar-tab" data-grdc-tab="outline" role="tab" aria-selected="false" title="Outline (3)">Outline</button>
         </div>
         <div class="grdc-sidebar-pane grdc-sidebar-pane-threads" data-grdc-pane="threads">
-          <label class="grdc-sidebar-filter">
-            <input type="checkbox" class="grdc-sidebar-filter-cb">
-            Unresolved only
-          </label>
           <div class="grdc-sidebar-list" role="list"></div>
         </div>
         <div class="grdc-sidebar-pane grdc-sidebar-pane-outline" data-grdc-pane="outline" hidden>
@@ -4082,12 +4087,28 @@
         const isCollapsed = sidebar.classList.toggle('grdc-sidebar-collapsed');
         try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, isCollapsed ? '1' : '0'); } catch (_) {}
       });
-      sidebar.querySelector('.grdc-sidebar-hide-removed').addEventListener('click', (event) => {
-        hideRemovedContent = !hideRemovedContent;
+      const viewButton = sidebar.querySelector('.grdc-sidebar-header-filter');
+      const viewOptions = sidebar.querySelector('.grdc-view-options');
+      viewOptions.addEventListener('beforetoggle', (event) => {
+        viewButton.setAttribute('aria-expanded', String(event.newState === 'open'));
+      });
+      viewOptions.addEventListener('toggle', () => {
+        if (!viewOptions.matches(':popover-open')) return;
+        const buttonRect = viewButton.getBoundingClientRect();
+        const menuRect = viewOptions.getBoundingClientRect();
+        const left = Math.max(8, Math.min(buttonRect.right - menuRect.width, window.innerWidth - menuRect.width - 8));
+        const top = buttonRect.bottom + menuRect.height + 6 <= window.innerHeight - 8
+          ? buttonRect.bottom + 6
+          : Math.max(8, buttonRect.top - menuRect.height - 6);
+        viewOptions.style.left = `${left}px`;
+        viewOptions.style.top = `${top}px`;
+      });
+      viewOptions.addEventListener('keydown', (event) => event.stopPropagation());
+      sidebar.querySelector('.grdc-show-removed').addEventListener('change', (event) => {
+        hideRemovedContent = !event.target.checked;
         clearRemovedContentVisibility();
         applyRemovedContentVisibility();
-        event.currentTarget.setAttribute('aria-pressed', String(hideRemovedContent));
-        event.currentTarget.title = hideRemovedContent ? 'Show removed content' : 'Hide removed content';
+        viewButton.dataset.filtered = String(hideRemovedContent || !sidebar.querySelector('.grdc-show-resolved').checked);
         buildChangesPane(sidebar);
       });
       sidebar.querySelector('.grdc-sidebar-prev').addEventListener('click', () => sidebarJump(-1));
@@ -4123,19 +4144,9 @@
       if (diffIconBtn) diffIconBtn.addEventListener('click', () => jumpToFirstInCurrentFile(sidebar, 'changes'));
       const threadIconBtn = sidebar.querySelector('.grdc-sidebar-thread-icon');
       if (threadIconBtn) threadIconBtn.addEventListener('click', () => jumpToFirstInCurrentFile(sidebar, 'threads'));
-      sidebar.querySelector('.grdc-sidebar-filter-cb').addEventListener('change', (e) => {
-        try { localStorage.setItem(SIDEBAR_FILTER_KEY, e.target.checked ? '1' : '0'); } catch (_) {}
-        // Sync the header icon's pressed state.
-        const hf = sidebar.querySelector('.grdc-sidebar-header-filter');
-        if (hf) hf.setAttribute('aria-pressed', e.target.checked ? 'true' : 'false');
+      sidebar.querySelector('.grdc-show-resolved').addEventListener('change', (e) => {
+        try { localStorage.setItem(SIDEBAR_FILTER_KEY, e.target.checked ? '0' : '1'); } catch (_) {}
         buildThreadsSidebar();
-      });
-      // Header filter icon — duplicates the in-pane checkbox so it stays
-      // reachable in collapsed mode. Toggling either updates the other.
-      sidebar.querySelector('.grdc-sidebar-header-filter').addEventListener('click', () => {
-        const cb = sidebar.querySelector('.grdc-sidebar-filter-cb');
-        cb.checked = !cb.checked;
-        cb.dispatchEvent(new Event('change', { bubbles: true }));
       });
 
       // Book button = render any not-yet-rendered .md files, then select
@@ -4180,13 +4191,10 @@
       renderAllBtn.hidden = largePrMode;
       if (largePrMode) renderAllBtn.setAttribute('title', largePrRenderHint());
     }
-    const filterCb = sidebar.querySelector('.grdc-sidebar-filter-cb');
-    if (filterCb.checked !== unresolvedOnly) filterCb.checked = unresolvedOnly;
+    sidebar.querySelector('.grdc-show-resolved').checked = !unresolvedOnly;
+    sidebar.querySelector('.grdc-show-removed').checked = !hideRemovedContent;
     const headerFilter = sidebar.querySelector('.grdc-sidebar-header-filter');
-    if (headerFilter) headerFilter.setAttribute('aria-pressed', unresolvedOnly ? 'true' : 'false');
-    const hideRemovedButton = sidebar.querySelector('.grdc-sidebar-hide-removed');
-    hideRemovedButton.setAttribute('aria-pressed', String(hideRemovedContent));
-    hideRemovedButton.title = hideRemovedContent ? 'Show removed content' : 'Hide removed content';
+    headerFilter.dataset.filtered = String(unresolvedOnly || hideRemovedContent);
 
     // When Threads is empty but Outline still has content, force-switch
     // to the Outline tab. Also rebuild the outline pane since its content
@@ -4200,8 +4208,6 @@
     // sorted (path, line) order by renderExistingComments.
     const list = sidebar.querySelector('.grdc-sidebar-list');
     list.innerHTML = '';
-    const visible = threadEls.filter(t =>
-      !unresolvedOnly || !t.classList.contains('grdc-thread-resolved'));
 
     // Empty-state CTA: when there are no threads to show, surface the
     // "Render all Markdown files as rich-diff" action prominently in the
@@ -4386,12 +4392,18 @@
     // need a flat list `[{line, path}, ...]` of HEADs only (one per thread).
     const seenThreads = new Set();
     const threadHeads = [];
+    const unresolvedOnly = localStorage.getItem(SIDEBAR_FILTER_KEY) === '1';
     for (const c of (existingComments || [])) {
       if (seenThreads.has(c.threadId)) continue;
       seenThreads.add(c.threadId);
+      if (unresolvedOnly && c.isResolved) continue;
       threadHeads.push({ line: c.line, path: c.path });
     }
-    const counts = attributeThreadsToHeadings(headings, threadHeads);
+    // Tree construction clones heading descriptors; retain counts by stable id.
+    const counts = new Map(Array.from(
+      attributeThreadsToHeadings(headings, threadHeads),
+      ([heading, count]) => [heading.id, count]
+    ));
 
     // Build the nested tree and render it as a flat indented list (simpler
     // than nested ULs — we own the visual indentation via padding).
@@ -4492,7 +4504,7 @@
       const label = document.createElement('button');
       label.type = 'button';
       label.className = 'grdc-sidebar-outline-label';
-      const n = counts.get(node) || 0;
+      const n = counts.get(node.id) || 0;
       const countHtml = n > 0 ? ` <span class="grdc-sidebar-outline-count">${n} 💬</span>` : '';
       label.innerHTML = `<span class="grdc-sidebar-outline-text">${escapeHtml(node.text || '(untitled)')}</span>${countHtml}`;
       label.addEventListener('click', () => {

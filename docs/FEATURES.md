@@ -62,7 +62,9 @@ The targets version and release independently. These lists summarize the intende
 
 ### GitHub v1.14.0
 
-- [ ] **Hide removed content for preview-like reading** — add a reversible rich-diff toggle that hides deletions while retaining added and unchanged content, addition highlights, and access to existing conversations.
+- [ ] **Choose visible content in View options** — keep the funnel icon and open a dropdown with independent Show removed content and Show resolved comments checkboxes. Keep a visible indicator whenever either option is unchecked.
+- [ ] **Read updated content without deletions** — uncheck Show removed content while retaining added and unchanged content, addition highlights, and access to existing conversations.
+- [ ] **Focus on unresolved conversations** — uncheck Show resolved comments to hide resolved conversations and their inline markers as well as their Threads cards, while keeping unresolved conversations visible.
 
 ### GitHub v1.13.0
 
@@ -175,6 +177,12 @@ The targets version and release independently. These lists summarize the intende
 
 ### Review and collaboration
 
+- [ ] **P2 — Hide resolved conversations throughout rendered review**
+  - **Outcome:** reviewers can focus on outstanding feedback without resolved conversation bodies, badges, or markers interrupting the document.
+  - **GitHub:** △ Implemented for local tryout targeting GitHub v1.14.0; live-PR verification remains before release.
+  - **ADO:** 📋 Planned; its current Unresolved only control filters the Threads list.
+  - **Acceptance:** expose the existing saved filter as a positive **Show resolved comments** checkbox in the header's **View options** dropdown, independent of **Show removed content**. Keep the funnel icon with a View options tooltip; replace the separate eye button and Threads checkbox. Apply the same saved filter to Threads cards, inline conversation bodies and badges, table-row and code-line markers, range highlights, navigation counts, and Outline conversation counts. Shared markers include only unresolved conversations and disappear when none remain. Resolving a conversation while filtered hides it immediately; showing resolved comments restores their prior expansion state unless a resolution action changed it. Preserve drafts, resolution state, and the selected tab. Apply the saved filter after review-data rebuilds and when additional files render.
+
 - [ ] **P2 — Turn a conversation into tracked work if demand justifies it**
   - **Outcome:** reviewers can carry a rendered-review conversation into the host's work-tracking system with its source link and useful context already attached.
   - **GitHub:** 📋 Exploratory. GitHub provides a native **Reference in new issue** action, but there is no usage evidence that duplicating it in rendered review would benefit enough reviewers.
@@ -228,10 +236,10 @@ The targets version and release independently. These lists summarize the intende
   - **Outcome:** reviewers can read the updated Markdown without deleted prose interrupting the document, then return to the full diff in one action.
   - **GitHub:** △ Implemented for local tryout targeting GitHub v1.14.0; live-PR verification remains before release.
   - **ADO:** ↔ Native Preview already omits removed prose.
-  - **Acceptance:** add a **Hide removed content** toggle in the sidebar toolbar, off by default, applying to all currently rendered Markdown files and files rendered later while the toggle is active. Hide deleted text and wholly deleted blocks, list items, and table rows; retain added and unchanged portions of mixed-content blocks and cells. Keep addition highlights and underlines. Switching back restores the full diff without changing source-line anchors or review state. Changes navigation skips hidden deletion-only targets; existing conversations remain accessible in Threads, and selecting a conversation on hidden content temporarily reveals its target. Preserve the active mode across file navigation and dynamically loaded rich diffs within the current pull request.
-  - **Deferred:** a fully clean Preview mode that also removes addition highlights and underlines.
-  - **Tryout behavior:** the crossed-eye button remains available in the expanded or collapsed sidebar header. Revealed thread context stays visible until another thread is selected, the toggle changes, or review data is rebuilt. The mode is local to the current review surface and resets when navigating to another pull request or reloading the page.
-  - **Validation:** cover inline replacements, deleted blocks, nested lists, mixed table cells and rows, conversations on hidden content, dynamically rendered files, and switching back to the full diff.
+  - **Acceptance:** provide a **Show removed content** checkbox in the sidebar's **View options** dropdown, checked by default, applying to all currently rendered Markdown files and files rendered later. Unchecking hides deleted text and wholly deleted blocks, list items, and table rows; retain added and unchanged portions of mixed-content blocks and cells. Keep addition highlights and underlines. Checking again restores the full diff without changing source-line anchors or review state. Changes navigation skips hidden deletion-only targets; existing conversations remain accessible in Threads, and selecting a conversation on hidden content temporarily reveals its target. Preserve the active mode across file navigation and dynamically loaded rich diffs within the current pull request.
+  - **Out of scope:** removing addition highlights or underlines; clean reading retains this review context.
+  - **Tryout behavior:** one compact 24-by-24-pixel funnel opens **View options** in both expanded and collapsed headers. Restore the original toolbar flow: 8-pixel gaps between groups, 8-pixel horizontal header padding, and a 12-pixel right margin on the funnel. It follows the last separator without an auto margin; widening the sidebar must not move it away from the navigation controls. Its two independent positive checkboxes mean checked = visible. Highlight the funnel with a white background and blue icon whenever either option is unchecked, including while the menu is closed, hovered, or focused in light and dark themes. Support keyboard access, Escape, and outside-click dismissal without clipping the dropdown in the collapsed sidebar. Keep the fixed 480-pixel minimum width and existing defaults/persistence. Revealed thread context stays visible until another thread is selected, the option changes, or review data is rebuilt. Removed-content visibility is local to the current review surface and resets when navigating to another pull request or reloading the page.
+  - **Validation:** 470 Node tests and all 59 GitHub browser tests pass, including inline replacements, deleted blocks, nested lists, mixed table cells and rows, conversations on hidden content, dynamically rendered files, switching back to the full diff, independent View options checkboxes, keyboard/outside dismissal, theme states, and a collapsed dropdown at viewport edges. Live-PR verification remains pending.
 
 - [ ] **P1 — Preserve sidebar state and show active feedback while preparing rendered views**
   - **Outcome:** reviewers can prepare the rendered review surface without losing their compact sidebar layout and can see that longer setup phases are still active.

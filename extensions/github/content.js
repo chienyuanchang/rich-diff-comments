@@ -3658,6 +3658,7 @@
   (function bindSidebarResizeClamp() {
     let t = null;
     window.addEventListener('resize', () => {
+      document.querySelector('.grdc-view-options:popover-open')?.hidePopover();
       clearTimeout(t);
       t = setTimeout(() => {
         const sidebar = document.querySelector('.grdc-sidebar');
@@ -5878,7 +5879,11 @@
           }
         }
       }
-      if (hideRemovedContent && contentChanged) applyRemovedContentVisibility();
+      if (hideRemovedContent && contentChanged) {
+        applyRemovedContentVisibility();
+        const sidebar = document.querySelector('.grdc-sidebar');
+        if (sidebar) buildChangesPane(sidebar);
+      }
       if (shouldReinit && !activeRenderSweep) scheduleReinit();
     });
     observer.observe(document.body, { childList: true, subtree: true });

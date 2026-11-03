@@ -306,6 +306,66 @@ test('deletion-only views clear cached Changes stops instead of navigating hidde
   await expect(page.locator('.grdc-change-flash')).toHaveCount(0);
 });
 
+test('removal-only document updates refresh Changes without discarding a draft', async ({ page }) => {
+  await setup(page);
+  await toggleRemovedContent(page);
+  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+  const cachedTargets = () => page.evaluate(() => {
+    const blocks = document.querySelector('.grdc-sidebar')._grdcChangeBlocks;
+    return {
+      count: blocks.length,
+      includesMixed: blocks.some((block) => block.id === 'mixed'),
+      includesHidden: blocks.some((block) => block.closest('.grdc-removed-hidden')),
+    };
+  });
+  const before = await cachedTargets();
+  expect(before.includesMixed).toBe(true);
+  await page.locator('#mixed').hover();
+  await page.locator('#mixed > .grdc-comment-btn').click();
+  const draft = page.locator('.grdc-comment-box textarea');
+  await draft.fill('Keep this draft during a document update.');
+  await page.evaluate(() => {
+    const block = document.getElementById('mixed');
+    block.querySelector('ins').remove();
+    Array.from(block.childNodes).filter((node) => node.nodeType === Node.TEXT_NODE)
+      .forEach((node) => node.remove());
+  });
+  await expect(page.locator('#mixed')).toBeHidden();
+  expect(await cachedTargets()).toEqual({
+    count: before.count - 1,
+    includesMixed: false,
+    includesHidden: false,
+  });
+  await expect(page.locator('.grdc-sidebar-changes-list .grdc-sidebar-card')).toHaveCount(before.count - 1);
+  await expect(draft).toHaveValue('Keep this draft during a document update.');
+  await page.getByRole('button', { name: 'View options', exact: true }).focus();
+  for (let index = 0; index < before.count; index++) {
+    await page.keyboard.press(']');
+    await expect(page.locator('.grdc-removed-hidden.grdc-change-flash')).toHaveCount(0);
+  }
+  await expect(page.getByRole('tab', { name: 'Changes', exact: true })).toHaveAttribute('aria-selected', 'true');
+});
+
+test('resizing the viewport dismisses View options without changing visibility preferences', async ({ page }) => {
+  await setup(page);
+  await toggleRemovedContent(page);
+  const button = page.getByRole('button', { name: 'View options', exact: true });
+  const menu = page.getByRole('dialog', { name: 'View options', exact: true });
+  for (const viewport of [{ width: 800, height: 720 }, { width: 1280, height: 80 }]) {
+    await button.click();
+    await expect(menu).toBeVisible();
+    await page.setViewportSize(viewport);
+    await expect(menu).toBeHidden();
+    await expect(button).toHaveAttribute('aria-expanded', 'false');
+    await expect(button).toHaveAttribute('data-filtered', 'true');
+    await expect(page.locator('#old-block')).toBeHidden();
+    await page.setViewportSize({ width: 1280, height: 720 });
+  }
+  await button.click();
+  await expect(page.getByRole('checkbox', { name: 'Show removed content', exact: true })).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Show resolved comments', exact: true })).toBeChecked();
+});
+
 test('View options supports keyboard access and outside dismissal without changing settings', async ({ page }) => {
   await setup(page);
   const button = page.getByRole('button', { name: 'View options', exact: true });

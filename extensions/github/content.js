@@ -30,6 +30,7 @@
     findFrontmatterRange,
     looksLikePath,
     findBlobInJson,
+    findBlobInScript,
     threadResponseToComments,
     getGitHubCommentLink,
     parseMarkersMap,
@@ -52,6 +53,7 @@
     attributeThreadsToHeadings,
     collapseHeadingsAtLevel,
     findChangeBlocks,
+    findRemovedContent,
     classifyChangeKind,
     buildChangeSnippet,
     nextChangeIndex,
@@ -77,6 +79,9 @@
 
   let prInfo = null; // { owner, repo, pullNumber, commitId }
   let fileLineMap = new Map(); // Map<element, { path, line }>
+  let hideRemovedContent = false;
+  const threadReviewAnchors = new WeakMap();
+  const revealedRemovedContent = new Set();
 
   // ── URL Parsing ────────────────────────────────────────────────────────────
 
@@ -839,6 +844,8 @@
   // requests. Never let one PR's route payload, source files, comments, or
   // mention IDs leak into the next PR's review surface.
   function resetPrScopedState() {
+    hideRemovedContent = false;
+    clearRemovedContentVisibility();
     routeLifecycleGeneration++;
     routeData = null;
     pathDigestMap.clear();
@@ -1534,6 +1541,17 @@
           }
         } catch (e) {
           // try next
+        }
+      }
+
+      // Strategy C: serialized data in executable scripts, parsed without execution.
+      const serializedScriptRe = /<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi;
+      while ((scriptMatch = serializedScriptRe.exec(html)) !== null) {
+        const found = findBlobInScript(scriptMatch[1]);
+        if (found) {
+          rawSourceCache.set(path, found);
+          console.log(`[GRDC] Fetched raw source via serialized rawLines for ${path}: ${found.length} chars`);
+          return found;
         }
       }
 
@@ -2409,9 +2427,6 @@
         invalidateRouteData();
         const newComments = threadResponseToComments(result.data, info.path, lineToPost, startLineToPost);
         if (newComments.length) {
-          // For multi-line ranges, also tint every block in the range so the
-          // user gets the same visual treatment as existing range threads.
-          paintThreadRange(info.path, startLineToPost, lineToPost);
           // Anchor the badge at the START of the range. GitHub's source-diff
           // anchors at the end line, but in rich-diff there are no visible
           // line numbers — the badge needs to *introduce* the highlighted
@@ -2419,8 +2434,6 @@
           // whole tint band. `element` is the block the user clicked `+` on,
           // which for a drag-selected range is already the start block.
           renderThreadOnElement(element, newComments);
-          renderTableRowThreadMarkers();
-          renderCodeLineThreadMarkers();
           buildThreadsSidebar();
         }
         const success = document.createElement('div');
@@ -2623,15 +2636,8 @@
         target = best.element;
       }
 
-      // For ranges, also tint every block within [startLine, endLine] so the
-      // range is visually obvious.
-      paintThreadRange(head.path, head.startLine, head.line);
-
       renderThreadOnElement(target, comments);
     });
-
-    renderTableRowThreadMarkers();
-    renderCodeLineThreadMarkers();
 
     const totalRendered = document.querySelectorAll('.grdc-existing-thread').length;
     console.log(`[GRDC] Rendered ${totalRendered} comment threads`);
@@ -2667,7 +2673,7 @@
   // preserve the missing in-place signal. Activating it cycles through the
   // row's conversations, expands a collapsed thread, and moves focus to its
   // badge below the table.
-  function renderTableRowThreadMarkers() {
+  function renderTableRowThreadMarkers(threadEls) {
     clearTableRowThreadMarkers();
 
     const rowsByPath = new Map();
@@ -2678,7 +2684,7 @@
     });
 
     const rowThreads = new Map();
-    document.querySelectorAll('.grdc-existing-thread').forEach((thread) => {
+    threadEls.forEach((thread) => {
       const path = thread.dataset.grdcPath || '';
       const endLine = Number(thread.dataset.grdcLine);
       const rawStartLine = Number(thread.dataset.grdcStartLine);
@@ -2750,7 +2756,7 @@
   // proportionally over the measured fenced-content height. The complete
   // thread bodies remain below the block, where valid markup and the existing
   // ordering logic already place them.
-  function renderCodeLineThreadMarkers() {
+  function renderCodeLineThreadMarkers(threadEls) {
     clearCodeLineThreadMarkers();
     if (typeof codeLineMarkerLayout !== 'function') return;
 
@@ -2765,7 +2771,7 @@
     });
 
     const blockLines = new Map();
-    document.querySelectorAll('.grdc-existing-thread').forEach((thread) => {
+    threadEls.forEach((thread) => {
       const path = thread.dataset.grdcPath || '';
       const endLine = Number(thread.dataset.grdcLine);
       const rawStartLine = Number(thread.dataset.grdcStartLine);
@@ -2845,6 +2851,7 @@
     const headDbId = head.headDbId;
 
     const thread = document.createElement('div');
+    threadReviewAnchors.set(thread, element);
     thread.className = 'grdc-existing-thread' +
       (isResolved ? ' grdc-thread-resolved' : '') +
       (isOutdated ? ' grdc-thread-outdated' : '');
@@ -3255,6 +3262,7 @@
           // Drop cached route data so a re-init reflects the new resolved state.
           invalidateRouteData();
           currentResolved = !currentResolved;
+          comments.forEach((comment) => { comment.isResolved = currentResolved; });
           resolveBtn.textContent = '✓';
           // Update visual state immediately
           thread.classList.toggle('grdc-thread-resolved', currentResolved);
@@ -3273,6 +3281,7 @@
           // behavior where resolved threads start collapsed), expand on
           // unresolve so the user can see what they're un-resolving.
           if (body) body.style.display = currentResolved ? 'none' : 'block';
+          thread.classList.toggle('grdc-thread-collapsed', currentResolved);
           // Refresh the sidebar so the card's "resolved" tag + filter
           // visibility (Unresolved-only) react to the toggle.
           buildThreadsSidebar();
@@ -3392,11 +3401,54 @@
   }
 
   // ── UI: Threads sidebar ────────────────────────────────────────────────────
+
+  function clearRemovedContentVisibility() {
+    document.querySelectorAll('.grdc-removed-hidden').forEach((element) => {
+      element.classList.remove('grdc-removed-hidden');
+    });
+    revealedRemovedContent.clear();
+  }
+
+  function applyRemovedContentVisibility() {
+    if (!hideRemovedContent) return;
+    document.querySelectorAll('.grdc-removed-hidden').forEach((element) => {
+      element.classList.remove('grdc-removed-hidden');
+    });
+    document.querySelectorAll('.prose-diff').forEach((root) => {
+      const body = root.querySelector('.markdown-body') || root;
+      const container = root.closest('div[id^="diff-"], [data-tagsearch-path], .file[data-path]');
+      const path = container ? getFilePath(container) : '';
+      const removed = pathChangeTypeMap.get(path) === 'REMOVED'
+        ? [body]
+        : findRemovedContent(body);
+      removed.forEach((element) => {
+        element.classList.toggle('grdc-removed-hidden', !revealedRemovedContent.has(element));
+      });
+    });
+  }
+
+  function revealRemovedThreadTarget(thread) {
+    if (!hideRemovedContent) return;
+    revealedRemovedContent.clear();
+    applyRemovedContentVisibility();
+    const anchor = threadReviewAnchors.get(thread);
+    for (const target of [anchor, thread]) {
+      if (!target) continue;
+      const hidden = Array.from(target.querySelectorAll('.grdc-removed-hidden'));
+      for (let parent = target; parent && parent.matches('.prose-diff, .prose-diff *'); parent = parent.parentElement) {
+        if (parent.classList.contains('grdc-removed-hidden')) hidden.push(parent);
+      }
+      hidden.forEach((element) => {
+        element.classList.remove('grdc-removed-hidden');
+        revealedRemovedContent.add(element);
+      });
+    }
+  }
   //
   // A right-docked floating panel listing every existing thread in DOM order.
   // Each card scrolls to its thread on click. Header carries prev/next nav
   // (`↑` / `↓` plus an `n / total` count) and a chord-keyboard binding
-  // (`g j` / `g k`). Includes an "Unresolved only" filter toggle. Hidden
+  // (`g j` / `g k`). Includes a View options dropdown. Hidden
   // entirely when there are 0 threads on the page. Collapsed state and the
   // filter state persist in `localStorage` (per origin, not per repo — a
   // user's preference travels across PRs).
@@ -3618,6 +3670,7 @@
   (function bindSidebarResizeClamp() {
     let t = null;
     window.addEventListener('resize', () => {
+      document.querySelector('.grdc-view-options:popover-open')?.hidePopover();
       clearTimeout(t);
       t = setTimeout(() => {
         const sidebar = document.querySelector('.grdc-sidebar');
@@ -3910,6 +3963,22 @@
 
     const unresolvedOnly = localStorage.getItem(SIDEBAR_FILTER_KEY) === '1';
     const collapsed = localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === '1';
+    const visible = threadEls.filter(t =>
+      !unresolvedOnly || !t.classList.contains('grdc-thread-resolved'));
+    threadEls.forEach((thread) => {
+      thread.classList.toggle('grdc-resolved-hidden',
+        unresolvedOnly && thread.classList.contains('grdc-thread-resolved'));
+    });
+    document.querySelectorAll('.grdc-thread-range').forEach((element) => {
+      element.classList.remove('grdc-thread-range');
+    });
+    visible.forEach((thread) => {
+      const startLine = Number(thread.dataset.grdcStartLine) || null;
+      const endLine = Number(thread.dataset.grdcLine) || null;
+      paintThreadRange(thread.dataset.grdcPath, startLine, endLine);
+    });
+    renderTableRowThreadMarkers(visible);
+    renderCodeLineThreadMarkers(visible);
 
     // Create shell on first build; reuse it on re-init so user state survives.
     if (!sidebar) {
@@ -3982,12 +4051,17 @@
             </button>
           </span>
           <span class="grdc-sidebar-separator" aria-hidden="true"></span>
-          <button class="grdc-sidebar-header-filter" title="Unresolved only" aria-label="Toggle unresolved only" aria-pressed="false">
+          <button type="button" class="grdc-sidebar-header-filter" title="View options" aria-label="View options" aria-haspopup="dialog" aria-expanded="false" aria-controls="grdc-view-options" popovertarget="grdc-view-options" data-filtered="false">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
               <path class="grdc-icon-outline" fill="currentColor" fill-rule="evenodd" d="M.75 3A.75.75 0 0 1 1.5 2.25h13a.75.75 0 0 1 .6 1.2L10 10.25v3.25a.75.75 0 0 1-1.2.6l-2.5-1.88a.75.75 0 0 1-.3-.6V10.25L.9 3.45A.75.75 0 0 1 .75 3Zm2.25.75 4.6 6.13a.75.75 0 0 1 .15.45v1.69l1 .75v-2.44a.75.75 0 0 1 .15-.45L13.5 3.75h-10.5Z"/>
               <path class="grdc-icon-solid" fill="currentColor" d="M.75 3A.75.75 0 0 1 1.5 2.25h13a.75.75 0 0 1 .6 1.2L10 10.25v3.25a.75.75 0 0 1-1.2.6l-2.5-1.88a.75.75 0 0 1-.3-.6V10.25L.9 3.45A.75.75 0 0 1 .75 3Z"/>
             </svg>
           </button>
+        </div>
+        <div id="grdc-view-options" class="grdc-view-options" popover role="dialog" aria-label="View options">
+          <div class="grdc-view-options-title">View options</div>
+          <label><input type="checkbox" class="grdc-show-removed" autofocus> Show removed content</label>
+          <label><input type="checkbox" class="grdc-show-resolved"> Show resolved comments</label>
         </div>
         <div class="grdc-sidebar-tabs" role="tablist">
           <button class="grdc-sidebar-tab grdc-sidebar-tab-active" data-grdc-tab="changes" role="tab" aria-selected="true" title="Changes (1)">Changes</button>
@@ -3995,10 +4069,6 @@
           <button class="grdc-sidebar-tab" data-grdc-tab="outline" role="tab" aria-selected="false" title="Outline (3)">Outline</button>
         </div>
         <div class="grdc-sidebar-pane grdc-sidebar-pane-threads" data-grdc-pane="threads">
-          <label class="grdc-sidebar-filter">
-            <input type="checkbox" class="grdc-sidebar-filter-cb">
-            Unresolved only
-          </label>
           <div class="grdc-sidebar-list" role="list"></div>
         </div>
         <div class="grdc-sidebar-pane grdc-sidebar-pane-outline" data-grdc-pane="outline" hidden>
@@ -4025,6 +4095,30 @@
       sidebar.querySelector('.grdc-sidebar-collapse').addEventListener('click', () => {
         const isCollapsed = sidebar.classList.toggle('grdc-sidebar-collapsed');
         try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, isCollapsed ? '1' : '0'); } catch (_) {}
+      });
+      const viewButton = sidebar.querySelector('.grdc-sidebar-header-filter');
+      const viewOptions = sidebar.querySelector('.grdc-view-options');
+      viewOptions.addEventListener('beforetoggle', (event) => {
+        viewButton.setAttribute('aria-expanded', String(event.newState === 'open'));
+      });
+      viewOptions.addEventListener('toggle', () => {
+        if (!viewOptions.matches(':popover-open')) return;
+        const buttonRect = viewButton.getBoundingClientRect();
+        const menuRect = viewOptions.getBoundingClientRect();
+        const left = Math.max(8, Math.min(buttonRect.right - menuRect.width, window.innerWidth - menuRect.width - 8));
+        const top = buttonRect.bottom + menuRect.height + 6 <= window.innerHeight - 8
+          ? buttonRect.bottom + 6
+          : Math.max(8, buttonRect.top - menuRect.height - 6);
+        viewOptions.style.left = `${left}px`;
+        viewOptions.style.top = `${top}px`;
+      });
+      viewOptions.addEventListener('keydown', (event) => event.stopPropagation());
+      sidebar.querySelector('.grdc-show-removed').addEventListener('change', (event) => {
+        hideRemovedContent = !event.target.checked;
+        clearRemovedContentVisibility();
+        applyRemovedContentVisibility();
+        viewButton.dataset.filtered = String(hideRemovedContent || !sidebar.querySelector('.grdc-show-resolved').checked);
+        buildChangesPane(sidebar);
       });
       sidebar.querySelector('.grdc-sidebar-prev').addEventListener('click', () => sidebarJump(-1));
       sidebar.querySelector('.grdc-sidebar-next').addEventListener('click', () => sidebarJump(+1));
@@ -4059,19 +4153,9 @@
       if (diffIconBtn) diffIconBtn.addEventListener('click', () => jumpToFirstInCurrentFile(sidebar, 'changes'));
       const threadIconBtn = sidebar.querySelector('.grdc-sidebar-thread-icon');
       if (threadIconBtn) threadIconBtn.addEventListener('click', () => jumpToFirstInCurrentFile(sidebar, 'threads'));
-      sidebar.querySelector('.grdc-sidebar-filter-cb').addEventListener('change', (e) => {
-        try { localStorage.setItem(SIDEBAR_FILTER_KEY, e.target.checked ? '1' : '0'); } catch (_) {}
-        // Sync the header icon's pressed state.
-        const hf = sidebar.querySelector('.grdc-sidebar-header-filter');
-        if (hf) hf.setAttribute('aria-pressed', e.target.checked ? 'true' : 'false');
+      sidebar.querySelector('.grdc-show-resolved').addEventListener('change', (e) => {
+        try { localStorage.setItem(SIDEBAR_FILTER_KEY, e.target.checked ? '0' : '1'); } catch (_) {}
         buildThreadsSidebar();
-      });
-      // Header filter icon — duplicates the in-pane checkbox so it stays
-      // reachable in collapsed mode. Toggling either updates the other.
-      sidebar.querySelector('.grdc-sidebar-header-filter').addEventListener('click', () => {
-        const cb = sidebar.querySelector('.grdc-sidebar-filter-cb');
-        cb.checked = !cb.checked;
-        cb.dispatchEvent(new Event('change', { bubbles: true }));
       });
 
       // Book button = render any not-yet-rendered .md files, then select
@@ -4116,10 +4200,10 @@
       renderAllBtn.hidden = largePrMode;
       if (largePrMode) renderAllBtn.setAttribute('title', largePrRenderHint());
     }
-    const filterCb = sidebar.querySelector('.grdc-sidebar-filter-cb');
-    if (filterCb.checked !== unresolvedOnly) filterCb.checked = unresolvedOnly;
+    sidebar.querySelector('.grdc-show-resolved').checked = !unresolvedOnly;
+    sidebar.querySelector('.grdc-show-removed').checked = !hideRemovedContent;
     const headerFilter = sidebar.querySelector('.grdc-sidebar-header-filter');
-    if (headerFilter) headerFilter.setAttribute('aria-pressed', unresolvedOnly ? 'true' : 'false');
+    headerFilter.dataset.filtered = String(unresolvedOnly || hideRemovedContent);
 
     // When Threads is empty but Outline still has content, force-switch
     // to the Outline tab. Also rebuild the outline pane since its content
@@ -4133,8 +4217,6 @@
     // sorted (path, line) order by renderExistingComments.
     const list = sidebar.querySelector('.grdc-sidebar-list');
     list.innerHTML = '';
-    const visible = threadEls.filter(t =>
-      !unresolvedOnly || !t.classList.contains('grdc-thread-resolved'));
 
     // Empty-state CTA: when there are no threads to show, surface the
     // "Render all Markdown files as rich-diff" action prominently in the
@@ -4319,12 +4401,18 @@
     // need a flat list `[{line, path}, ...]` of HEADs only (one per thread).
     const seenThreads = new Set();
     const threadHeads = [];
+    const unresolvedOnly = localStorage.getItem(SIDEBAR_FILTER_KEY) === '1';
     for (const c of (existingComments || [])) {
       if (seenThreads.has(c.threadId)) continue;
       seenThreads.add(c.threadId);
+      if (unresolvedOnly && c.isResolved) continue;
       threadHeads.push({ line: c.line, path: c.path });
     }
-    const counts = attributeThreadsToHeadings(headings, threadHeads);
+    // Tree construction clones heading descriptors; retain counts by stable id.
+    const counts = new Map(Array.from(
+      attributeThreadsToHeadings(headings, threadHeads),
+      ([heading, count]) => [heading.id, count]
+    ));
 
     // Build the nested tree and render it as a flat indented list (simpler
     // than nested ULs — we own the visual indentation via padding).
@@ -4425,7 +4513,7 @@
       const label = document.createElement('button');
       label.type = 'button';
       label.className = 'grdc-sidebar-outline-label';
-      const n = counts.get(node) || 0;
+      const n = counts.get(node.id) || 0;
       const countHtml = n > 0 ? ` <span class="grdc-sidebar-outline-count">${n} 💬</span>` : '';
       label.innerHTML = `<span class="grdc-sidebar-outline-text">${escapeHtml(node.text || '(untitled)')}</span>${countHtml}`;
       label.addEventListener('click', () => {
@@ -4792,6 +4880,7 @@
   }
 
   function scrollToThread(threadEl) {
+    revealRemovedThreadTarget(threadEl);
     // The shared navigator pins scroll-follow and corrects the same target
     // after GitHub updates lazy file heights.
     navigateToPageTarget(() => threadEl.isConnected ? threadEl : null, { block: 'center' });
@@ -5101,6 +5190,7 @@
       const fileContainer = root.closest && root.closest('div[id^="diff-"], [data-tagsearch-path], .file[data-path]');
       const path = fileContainer ? (function() { try { return getFilePath(fileContainer) || ''; } catch (_) { return ''; } })() : '';
       const changeType = path && pathChangeTypeMap.get(path);
+      if (hideRemovedContent && changeType === 'REMOVED') return;
       if (changeType === 'ADDED' || changeType === 'REMOVED') {
         // One synthetic block per whole-file change. The block IS the
         // file's `.prose-diff` root; the tag tells the renderer to use
@@ -5111,7 +5201,11 @@
         return;
       }
       const found = findChangeBlocks(root);
-      for (const b of found) blocks.push(b);
+      for (const b of found) {
+        if (hideRemovedContent && (classifyChangeKind(b) === 'removed' ||
+            b.closest('.grdc-removed-hidden'))) continue;
+        blocks.push(b);
+      }
     });
 
     // Tab visibility + empty state:
@@ -5125,9 +5219,19 @@
     //     metadata-only). Hide the tab so we don't show a stale CTA on a
     //     PR that's already rendered. Mirrors the original behaviour.
     if (blocks.length === 0) {
+      sidebar._grdcChangeBlocks = [];
+      changesCurrentIdx = 0;
       const visibleRootCount = Array.from(roots).filter(
         (r) => r.offsetParent || r === document.body
       ).length;
+
+      if (hideRemovedContent && visibleRootCount > 0) {
+        tab.hidden = false;
+        if (headerCluster) headerCluster.hidden = false;
+        list.innerHTML = '<div class="grdc-sidebar-empty"><p class="grdc-sidebar-empty-msg">No added or modified content to navigate. Show removed content to review deletions.</p></div>';
+        updateChangesCount(sidebar);
+        return;
+      }
 
       if (visibleRootCount === 0) {
         // Case A: actionable empty state.
@@ -5604,16 +5708,20 @@
     }
   }
 
+  let initialHeadingHashHandled = false;
+
   function tryScrollToHashAnchor(preferredScope) {
     let hash;
-    try { hash = decodeURIComponent((window.location.hash || '').replace(/^#/, '')); } catch (_) { return; }
-    if (!hash) return;
+    try { hash = decodeURIComponent((window.location.hash || '').replace(/^#/, '')); } catch (_) { return false; }
+    if (!hash) return false;
     // If the browser already found a target with this id/name, native
     // anchoring handles it — bail.
-    if (document.getElementById(hash) || document.getElementsByName(hash).length) return;
+    if (document.getElementById(hash) || document.getElementsByName(hash).length) return true;
 
     const heading = findRichDiffHeadingForHash(hash, preferredScope);
-    if (heading) scrollToWithStickyOffset(heading);
+    if (!heading) return false;
+    scrollToWithStickyOffset(heading);
+    return true;
   }
 
   // `hashchange` does not fire when a reviewer clicks the same TOC link twice.
@@ -5639,6 +5747,7 @@
     if (!heading) return;
 
     e.preventDefault();
+    initialHeadingHashHandled = true;
     let currentHash = '';
     try { currentHash = decodeURIComponent((window.location.hash || '').replace(/^#/, '')); } catch (_) {}
     if (currentHash === hash) {
@@ -5650,7 +5759,9 @@
     scrollToWithStickyOffset(heading);
   }, true);
 
-  window.addEventListener('hashchange', () => tryScrollToHashAnchor());
+  window.addEventListener('hashchange', () => {
+    initialHeadingHashHandled = tryScrollToHashAnchor();
+  });
 
   // Whenever any section toggles (sidebar chevron, fold/unfold button, or
   // the heading's own collapse chevron in the doc), rebuild the outline
@@ -5689,6 +5800,7 @@
     // Clean up prior renders BEFORE reading any block textContent. Without
     // this, re-init on a page where we've already injected `▾` toggles and
     // `+` buttons feeds polluted text into the matcher.
+    clearRemovedContentVisibility();
     clearInjectedDom();
 
     // Fetch route data first (builds pathDigest map + caches for comments)
@@ -5713,13 +5825,15 @@
     if (initGeneration !== routeLifecycleGeneration) return;
     console.log(`[GRDC] Fetched ${existingComments.length} existing comments`);
     renderExistingComments();
+    applyRemovedContentVisibility();
     buildThreadsSidebar();
 
     // If the page loaded with a heading hash (e.g. user clicked a TOC link
     // before our init finished), the browser's native scroll-to-anchor will
     // have already failed silently — GitHub strips heading ids in rich-diff.
-    // Run the slug-matched fallback now that headings are in the DOM.
-    tryScrollToHashAnchor();
+    // Retry until the target mounts, but do not replay a handled hash when
+    // comment updates rebuild the UI after the reviewer has moved elsewhere.
+    if (!initialHeadingHashHandled) initialHeadingHashHandled = tryScrollToHashAnchor();
 
     // Pre-warm @-mention suggestions in the background so the first `@` keystroke
     // doesn't trigger a 50KB PR HTML fetch + suggestions request synchronously.
@@ -5761,29 +5875,36 @@
   }
 
   function observe() {
+    const reviewUiSelector = '.grdc-existing-thread, .grdc-comment-box, .grdc-comment-btn, ' +
+      '.grdc-table-thread-marker, .grdc-code-line-thread-marker, .grdc-collapse-toggle, ' +
+      '.grdc-reply-box, .grdc-comment-edit, .grdc-sidebar';
     const observer = new MutationObserver((mutations) => {
+      let contentChanged = false;
+      let shouldReinit = false;
       for (const m of mutations) {
+        if (m.target.closest?.(reviewUiSelector)) continue;
+        const inRichDiff = !!m.target.closest?.('.prose-diff');
+        if (inRichDiff && Array.from(m.removedNodes).some(
+          (node) => node.nodeType !== 1 || !node.matches(reviewUiSelector)
+        )) contentChanged = true;
         for (const node of m.addedNodes) {
+          if (node.nodeType === 1 && node.matches(reviewUiSelector)) continue;
+          if (inRichDiff) contentChanged = true;
           if (node.nodeType !== 1) continue;
-          // Ignore our own renders to avoid feedback loop
-          if (node.classList?.contains('grdc-existing-thread') ||
-              node.classList?.contains('grdc-comment-box') ||
-              node.classList?.contains('grdc-comment-btn') ||
-              node.classList?.contains('grdc-table-thread-marker') ||
-              node.classList?.contains('grdc-code-line-thread-marker') ||
-              node.classList?.contains('grdc-collapse-toggle') ||
-              node.classList?.contains('grdc-reply-box') ||
-              node.classList?.contains('grdc-comment-edit') ||
-              node.classList?.contains('grdc-sidebar')) continue;
-          if (node.classList?.contains('markdown-body') ||
-              node.classList?.contains('rich-diff-level-one') ||
-              node.querySelector?.('.prose-diff .markdown-body')) {
-            if (activeRenderSweep) continue;
-            scheduleReinit();
-            return;
+          if (inRichDiff ||
+              node.matches('.markdown-body, .prose-diff, .rich-diff-level-one') ||
+              node.querySelector('.prose-diff .markdown-body')) {
+            contentChanged = true;
+            shouldReinit = true;
           }
         }
       }
+      if (hideRemovedContent && contentChanged) {
+        applyRemovedContentVisibility();
+        const sidebar = document.querySelector('.grdc-sidebar');
+        if (sidebar) buildChangesPane(sidebar);
+      }
+      if (shouldReinit && !activeRenderSweep) scheduleReinit();
     });
     observer.observe(document.body, { childList: true, subtree: true });
 
@@ -5921,6 +6042,7 @@
     const path = window.location.pathname;
     if (path === lastInitPath) return;
     lastInitPath = path;
+    initialHeadingHashHandled = false;
     const nextPr = parsePRUrl();
     const nextPrKey = nextPr
       ? `${nextPr.owner}/${nextPr.repo}#${nextPr.pullNumber}`

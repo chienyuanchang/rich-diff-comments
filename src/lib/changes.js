@@ -53,6 +53,33 @@
     '.adrc-editor, .adrc-thread-badge, .adrc-thread-panel, .adrc-sidebar, ' +
     '.adrc-comment-btn, .adrc-collapse-toggle';
 
+  const REMOVAL_SELECTOR = 'del, .removed';
+  const REVIEW_UI_SELECTOR = INJECTED_UI_SELECTOR +
+    ', .grdc-existing-thread, .grdc-comment-btn, .grdc-collapse-toggle, ' +
+    '.grdc-table-thread-marker, .grdc-code-line-thread-marker';
+
+  function findRemovedContent(rootEl) {
+    if (!rootEl || typeof rootEl.querySelectorAll !== 'function') return [];
+    const markers = Array.from(rootEl.querySelectorAll(REMOVAL_SELECTOR))
+      .filter((element) => !element.closest(REVIEW_UI_SELECTOR));
+    const removed = new Set(markers);
+
+    function hasRetainedContent(node) {
+      if (node.nodeType === 3) return !!node.textContent.trim();
+      if (node.nodeType !== 1 || node.matches(REMOVAL_SELECTOR + ', ' + REVIEW_UI_SELECTOR)) return false;
+      if (node.matches('ins, .added, img, svg, video, audio, canvas, iframe, hr, input, math')) return true;
+      return Array.from(node.childNodes).some(hasRetainedContent);
+    }
+
+    // Hide emptied reading units as well as their deletion markers, but keep
+    // table cells in place so retained columns cannot shift sideways.
+    for (const block of rootEl.querySelectorAll(READING_BLOCK_SELECTOR + ', ul, ol, thead, tbody')) {
+      if (block.closest(REVIEW_UI_SELECTOR) || !block.querySelector(REMOVAL_SELECTOR)) continue;
+      if (!hasRetainedContent(block)) removed.add(block);
+    }
+    return Array.from(removed);
+  }
+
   // Ancestor-marker walker. Returns true if a parent up the tree
   // (bounded by FILE_BOUNDARY_SELECTOR) matches `selector` (defaults
   // to CHANGE_MARKER_SELECTOR).
@@ -668,6 +695,7 @@
 
   return {
     findChangeBlocks,
+    findRemovedContent,
     classifyChangeKind,
     buildChangeSnippet,
     nextChangeIndex,

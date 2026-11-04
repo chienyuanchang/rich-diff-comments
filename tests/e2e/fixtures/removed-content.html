@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Rich diff removal visibility fixture</title>
+  <style>
+    .markdown-body { width: 580px; padding: 48px; }
+    ins, .added { background: #dafbe1; text-decoration: underline; }
+    del, .removed { background: #ffebe9; }
+    td, th { padding: 8px; border: 1px solid #ccc; }
+  </style>
+</head>
+<body>
+  <div id="files">
+    <div id="diff-visibility" data-tagsearch-path="docs/visibility.md">
+      <a href="/test-owner/test-repo/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/docs/visibility.md">docs/visibility.md</a>
+      <div class="prose-diff">
+        <div class="markdown-body">
+          <h1>Visibility example</h1>
+          <p id="mixed">Kept <del id="old-inline">old words</del><ins id="new-inline">new words</ins> ending.</p>
+          <del id="old-wrapper"><p id="old-block">Deleted paragraph.</p></del>
+          <p id="empty-paragraph"><del>Entirely deleted text.</del></p>
+          <ul id="list">
+            <li id="kept-parent">Kept parent<ul><li id="old-item" class="removed">Deleted child</li><li id="kept-item">Kept child</li></ul></li>
+          </ul>
+          <table id="table">
+            <thead><tr><th>First</th><th>Second</th></tr></thead>
+            <tbody>
+              <tr id="mixed-row"><td><del id="old-cell">old cell</del><ins>new cell</ins></td><td>kept cell</td></tr>
+              <tr id="old-row" class="removed"><td>deleted</td><td>row</td></tr>
+              <tr id="empty-row"><td><del>deleted first</del></td><td><del>deleted second</del></td></tr>
+              <tr id="partial-row"><td id="empty-cell"><del>deleted cell</del></td><td id="retained-cell">retained column</td></tr>
+            </tbody>
+          </table>
+          <pre id="code"><code><del id="old-code">old code
+</del><ins>new code
+</ins>kept code</code></pre>
+          <p id="only-deletion">Still here <del id="deletion-only">removed phrase</del>.</p>
+          <p id="authored-strike"><s>Authored strikethrough</s></p>
+        </div>
+      </div>
+    </div>
+    <div id="diff-deleted" data-tagsearch-path="docs/deleted.md">
+      <div class="prose-diff"><div class="markdown-body"><p id="deleted-file-content">A deleted file without inline markers.</p></div></div>
+    </div>
+  </div>
+</body>
+</html>

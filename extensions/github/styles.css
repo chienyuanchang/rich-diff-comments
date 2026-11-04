@@ -873,6 +873,10 @@ li.grdc-hoverable .grdc-comment-btn {
 
 /* ── Thread state: resolved / outdated ────────────────────────────────── */
 
+.grdc-existing-thread.grdc-resolved-hidden {
+  display: none !important;
+}
+
 .grdc-thread-resolved .grdc-thread-badge {
   color: var(--fgColor-muted, var(--color-fg-muted, #57606a));
   background: var(--bgColor-neutral-muted, var(--color-neutral-muted, #eaeef2));
@@ -910,6 +914,11 @@ li.grdc-hoverable .grdc-comment-btn {
   border: 1px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
   border-radius: 6px;
   overflow: hidden;
+}
+
+.prose-diff .grdc-removed-hidden,
+.prose-diff.grdc-removed-hidden {
+  display: none !important;
 }
 
 /* ─── Threads sidebar (v1) ────────────────────────────────────────────────
@@ -1001,7 +1010,6 @@ li.grdc-hoverable .grdc-comment-btn {
    the content should always fit. nowrap is a safety net for transient
    measurement hiccups. */
 .grdc-sidebar-collapsed .grdc-sidebar-header { flex-wrap: nowrap; }
-.grdc-sidebar-collapsed .grdc-sidebar-filter,
 .grdc-sidebar-collapsed .grdc-sidebar-list { display: none; }
 .grdc-sidebar-collapsed .grdc-sidebar-header { border-bottom: none; }
 /* Note: in collapsed mode we INTENTIONALLY keep both nav clusters
@@ -1018,14 +1026,9 @@ li.grdc-hoverable .grdc-comment-btn {
    * to a second row would defeat the v2 design's clean horizontal
    * navigation bar. */
   flex-wrap: nowrap;
-  /* Compact v2 spec: 8px between groups (the spec says 16px but that's
-   * too generous for our floating-sidebar footprint). Tighter local
-   * gaps inside each cluster set per-element below. */
+  /* Keep the original group spacing; navigation clusters use tighter gaps. */
   gap: 8px;
-  /* Compact horizontal padding. Spec says 16px; we use 8px to fit more
-   * content into a reasonable sidebar width. The funnel button adds its
-   * own `margin-right` (see `.grdc-sidebar-header-filter` below) so it
-   * doesn't crowd the rounded corner. */
+  /* Compact padding keeps controls clear of the rounded corners. */
   padding: 0 8px;
   /* Compact 40px bar height (option B — 80% of v2 spec's 48px). Still
    * bigger than 1.5.0's ~30px and gives breathing room for 16px icons. */
@@ -1096,11 +1099,6 @@ li.grdc-hoverable .grdc-comment-btn {
      v2: spec says 8px, we use 4 to keep the cluster tight). */
   gap: 4px;
 }
-/* Funnel sits immediately after its separator — no margin push to the
-   right edge. The 2026-06-18 design groups all navigation (book + diff
-   + thread + funnel) tightly together with separators between groups,
-   so an `margin-left: auto` would create an awkward gap between the
-   thread separator and the funnel. */
 /* Counts (informational, 60% white, 12px Medium for the compact bar).
    `min-width` sized to fit the file-scoped format (e.g. `3/8 (45)`)
    with a bit of slack for 3-digit totals. Tabular nums = monospace
@@ -1136,7 +1134,7 @@ li.grdc-hoverable .grdc-comment-btn {
 .grdc-sidebar-header .grdc-sidebar-collapse,
 .grdc-sidebar-header .grdc-sidebar-prev,
 .grdc-sidebar-header .grdc-sidebar-next,
-.grdc-sidebar-header-filter {
+.grdc-sidebar-header .grdc-sidebar-header-filter {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1146,30 +1144,12 @@ li.grdc-hoverable .grdc-comment-btn {
 .grdc-sidebar-header .grdc-sidebar-prev svg,
 .grdc-sidebar-header .grdc-sidebar-next svg,
 .grdc-sidebar-header-filter svg { display: block; }
-/* Funnel icon: outline by default, solid when the filter is active. Two
-   paths live in the SVG; CSS swaps which one is visible based on
-   aria-pressed so the "on" state reads as a filled funnel at a glance. */
+/* Keep hidden-content status visible independently of dropdown expansion. */
 .grdc-sidebar-header-filter .grdc-icon-solid { display: none; }
-.grdc-sidebar-header-filter[aria-pressed="true"] .grdc-icon-outline { display: none; }
-.grdc-sidebar-header-filter[aria-pressed="true"] .grdc-icon-solid { display: inline; }
-/* Header filter (unresolved-only) icon — only shown when the sidebar is
-   collapsed. Sits at a faint baseline opacity so users notice it's there,
-   brightens on hover. When the full pane is open the in-pane checkbox is
-   the canonical control, so the icon stays hidden to avoid duplication. */
+.grdc-sidebar-header-filter[data-filtered="true"] .grdc-icon-outline { display: none; }
+.grdc-sidebar-header-filter[data-filtered="true"] .grdc-icon-solid { display: inline; }
 .grdc-sidebar-header-filter {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  cursor: pointer;
-  /* On the saturated blue header, muted grey is invisible — keep the
-     funnel white at reduced opacity instead. */
-  color: rgba(255, 255, 255, 1);
-  display: none;
-  /* Push the funnel away from the sidebar's rounded right corner. The
-     header has 8px right padding; this margin adds another 12px so the
-     funnel SVG (especially its top-right triangle tip) sits well clear
-     of the curve in BOTH expanded and collapsed mode. 6px wasn't enough
-     when the counters render at their widest (e.g. `29/39 9/9`). */
+  flex-shrink: 0;
   margin-right: 12px;
   transition: opacity 0.12s, background 0.12s, color 0.12s;
 }
@@ -1181,32 +1161,44 @@ li.grdc-hoverable .grdc-comment-btn {
 .grdc-sidebar-collapsed .grdc-sidebar-header-filter:focus-visible {
   opacity: 1;
 }
-.grdc-sidebar-header-filter[aria-pressed="true"] {
-  /* "Lit pill" on the blue header: white fill, accent-blue funnel.
-     Inverting the colors makes the checked state unmistakable against
-     the saturated background in both light and dark mode. */
-  opacity: 1;
-  color: var(--fgColor-accent, var(--color-accent-fg, #0969da));
-  background: rgba(255, 255, 255, 1);
-}
 .grdc-sidebar-header-filter:hover {
   background: rgba(255, 255, 255, 0.18);
 }
-.grdc-sidebar-header-filter[aria-pressed="true"]:hover {
-  /* Keep the "lit" look on hover; just brighten slightly so the user
-     gets feedback that hover is registered without losing the inverted
-     contrast. */
-  background: rgba(255, 255, 255, 0.92);
+.grdc-sidebar-header .grdc-sidebar-header-filter[data-filtered="true"] {
+  opacity: 1;
+  color: var(--fgColor-accent, var(--color-accent-fg, #0969da));
+  background: var(--fgColor-onEmphasis, var(--color-fg-on-emphasis, #ffffff));
+  border-color: transparent;
 }
 /* (The `.grdc-sidebar-count` rule now lives next to `.grdc-sidebar-changes-count`
    higher up — both counters share styling so the two clusters render
    symmetrically. Don't re-add a rule here without also removing it there.) */
-.grdc-sidebar-filter {
+.grdc-view-options {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: 244px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
+  border-radius: 6px;
+  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
+  color: var(--fgColor-default, var(--color-fg-default, #1f2328));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 13px;
+}
+.grdc-view-options-title {
+  padding: 4px 8px;
+  font-weight: 600;
+}
+.grdc-view-options label {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--borderColor-muted, var(--color-border-muted, #d8dee4));
+  gap: 8px;
+  padding: 8px;
   cursor: pointer;
   user-select: none;
 }

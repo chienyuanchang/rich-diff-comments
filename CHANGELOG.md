@@ -4,6 +4,22 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+## [1.14.0] — 2026-11-03
+
+### Added
+
+- **Read rich diff with less clutter.** Open View options from the sidebar's funnel icon and uncheck Show removed content to hide deletions while keeping added and unchanged content visible. Check it again to return to the full diff; existing conversations remain accessible in Threads.
+
+### Changed
+
+- **Choose which conversations you see.** Uncheck Show resolved comments in View options to hide resolved conversations throughout the document and Threads, including their badges and review markers. Counts update to match; showing them again preserves drafts and resolution state.
+- **Display settings are together in View options.** Two independent checkboxes let you choose whether removed content and resolved comments are visible. The funnel stays highlighted whenever either is hidden, even after you close the menu.
+
+### Fixed
+
+- **Comments stay anchored to the correct lines on GitHub's newer file pages.** Fixed shifted comment locations in rendered Markdown that could send a comment to the wrong line or prevent it from posting.
+- **Deleting a comment keeps you near the discussion.** Following a section link earlier no longer makes deletion jump back to that section.
+
 ## [1.13.0] — 2026-10-16
 
 ### Changed

@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   looksLikePath,
   findBlobInJson,
+  findBlobInScript,
   threadResponseToComments,
   getGitHubCommentLink,
   getAdoCommentLink,
@@ -121,6 +122,55 @@ test('findBlobInJson respects depth limit (no infinite recursion)', () => {
   const cyclic = {};
   cyclic.self = cyclic;
   assert.equal(findBlobInJson(cyclic), null);
+});
+
+test('findBlobInScript reads the captured rawLines reference assignment', () => {
+  const script = 'const data = {blob: {rawLines: $R[395] = ["# Title", "", "Raw HTML variants: <del>authored</del>"], stylingDirectives: $R[396] = {format: "compact"}}};';
+  assert.equal(findBlobInScript(script), '# Title\n\nRaw HTML variants: <del>authored</del>');
+});
+
+test('findBlobInScript preserves escaped quotes, brackets, backslashes, entities, and newlines', () => {
+  const lines = ['a ] bracket', '"quoted"', 'C:\\path\\file.md', '&amp; &#39;', 'first\nsecond', 'last', ''];
+  assert.equal(findBlobInScript(`{rawLines: $R[12] = ${JSON.stringify(lines)}}`), lines.join('\n'));
+});
+
+test('findBlobInScript accepts whitespace and an empty array', () => {
+  assert.equal(findBlobInScript('{ rawLines : $R[0] = \n [ "one", "", "three" ] }'), 'one\n\nthree');
+  assert.equal(findBlobInScript('{rawLines: $R[1] = []}'), '');
+});
+
+test('findBlobInScript decodes captured JS hexadecimal escapes without altering authored escape text', () => {
+  const script = String.raw`{rawLines: $R[395] = ["\x3Cdel>authored\x3C/del>", "literal \\x3C", "\\\x3C", "\x00\x7f\xFF"]}`;
+  assert.equal(findBlobInScript(script), '<del>authored</del>\nliteral \\x3C\n\\<\n\u0000\u007f\u00ff');
+});
+
+test('findBlobInScript rejects missing fields and non-string inputs', () => {
+  for (const input of [null, undefined, {}, '', 'rawLines: ["not this format"]', 'other: $R[395] = ["no"]']) {
+    assert.equal(findBlobInScript(input), null);
+  }
+});
+
+test('findBlobInScript rejects truncated and malformed string arrays', () => {
+  for (const literal of ['["unterminated', '["one",', '["one",]', '["bad\\xG0escape"]']) {
+    assert.equal(findBlobInScript(`{rawLines: $R[395] = ${literal}`), null);
+  }
+});
+
+test('findBlobInScript rejects non-string entries', () => {
+  for (const literal of ['[1]', '[null]', '["one", false]', '[{"text":"one"}]', '[["nested"]]']) {
+    assert.equal(findBlobInScript(`{rawLines: $R[395] = ${literal}}`), null);
+  }
+});
+
+test('findBlobInScript never executes expressions or trailing page scripts', () => {
+  globalThis.__grdcScriptExecuted = false;
+  try {
+    assert.equal(findBlobInScript('{rawLines: $R[395] = [(globalThis.__grdcScriptExecuted = true)]}'), null);
+    assert.equal(findBlobInScript('{rawLines: $R[395] = ["safe"]}; globalThis.__grdcScriptExecuted = true;'), 'safe');
+    assert.equal(globalThis.__grdcScriptExecuted, false);
+  } finally {
+    delete globalThis.__grdcScriptExecuted;
+  }
 });
 
 test('threadResponseToComments — minimal happy path', () => {

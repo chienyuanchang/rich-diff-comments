@@ -17,7 +17,7 @@
  * ordering) broke. This file catches that class of bug.
  */
 const { test, expect } = require('@playwright/test');
-const { setupExtensionPage } = require('./_helpers');
+const { setupExtensionPage, setupFixture, gotoPRPage, injectExtension, waitForInit, FAKE_HEAD_OID } = require('./_helpers');
 const fixtures = require('./fixtures/sources');
 
 const fm = fixtures.yamlFrontmatter;
@@ -31,6 +31,81 @@ async function lineFromTitle(locator) {
   if (!title) return null;
   const m = title.match(/:(\d+)/);
   return m ? parseInt(m[1], 10) : null;
+}
+
+for (const format of ['embedded JSON', 'serialized rawLines']) {
+  test(`blob ${format} preserves exact source lines and the posted line`, async ({ page }) => {
+    const lines = Array(493).fill('');
+    lines[0] = '# Source format regression';
+    lines[441] = '## Authored Strikethrough Visibility';
+    lines[458] = 'Raw HTML variants: <del>authored HTML del text</del> and <s>authored HTML s text</s>.';
+    lines[492] = 'Final source paragraph.';
+    const logs = [];
+    const errors = [];
+    page.on('console', (message) => logs.push(message.text()));
+    page.on('pageerror', (error) => errors.push(error.message));
+    await setupFixture(page, 'yaml-frontmatter', {
+      routeData: {
+        comparison: {
+          headOid: FAKE_HEAD_OID,
+          baseOid: 'b'.repeat(40),
+          fullDiff: { headOid: FAKE_HEAD_OID },
+        },
+      },
+    });
+    const literal = JSON.stringify(lines).replace(/</g, format === 'serialized rawLines' ? '\\x3C' : '\\u003c');
+    const script = format === 'embedded JSON'
+      ? `<script type="application/json" data-target="react-app.embeddedData">{"payload":{"blob":{"rawLines":${literal}}}}</script>`
+      : `<script type="module">const $R = []; const data = {blob: {rawLines: $R[395] = ${literal}, stylingDirectives: $R[396] = {format: "compact"}}}; globalThis.blobScriptExecuted = true;</script>`;
+    await page.route(`https://github.com/test-owner/test-repo/blob/${FAKE_HEAD_OID}/**`, (route) =>
+      route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><body>${script}</body></html>` })
+    );
+    let payload;
+    await page.route('**/page_data/create_review_comment', async (route) => {
+      payload = route.request().postDataJSON();
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ thread: {
+          id: '901',
+          commentsData: { comments: [{
+            databaseId: 9001,
+            body: 'Correct source anchor.',
+            author: { login: 'reviewer' },
+            createdAt: '2026-11-03T19:00:00Z',
+          }] },
+        } }),
+      });
+    });
+    await gotoPRPage(page);
+    await page.locator('.markdown-body').evaluate((body) => {
+      body.style.marginLeft = '48px';
+      body.innerHTML = '<h1>Source format regression</h1>'
+        + '<h2>Authored Strikethrough Visibility</h2>'
+        + '<p id="authored-html">Raw HTML variants: <span class="github-user-del rich-diff-level-one">authored HTML del text</span> and <s class="rich-diff-level-one">authored HTML s text</s>.</p>'
+        + '<p id="last-source-line">Final source paragraph.</p>';
+    });
+    await injectExtension(page);
+    await waitForInit(page);
+    for (const [selector, expected] of [['h1', 1], ['h2', 442], ['#authored-html', 459], ['#last-source-line', 493]]) {
+      expect(await lineFromTitle(page.locator(`${selector} > .grdc-comment-btn`))).toBe(expected);
+    }
+    expect(logs.some((log) => /source-matched: true/.test(log))).toBe(true);
+    expect(logs.some((log) => /no recognizable raw source/.test(log))).toBe(false);
+    expect(await page.evaluate(() => window.blobScriptExecuted)).toBeUndefined();
+    await page.locator('#authored-html').hover();
+    await page.locator('#authored-html > .grdc-comment-btn').click();
+    const box = page.locator('.grdc-comment-box');
+    await box.locator('textarea').fill('Correct source anchor.');
+    await box.getByRole('button', { name: 'Comment', exact: true }).click();
+    await expect(box.locator('.grdc-success')).toHaveText('✓ Comment posted');
+    expect(payload).toMatchObject({
+      path: fm.path,
+      line: 459,
+      side: 'right',
+      positioning: { type: 'line', line: 459 },
+    });
+    expect(errors).toEqual([]);
+  });
 }
 
 test.describe('line mapping (end-to-end through the extension pipeline)', () => {

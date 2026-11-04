@@ -20,6 +20,40 @@ postReviewComment()    → POST /pull/:n/page_data/create_review_comment
 
 All requests use `credentials: 'include'` — session cookies only, no PAT.
 
+## Authored strikethrough in rich diff (2026-11-03)
+
+Manual verification in [test PR #2](https://github.com/chienyuanchang/rich-diff-comments/pull/2/changes),
+after adding authored-strikethrough examples in commit `240a7f5`, showed that
+`~~deprecated endpoint~~` stayed visible with **Show removed content** unchecked.
+The user captured this paragraph (extension comment button omitted):
+
+```html
+<p dir="auto" class="rich-diff-level-zero grdc-hoverable">Use the <span class="github-user-del rich-diff-level-one">deprecated endpoint</span> only for migration; use the <strong class="rich-diff-level-one">current endpoint</strong> for new clients.</p>
+```
+
+GitHub represents this authored Markdown strikethrough with `span.github-user-del`,
+not a `del` element. The existing `del, .removed` visibility selector does not hide
+it, so no classification change is needed for this captured case. A raw HTML `s`
+example was also captured as `<s class="rich-diff-level-one">authored HTML s text</s>`.
+Inline code retained literal tildes as
+`<code class="rich-diff-level-one">~~not rendered as strikethrough~~</code>`.
+
+The user subsequently captured the raw HTML `del` example too (extension comment
+button omitted):
+
+```html
+<p dir="auto" class="rich-diff-level-zero grdc-hoverable">Raw HTML variants: <span class="github-user-del rich-diff-level-one">authored HTML del text</span> and <s class="rich-diff-level-one">authored HTML s text</s>.</p>
+```
+
+GitHub rewrites this authored HTML `del` to the same `span.github-user-del`, while
+leaving `s` as `s`. Neither captured form matches the removal visibility selector.
+
+The earlier synthetic fixture using `del` for authored Markdown demonstrated an
+ambiguous input, not a confirmed GitHub rendering bug. These captures cover newly
+added Markdown within a changed paragraph and newly added raw HTML. They do not
+establish how unchanged base-document strikethrough is represented; obtain that
+capture before adding classification heuristics.
+
 ## GitHub internal data shapes (verified against private PRs, 2026-05)
 
 These come from undocumented endpoints. Field names may change without notice — always log and inspect first.
@@ -92,6 +126,19 @@ The blob payload (somewhere inside the JSON tree) contains either:
 - `rawBlob: "full text"` — fallback
 
 `fetchRawSource()` walks all JSON `<script>` tags and recursively searches for these keys (see `findBlobInJson`). Do **not** assume a fixed JSON path — GitHub has changed it multiple times.
+
+#### Serialized blob data (2026-11-03)
+
+In test PR #2, the authenticated blob response for HEAD `240a7f579720af7f91a08db14123e8dbfd4569fd` returned 200 but contained only two `application/json` scripts (client environment and Datadog configuration). The user captured the source elsewhere in the response as:
+
+```js
+rawLines: $R[395] = ["# Test Design Doc: Sample Feature Integration", "", /* remaining source lines */],
+stylingDirectives: $R[396] = {format: "compact", /* highlighting metadata */}
+```
+
+The old textarea/JSON-only extraction missed this source and fell back to estimated lines. The raw HTML paragraph is HEAD line 459; the fallback assigned 498, beyond the 493-line file. The resulting 422 message about diff hunks was therefore not evidence of an actual hunk restriction.
+
+The captured strings use JavaScript hexadecimal escapes such as `\x3C` for `<`; plain `JSON.parse` rejects these. The additional script scan reads the literal string array after `rawLines: $R[<index>] =`, converts hexadecimal escapes to JSON Unicode escapes (without altering escaped literal backslashes), then uses `JSON.parse`. It does not evaluate assignments or execute downloaded scripts, and it preserves entities, escaped quotes, and brackets in authored source. Existing textarea and embedded JSON formats retain precedence. Browser regressions verify exact front/middle/end anchors and the line sent when posting. The user confirmed final live-PR verification on 2026-11-03 during GitHub v1.14.0 release preparation.
 
 **Do not** fetch `raw.githubusercontent.com` from a `github.com` content script: it sets `Access-Control-Allow-Origin: *` which forbids credentialed requests. Use `github.com/blob/...` HTML instead.
 
@@ -273,6 +320,18 @@ That's because `text-decoration` is **not inherited**; instead the *painting* pr
 3. **`display: inline-block` on the box root** — *would* break text-decoration propagation per spec (atomic inline boxes don't get ancestor decorations painted across them) but also breaks our block-level layout for the textarea.
 
 The escape-the-ancestor approach in `siblingAnchor` is the smallest, most predictable fix.
+
+## Deleting comments replayed a previously visited heading hash (2026-11-03)
+
+After visiting PR #2 with `#authored-strikethrough-visibility`, deleting a comment elsewhere returned the reader to that section. Creating and replying did not show the same behavior in the live report.
+
+Successful deletion invalidates route data and schedules a full review initialization to refresh Threads and sidebar cards. Initialization unconditionally retried the URL's heading anchor, starting tracked navigation back to the old section. The scheduler's existing scroll-position restoration did not prevent the later navigation corrections.
+
+Track whether the initial heading hash has been handled on the current review path. Keep retrying while the target is unavailable, but stop replaying it once resolved. Explicit TOC clicks and hash changes remain navigations; a review-path change re-arms the initial attempt. Do not remove the hash from history or bypass deletion's review-data refresh.
+
+Browser regressions cover deletion of the last comment and deletion of a reply after an initial deep link or TOC click. They check that no scroll is sent to the old heading, the reader stays near the current discussion, and refreshed threads reflect the deletion. Normal same-link clicks, history navigation, late-mounted headings, and new review paths remain covered.
+
+The user confirmed final live-PR verification on 2026-11-03 during GitHub v1.14.0 release preparation. This does not claim semantic position synchronization when switching between rich and source diff.
 
 ## Mutation observer
 

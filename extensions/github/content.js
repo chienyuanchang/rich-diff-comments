@@ -30,6 +30,7 @@
     findFrontmatterRange,
     looksLikePath,
     findBlobInJson,
+    findBlobInScript,
     threadResponseToComments,
     getGitHubCommentLink,
     parseMarkersMap,
@@ -1540,6 +1541,17 @@
           }
         } catch (e) {
           // try next
+        }
+      }
+
+      // Strategy C: serialized data in executable scripts, parsed without execution.
+      const serializedScriptRe = /<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi;
+      while ((scriptMatch = serializedScriptRe.exec(html)) !== null) {
+        const found = findBlobInScript(scriptMatch[1]);
+        if (found) {
+          rawSourceCache.set(path, found);
+          console.log(`[GRDC] Fetched raw source via serialized rawLines for ${path}: ${found.length} chars`);
+          return found;
         }
       }
 
@@ -5696,16 +5708,20 @@
     }
   }
 
+  let initialHeadingHashHandled = false;
+
   function tryScrollToHashAnchor(preferredScope) {
     let hash;
-    try { hash = decodeURIComponent((window.location.hash || '').replace(/^#/, '')); } catch (_) { return; }
-    if (!hash) return;
+    try { hash = decodeURIComponent((window.location.hash || '').replace(/^#/, '')); } catch (_) { return false; }
+    if (!hash) return false;
     // If the browser already found a target with this id/name, native
     // anchoring handles it — bail.
-    if (document.getElementById(hash) || document.getElementsByName(hash).length) return;
+    if (document.getElementById(hash) || document.getElementsByName(hash).length) return true;
 
     const heading = findRichDiffHeadingForHash(hash, preferredScope);
-    if (heading) scrollToWithStickyOffset(heading);
+    if (!heading) return false;
+    scrollToWithStickyOffset(heading);
+    return true;
   }
 
   // `hashchange` does not fire when a reviewer clicks the same TOC link twice.
@@ -5731,6 +5747,7 @@
     if (!heading) return;
 
     e.preventDefault();
+    initialHeadingHashHandled = true;
     let currentHash = '';
     try { currentHash = decodeURIComponent((window.location.hash || '').replace(/^#/, '')); } catch (_) {}
     if (currentHash === hash) {
@@ -5742,7 +5759,9 @@
     scrollToWithStickyOffset(heading);
   }, true);
 
-  window.addEventListener('hashchange', () => tryScrollToHashAnchor());
+  window.addEventListener('hashchange', () => {
+    initialHeadingHashHandled = tryScrollToHashAnchor();
+  });
 
   // Whenever any section toggles (sidebar chevron, fold/unfold button, or
   // the heading's own collapse chevron in the doc), rebuild the outline
@@ -5812,8 +5831,9 @@
     // If the page loaded with a heading hash (e.g. user clicked a TOC link
     // before our init finished), the browser's native scroll-to-anchor will
     // have already failed silently — GitHub strips heading ids in rich-diff.
-    // Run the slug-matched fallback now that headings are in the DOM.
-    tryScrollToHashAnchor();
+    // Retry until the target mounts, but do not replay a handled hash when
+    // comment updates rebuild the UI after the reviewer has moved elsewhere.
+    if (!initialHeadingHashHandled) initialHeadingHashHandled = tryScrollToHashAnchor();
 
     // Pre-warm @-mention suggestions in the background so the first `@` keystroke
     // doesn't trigger a 50KB PR HTML fetch + suggestions request synchronously.
@@ -6022,6 +6042,7 @@
     const path = window.location.pathname;
     if (path === lastInitPath) return;
     lastInitPath = path;
+    initialHeadingHashHandled = false;
     const nextPr = parsePRUrl();
     const nextPrKey = nextPr
       ? `${nextPr.owner}/${nextPr.repo}#${nextPr.pullNumber}`

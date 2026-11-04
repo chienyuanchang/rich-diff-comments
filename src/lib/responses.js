@@ -40,6 +40,44 @@
     return null;
   }
 
+  // GitHub also serializes blob data as rawLines: $R[395] = ["...", ...].
+  // Read only the string array literal; never evaluate the script.
+  function findBlobInScript(script) {
+    if (typeof script !== 'string') return null;
+    const field = /\brawLines\s*:\s*\$R\[\d+\]\s*=\s*\[/.exec(script);
+    if (!field) return null;
+    const start = field.index + field[0].length - 1;
+    let inString = false;
+    let escaped = false;
+    for (let index = start + 1; index < script.length; index++) {
+      const character = script[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (character === '\\') escaped = true;
+        else if (character === '"') inString = false;
+      } else if (character === '"') {
+        inString = true;
+      } else if (character === ']') {
+        try {
+          // JS hexadecimal escapes are not JSON. Consume escape pairs so a
+          // literal "\\x3C" stays literal rather than becoming an HTML tag.
+          const literal = script.slice(start, index + 1).replace(
+            /\\(?:x([0-9a-fA-F]{2})|[\s\S])/g,
+            (escape, hex) => hex ? '\\u00' + hex : escape
+          );
+          const lines = JSON.parse(literal);
+          return Array.isArray(lines) && lines.every((line) => typeof line === 'string')
+            ? lines.join('\n')
+            : null;
+        } catch (error) {
+          if (!(error instanceof SyntaxError)) throw error;
+          return null;
+        }
+      }
+    }
+    return null;
+  }
+
   // Convert a `create_review_comment` response shape:
   //   { thread: { commentsData: { comments: [...] } } }
   // into our internal comment[] shape used by renderThreadOnElement.
@@ -265,6 +303,7 @@
   return {
     looksLikePath,
     findBlobInJson,
+    findBlobInScript,
     threadResponseToComments,
     getGitHubCommentLink,
     getAdoCommentLink,

@@ -62,9 +62,11 @@ The targets version and release independently. These lists summarize the intende
 
 ### GitHub v1.14.0
 
-- [ ] **Choose visible content in View options** — keep the funnel icon and open a dropdown with independent Show removed content and Show resolved comments checkboxes. Keep a visible indicator whenever either option is unchecked.
-- [ ] **Read updated content without deletions** — uncheck Show removed content while retaining added and unchanged content, addition highlights, and access to existing conversations.
-- [ ] **Focus on unresolved conversations** — uncheck Show resolved comments to hide resolved conversations and their inline markers as well as their Threads cards, while keeping unresolved conversations visible.
+- [x] **Choose visible content in View options** — keep the funnel icon and open a dropdown with independent Show removed content and Show resolved comments checkboxes. Keep a visible indicator whenever either option is unchecked.
+- [x] **Read updated content without deletions** — uncheck Show removed content while retaining added and unchanged content, addition highlights, and access to existing conversations.
+- [x] **Focus on unresolved conversations** — uncheck Show resolved comments to hide resolved conversations and their inline markers as well as their Threads cards, while keeping unresolved conversations visible.
+- [x] **Keep comment anchors accurate on newer GitHub file pages** — read the available source correctly so rendered comments retain their source-line targets.
+- [x] **Keep deletion near the current discussion** — do not return to a previously visited section link when deleting a comment.
 
 ### GitHub v1.13.0
 
@@ -99,7 +101,7 @@ The targets version and release independently. These lists summarize the intende
 | Complete `@mention` names with keyboard and mouse selection and preserve host notifications | ✅ | ✅ ADO v1.2.0 |
 | Render deleted-comment placeholders safely | ✅ | ✅ |
 | Hide a thread after its last visible comment is deleted | N/A — deleted comments are omitted by the host response | ✅ ADO v1.3.0 |
-| Preserve reading position while thread actions update the page | ✅ | ✅ |
+| Preserve reading position while thread actions update the page | ✅ GitHub v1.14.0 also avoids replaying visited heading links | ✅ |
 
 ### Changes, Threads, and Outline
 
@@ -110,6 +112,8 @@ The targets version and release independently. These lists summarize the intende
 | Navigate changed rendered blocks with cards, counters, clicks, and keyboard shortcuts | ✅ | ✅ |
 | Show one summary card for a newly added, deleted, or renamed Markdown file where applicable | ✅ | ✅ |
 | Navigate threads globally and filter to unresolved conversations | ✅ | ✅ |
+| Hide resolved conversations throughout the rendered document and Threads | ✅ GitHub v1.14.0 | 📋 Threads-list filter only |
+| Hide removed prose while retaining updated content and access to conversations | ✅ GitHub v1.14.0 | ↔ Native Preview omits removals |
 | Browse headings across changed Markdown files with per-section thread counts | ✅ | ✅ |
 | Keep the Outline focused when navigating to a heading in another file | ✅ | ✅ ADO v1.2.0 |
 | Fold individual sections or bulk-fold by H1/H2/H3 level and expand all | ✅ Bulk actions affect all rendered files | ✅ Bulk actions affect the current file |
@@ -136,7 +140,7 @@ The targets version and release independently. These lists summarize the intende
 
 | Capability | GitHub | Azure DevOps |
 |---|---|---|
-| Map rendered blocks to source lines with the shared forward-scan matcher | ✅ | ✅ |
+| Map rendered blocks to source lines with the shared forward-scan matcher | ✅ GitHub v1.14.0 supports newer file-page responses | ✅ |
 | Keep comments on ordered and unordered list items anchored to the selected bullet | ✅ | ✅ ADO v1.2.0 |
 | Prevent diagrams, deleted content, and unmatched blocks from corrupting later line mappings | ✅ | ✅ where the content exists in Preview |
 | Map table rows and fenced-code ranges without altering host markup | ✅ | ✅ |
@@ -179,7 +183,7 @@ The targets version and release independently. These lists summarize the intende
 
 - [ ] **P2 — Hide resolved conversations throughout rendered review**
   - **Outcome:** reviewers can focus on outstanding feedback without resolved conversation bodies, badges, or markers interrupting the document.
-  - **GitHub:** △ Implemented for local tryout targeting GitHub v1.14.0; live-PR verification remains before release.
+  - **GitHub:** ✅ GitHub v1.14.0; live-PR verification confirmed by the user on 2026-11-03.
   - **ADO:** 📋 Planned; its current Unresolved only control filters the Threads list.
   - **Acceptance:** expose the existing saved filter as a positive **Show resolved comments** checkbox in the header's **View options** dropdown, independent of **Show removed content**. Keep the funnel icon with a View options tooltip; replace the separate eye button and Threads checkbox. Apply the same saved filter to Threads cards, inline conversation bodies and badges, table-row and code-line markers, range highlights, navigation counts, and Outline conversation counts. Shared markers include only unresolved conversations and disappear when none remain. Resolving a conversation while filtered hides it immediately; showing resolved comments restores their prior expansion state unless a resolution action changed it. Preserve drafts, resolution state, and the selected tab. Apply the saved filter after review-data rebuilds and when additional files render.
 
@@ -232,25 +236,25 @@ The targets version and release independently. These lists summarize the intende
 
 ### Navigation and focus
 
-- [ ] **P1 — Preserve reading position when comment updates rebuild the review UI**
+- [x] **P1 — Preserve reading position when comment updates rebuild the review UI**
   - **Outcome:** deleting or refreshing comments must not replay a previously visited section link and move the reviewer away from the current discussion.
-  - **GitHub:** △ Implemented locally for GitHub v1.14.0; live deletion tryout remains. Successful deletion retains the review rebuild without replaying an already handled heading hash.
+  - **GitHub:** ✅ GitHub v1.14.0. Successful deletion retains the review rebuild without replaying an already handled heading hash; live-PR verification confirmed by the user on 2026-11-03.
   - **ADO:** No matching regression reported; no ADO change planned for this GitHub heading-hash lifecycle.
   - **Acceptance:** consume initial heading navigation once its target is available; allow a later rich-diff mount to resolve an initially unavailable target. Explicit TOC clicks (including the same link again), hash changes, browser history, and navigation to a new review path must retain their intended behavior. Verify deletion of both a complete thread and a reply without replaying the old section anchor.
-  - **Validation:** 478 Node tests and all 69 GitHub browser tests pass. Both deletion regressions reproduced the old heading jump before the fix; current coverage also preserves repeated TOC clicks, history navigation, unresolved heading retries, and new review-path navigation. Live-PR verification remains pending.
+  - **Validation:** 478 Node tests and all 69 GitHub browser tests pass. Both deletion regressions reproduced the old heading jump before the fix; current coverage also preserves repeated TOC clicks, history navigation, unresolved heading retries, and new review-path navigation. The user confirmed the final live-PR checks on 2026-11-03.
 
-- [ ] **P2 — Hide removed content for preview-like reading**
+- [x] **P2 — Hide removed content for preview-like reading**
   - **Outcome:** reviewers can read the updated Markdown without deleted prose interrupting the document, then return to the full diff in one action.
-  - **GitHub:** △ Implemented for local tryout targeting GitHub v1.14.0; live-PR verification remains before release.
+  - **GitHub:** ✅ GitHub v1.14.0; live-PR verification confirmed by the user on 2026-11-03.
   - **ADO:** ↔ Native Preview already omits removed prose.
   - **Acceptance:** provide a **Show removed content** checkbox in the sidebar's **View options** dropdown, checked by default, applying to all currently rendered Markdown files and files rendered later. Unchecking hides deleted text and wholly deleted blocks, list items, and table rows; retain added and unchanged portions of mixed-content blocks and cells. Keep addition highlights and underlines. Checking again restores the full diff without changing source-line anchors or review state. Changes navigation skips hidden deletion-only targets; existing conversations remain accessible in Threads, and selecting a conversation on hidden content temporarily reveals its target. Preserve the active mode across file navigation and dynamically loaded rich diffs within the current pull request.
   - **Out of scope:** removing addition highlights or underlines; clean reading retains this review context.
   - **Safeguards:** successful comment submission updates Threads, shows confirmation, and dismisses the editor through the unified rebuild path. Removal-visibility rescans respond only to rendered document mutations, excluding extension UI and unrelated host updates, while retaining updates for newly mounted rich diffs and changed document content.
   - **Dynamic updates:** Changes cards, counts, and navigation targets refresh whenever document mutations update removal visibility, including removal-only mutations, without discarding drafts. View options closes on viewport resize so its previous coordinates cannot leave an open menu offscreen; checkbox values are preserved.
   - **Authored strikethrough evidence:** the real DOM captured in test PR #2 represents both newly added `~~deprecated endpoint~~` and authored HTML `del` as `span.github-user-del`; neither matches the removal visibility selector, so the synthetic authored-`del` case is not a confirmed GitHub bug. No classification change is needed for these captures. Unchanged-base strikethrough still needs a separate capture before any heuristic is justified. See [GitHub developer notes](./github/DEV_NOTES.md#authored-strikethrough-in-rich-diff-2026-11-03).
-  - **Blocking source retrieval follow-up (GitHub):** implemented locally for the captured blob-page `rawLines: $R[395] = [...]` serialization, including hexadecimal string escapes, alongside existing textarea and JSON embedded data. The captured 493 source lines match test PR #2's HEAD exactly apart from its terminal newline. Browser tests verify front/middle/end line numbers and a comment posted on the raw HTML example at line 459, not the failed retrieval's estimated 498. Page scripts are never executed. ADO is unaffected by this GitHub blob-page format. Live verification must show source matching restored before release.
+  - **Source retrieval follow-up (GitHub):** GitHub v1.14.0 supports the captured serialized blob source alongside existing textarea and JSON embedded data without executing page scripts. Exact captured-source and posted-line checks are recorded in [the GitHub developer notes](./github/DEV_NOTES.md#serialized-blob-data-2026-11-03). The user confirmed final live-PR verification on 2026-11-03. ADO is unaffected by this GitHub blob-page format.
   - **Tryout behavior:** one compact 24-by-24-pixel funnel opens **View options** in both expanded and collapsed headers. Restore the original toolbar flow: 8-pixel gaps between groups, 8-pixel horizontal header padding, and a 12-pixel right margin on the funnel. It follows the last separator without an auto margin; widening the sidebar must not move it away from the navigation controls. Its two independent positive checkboxes mean checked = visible. Highlight the funnel with a white background and blue icon whenever either option is unchecked, including while the menu is closed, hovered, or focused in light and dark themes. Support keyboard access, Escape, and outside-click dismissal without clipping the dropdown in the collapsed sidebar. Keep the fixed 480-pixel minimum width and existing defaults/persistence. Revealed thread context stays visible until another thread is selected, the option changes, or review data is rebuilt. Removed-content visibility is local to the current review surface and resets when navigating to another pull request or reloading the page.
-  - **Validation:** 478 Node tests and all 65 GitHub browser tests pass, including inline replacements, deleted blocks, nested lists, mixed table cells and rows, conversations on hidden content, dynamically rendered files, switching back to the full diff, independent View options checkboxes, keyboard/outside dismissal, theme states, a collapsed dropdown at viewport edges, successful comment submission, document-only visibility rescans, removal-only Changes refresh without losing drafts, viewport-resize dismissal without changing preferences, and exact source/posting anchors across embedded JSON and serialized blob responses. Live verification confirms the captured newly added Markdown strikethrough is retained; source-retrieval verification, the remaining live-PR checklist, and uncaptured strikethrough variants remain pending.
+  - **Validation:** 478 Node tests and all 69 GitHub browser tests pass, covering content visibility, independent View options, navigation, comment submission, dynamic document updates, exact source/posting anchors, and deletion without replaying old heading links. The user confirmed final live-PR checks on 2026-11-03. Captured authored strikethrough remains visible; uncaptured unchanged-base variants remain an additional coverage opportunity, not grounds for speculative classification changes.
 
 - [ ] **P1 — Preserve sidebar state and show active feedback while preparing rendered views**
   - **Outcome:** reviewers can prepare the rendered review surface without losing their compact sidebar layout and can see that longer setup phases are still active.

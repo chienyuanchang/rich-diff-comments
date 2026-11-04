@@ -33,6 +33,7 @@ GitHub rich diff and Azure DevOps Preview render Markdown beautifully, but neith
 ### GitHub-specific features
 
 - **Start rendered review across the pull request:** render every changed Markdown file as rich diff in one sweep when GitHub's PR mode can retain them; optimized large PRs receive one-file-at-a-time guidance.
+- **View options:** use the sidebar's funnel to show or hide removed content and resolved comments independently. Read without deleted prose or focus on unresolved conversations throughout the document and Threads; the funnel stays highlighted whenever either option is hidden.
 - **Rich-diff integration:** preserve GitHub's added/removed rendering, expose outdated-thread state and author-association badges, and keep heading anchor links working in rendered Markdown.
 
 ### Azure DevOps-specific features

@@ -138,7 +138,7 @@ stylingDirectives: $R[396] = {format: "compact", /* highlighting metadata */}
 
 The old textarea/JSON-only extraction missed this source and fell back to estimated lines. The raw HTML paragraph is HEAD line 459; the fallback assigned 498, beyond the 493-line file. The resulting 422 message about diff hunks was therefore not evidence of an actual hunk restriction.
 
-The captured strings use JavaScript hexadecimal escapes such as `\x3C` for `<`; plain `JSON.parse` rejects these. The additional script scan reads the literal string array after `rawLines: $R[<index>] =`, converts hexadecimal escapes to JSON Unicode escapes (without altering escaped literal backslashes), then uses `JSON.parse`. It does not evaluate assignments or execute downloaded scripts, and it preserves entities, escaped quotes, and brackets in authored source. Existing textarea and embedded JSON formats retain precedence. Browser regressions verify exact front/middle/end anchors and the line sent when posting. Real-PR verification after extension reload is still required.
+The captured strings use JavaScript hexadecimal escapes such as `\x3C` for `<`; plain `JSON.parse` rejects these. The additional script scan reads the literal string array after `rawLines: $R[<index>] =`, converts hexadecimal escapes to JSON Unicode escapes (without altering escaped literal backslashes), then uses `JSON.parse`. It does not evaluate assignments or execute downloaded scripts, and it preserves entities, escaped quotes, and brackets in authored source. Existing textarea and embedded JSON formats retain precedence. Browser regressions verify exact front/middle/end anchors and the line sent when posting. The user confirmed final live-PR verification on 2026-11-03 during GitHub v1.14.0 release preparation.
 
 **Do not** fetch `raw.githubusercontent.com` from a `github.com` content script: it sets `Access-Control-Allow-Origin: *` which forbids credentialed requests. Use `github.com/blob/...` HTML instead.
 
@@ -330,6 +330,8 @@ Successful deletion invalidates route data and schedules a full review initializ
 Track whether the initial heading hash has been handled on the current review path. Keep retrying while the target is unavailable, but stop replaying it once resolved. Explicit TOC clicks and hash changes remain navigations; a review-path change re-arms the initial attempt. Do not remove the hash from history or bypass deletion's review-data refresh.
 
 Browser regressions cover deletion of the last comment and deletion of a reply after an initial deep link or TOC click. They check that no scroll is sent to the old heading, the reader stays near the current discussion, and refreshed threads reflect the deletion. Normal same-link clicks, history navigation, late-mounted headings, and new review paths remain covered.
+
+The user confirmed final live-PR verification on 2026-11-03 during GitHub v1.14.0 release preparation. This does not claim semantic position synchronization when switching between rich and source diff.
 
 ## Mutation observer
 

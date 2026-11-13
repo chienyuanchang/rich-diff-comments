@@ -84,6 +84,60 @@ test('Play reads each change aloud and moves on; ‹ › jump while listening; P
   expect((await spoken(page)).length).toBe(before);
 });
 
+test('← / → step by sentence while listening, and the spoken sentence is highlighted', async ({ page }) => {
+  await setup(page);
+  const highlighted = () => page.evaluate(() => {
+    const h = CSS.highlights.get('grdc-listen-sentence');
+    return h ? [...h][0].toString() : null;
+  });
+  await page.locator('.grdc-sidebar-listen').click();
+  await expect.poll(() => spoken(page)).toEqual(['Kept new words ending.']);
+  await expect.poll(highlighted).toMatch(/^Kept .*new words ending\.$/);
+
+  await page.keyboard.press('ArrowRight'); // second sentence of the same change
+  await expect.poll(() => spoken(page).then((s) => s.at(-1))).toBe('Removed: old words.');
+  await expect.poll(highlighted).toBe(null); // not on screen as visible text
+  await page.keyboard.press('ArrowRight'); // into the next change
+  await expect.poll(() => spoken(page).then((s) => s.at(-1))).toBe('Removed block starting with Deleted paragraph.');
+  await expect(page.locator('#old-block')).toHaveClass(/grdc-listen-active/);
+  await page.keyboard.press('ArrowLeft'); // back to the previous change's last sentence
+  await expect.poll(() => spoken(page).then((s) => s.at(-1))).toBe('Removed: old words.');
+  await expect(page.locator('#mixed')).toHaveClass(/grdc-listen-active/);
+
+  // Not listening: arrows are left to the page.
+  await page.locator('.grdc-sidebar-listen').click();
+  const before = (await spoken(page)).length;
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(300);
+  expect((await spoken(page)).length).toBe(before);
+  expect(await highlighted()).toBe(null);
+});
+
+test('navigating to a change lands it below sticky headers taller than 120px', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(() => {
+    const bar = document.createElement('div');
+    bar.style.cssText = 'position:sticky;top:0;height:110px;background:#eee;z-index:5';
+    document.body.prepend(bar);
+    const fileHeader = document.createElement('div');
+    fileHeader.style.cssText = 'position:sticky;top:110px;height:60px;background:#ddd;z-index:5';
+    const diff = document.getElementById('diff-visibility');
+    diff.prepend(fileHeader);
+    const spacer = document.createElement('div');
+    spacer.style.height = '3000px';
+    document.body.append(spacer);
+    window.scrollTo(0, 0);
+  });
+  for (let i = 0; i < 3; i++) await page.locator('.grdc-sidebar-next-change').click();
+  await page.waitForTimeout(800);
+  const active = await page.evaluate(() => {
+    const blocks = document.querySelector('.grdc-sidebar')._grdcChangeBlocks;
+    const idx = Number(document.querySelector('.grdc-sidebar-changes-count').textContent.split('/')[0]) - 1;
+    return blocks[idx].getBoundingClientRect().top;
+  });
+  expect(active).toBeGreaterThanOrEqual(170);
+});
+
 test('with Show removed content off, edits are read without the deleted words', async ({ page }) => {
   await setup(page);
   await page.locator('.grdc-sidebar-header-filter').click();

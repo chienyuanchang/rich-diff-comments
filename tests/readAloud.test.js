@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
-const { splitSentences, changeSpeech, fileSpeech } = require('../src/lib/readAloud.js');
+const { splitSentences, changeSpeech, fileSpeech, sentenceRange } = require('../src/lib/readAloud.js');
 
 const dom = (html) => new JSDOM(`<div class="prose-diff"><div class="markdown-body">${html}</div></div>`).window.document;
 
@@ -51,4 +51,17 @@ test('fileSpeech: a new file is read block by block, a deleted one is announced'
   const root = doc.querySelector('.prose-diff');
   assert.deepEqual(fileSpeech(root, 'ADDED', 'a.md'), ['New file a.md.', 'Title', 'Item one.', 'End.']);
   assert.deepEqual(fileSpeech(root, 'REMOVED', 'a.md'), ['Deleted file a.md.']);
+});
+
+test('sentenceRange: finds each spoken sentence in the visible text, skipping deleted words', () => {
+  const doc = dom('<p id="b">First <del>gone</del><ins>one</ins>   here. Second <em>one</em>.<button class="grdc-comment-btn">+</button></p>');
+  const block = doc.getElementById('b');
+  const [s1, s2] = changeSpeech(block);
+  const a = sentenceRange(block, s1, 0);
+  // The range spans the sentence on screen, so deleted words inside it are covered too.
+  assert.equal(a.range.toString(), 'First goneone   here.');
+  const b = sentenceRange(block, s2, a.end);
+  assert.equal(b.range.toString(), 'Second one.');
+  assert.equal(sentenceRange(block, 'Removed: gone.', 0), null);
+  assert.equal(sentenceRange(null, 'x', 0), null);
 });

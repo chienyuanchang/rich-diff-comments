@@ -115,5 +115,36 @@
     return out;
   }
 
-  return { splitSentences, changeSpeech, fileSpeech };
+  // DOM Range of `sentence` inside the block's visible (non-deleted) text, searching
+  // from character `from` of the whitespace-collapsed text. Returns { range, end } or null.
+  // shortcut: text split across table cells or list children has no space between
+  // nodes, so such sentences may not be found (no highlight); fine for prose.
+  function sentenceRange(blockEl, sentence, from) {
+    if (!blockEl || !blockEl.ownerDocument) return null;
+    const doc = blockEl.ownerDocument;
+    const walker = doc.createTreeWalker(blockEl, 4 /* NodeFilter.SHOW_TEXT */);
+    const map = [];
+    let str = '';
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const parent = n.parentElement;
+      if (parent && (parent.closest(INJECTED_UI_SELECTOR) ||
+        (parent.closest(REMOVED_SELECTOR) && blockEl.contains(parent.closest(REMOVED_SELECTOR))))) continue;
+      for (let i = 0; i < n.data.length; i++) {
+        if (/\s/.test(n.data[i])) {
+          if (str && !str.endsWith(' ')) { str += ' '; map.push([n, i]); }
+        } else { str += n.data[i]; map.push([n, i]); }
+      }
+    }
+    const needle = collapse(sentence);
+    const at = needle ? str.indexOf(needle, from || 0) : -1;
+    if (at < 0) return null;
+    const [startNode, startOffset] = map[at];
+    const [endNode, endOffset] = map[at + needle.length - 1];
+    const range = doc.createRange();
+    range.setStart(startNode, startOffset);
+    range.setEnd(endNode, endOffset + 1);
+    return { range, end: at + needle.length };
+  }
+
+  return { splitSentences, changeSpeech, fileSpeech, sentenceRange };
 });

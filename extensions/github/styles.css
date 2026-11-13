@@ -1815,3 +1815,7 @@ li.grdc-hoverable .grdc-comment-btn {
   outline-offset: 2px;
   border-radius: 4px;
 }
+/* The sentence being read aloud (CSS Custom Highlight API). */
+::highlight(grdc-listen-sentence) {
+  background-color: rgba(84, 174, 255, 0.35);
+}

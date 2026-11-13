@@ -63,6 +63,7 @@
     buttonAnchor,
     changeSpeech,
     fileSpeech,
+    sentenceRange,
   } = (typeof window !== 'undefined' && window.GRDC) || {};
 
   // Wrap findTextInSource so we can keep the per-file diagnostic counter behavior
@@ -87,6 +88,7 @@
   let listening = false;
   let listenGen = 0; // bumped on every start / stop so stale utterance callbacks do nothing
   let listenBlock = null;
+  let listenSentence = null; // { idx, k, count } of the sentence being spoken
   let fileLineMap = new Map(); // Map<element, { path, line }>
   let hideRemovedContent = false;
   const threadReviewAnchors = new WeakMap();
@@ -3557,10 +3559,11 @@
   function navigateToPageTarget(resolveTarget, options = {}) {
     const resolve = typeof resolveTarget === 'function' ? resolveTarget : () => resolveTarget;
     const block = options.block === 'center' ? 'center' : 'start';
-    const targetY = block === 'center' ? window.innerHeight / 2 : 120;
     const sequence = ++pageNavigationSequence;
     const target = resolve();
     if (!target || !target.isConnected) return;
+    // GitHub's sticky toolbar row and file header can cover more than 120px.
+    let targetY = block === 'center' ? window.innerHeight / 2 : Math.max(120, stickyTopInset(target) + 16);
 
     function pointFor(element) {
       const rect = element.getBoundingClientRect();
@@ -3589,7 +3592,12 @@
       lastScrollY = window.scrollY;
       lastPoint = point;
 
-      const error = point - targetY;
+      let error = point - targetY;
+      if (now - stableSince >= 120 && Math.abs(error) > 4 && corrections < 4 && block === 'start') {
+        // The file header that sticks over the target may differ from the one seen before scrolling.
+        targetY = Math.max(120, stickyTopInset(current) + 16);
+        error = point - targetY;
+      }
       if (now - stableSince >= 120 && Math.abs(error) > 4 && corrections < 4) {
         corrections++;
         window.scrollTo({ top: Math.max(0, window.scrollY + error), behavior: 'instant' });
@@ -3601,6 +3609,25 @@
       if (now - startedAt < 3000) requestAnimationFrame(verify);
     }
     requestAnimationFrame(verify);
+  }
+
+  // Bottom edge (viewport px) of sticky / fixed page chrome covering the top of the
+  // viewport above `target`'s column — GitHub's files toolbar and sticky file header.
+  function stickyTopInset(target) {
+    const rect = target.getBoundingClientRect();
+    const x = Math.min(window.innerWidth - 1, Math.max(0, rect.left + 8));
+    let inset = 0;
+    for (let y = 0; y < window.innerHeight / 2; y += 6) {
+      let covered = false;
+      for (let el = document.elementFromPoint(x, y); el && el !== document.body; el = el.parentElement) {
+        if (el.closest('.grdc-sidebar, .grdc-view-options')) break;
+        const pos = getComputedStyle(el).position;
+        if (pos === 'sticky' || pos === 'fixed') { covered = true; break; }
+      }
+      if (covered) inset = y + 6;
+      else if (y > inset + 30) break; // past the stacked headers
+    }
+    return inset;
   }
 
   function revealSidebarCard(card) {
@@ -5584,12 +5611,15 @@
     listenGen++;
     if (!listening && !listenBlock) return;
     listening = false;
+    listenSentence = null;
     if (speech) speech.cancel();
+    highlightSentence(null);
     setListenBlock(null);
     updateListenButton();
   }
 
-  function listenFrom(idx) {
+  // Start reading change `idx` at sentence `startAt` (negative counts from the end).
+  function listenFrom(idx, startAt) {
     const sidebar = document.querySelector('.grdc-sidebar');
     const blocks = (sidebar && sidebar._grdcChangeBlocks) || [];
     if (!speech || idx < 0 || idx >= blocks.length) { stopListening(); return; }
@@ -5597,19 +5627,33 @@
     const block = blocks[idx];
     listening = true;
     changesCurrentIdx = idx;
-    setListenBlock(block);
-    scrollToChange(block);
-    updateChangesCount(sidebar);
-    const card = sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card')[idx];
-    if (card) revealSidebarCard(card);
+    if (block !== listenBlock) {
+      setListenBlock(block);
+      scrollToChange(block);
+      updateChangesCount(sidebar);
+      const card = sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card')[idx];
+      if (card) revealSidebarCard(card);
+    }
     updateListenButton();
 
     const whole = sidebar._grdcWholeFileBlocks && sidebar._grdcWholeFileBlocks.get(block);
     const sentences = whole
       ? fileSpeech(block, whole.changeType, (whole.path || '').split('/').pop())
       : changeSpeech(block, { includeRemoved: !hideRemovedContent });
+    // Where each sentence sits in the block, for the highlight (null when not found on screen).
+    const ranges = [];
+    let from = 0;
+    sentences.forEach((sentence) => {
+      const found = sentenceRange(block, sentence, from);
+      ranges.push(found && found.range);
+      if (found) from = found.end;
+    });
+    const first = Math.max(0, Math.min(sentences.length - 1,
+      Number.isInteger(startAt) ? (startAt < 0 ? sentences.length + startAt : startAt) : 0));
     const speakSentence = (k) => {
       if (my !== listenGen) return;
+      listenSentence = { idx, k, count: sentences.length };
+      highlightSentence(ranges[k]);
       if (k >= sentences.length) {
         // The list may have been rebuilt meanwhile; continue after this block's current position.
         setTimeout(() => {
@@ -5632,9 +5676,38 @@
       speech.speak(utterance);
     };
     // Chrome drops an utterance queued right after cancel(); give it a moment.
-    if (speech.speaking || speech.pending) { speech.cancel(); setTimeout(() => speakSentence(0), 80); }
-    else speakSentence(0);
+    if (speech.speaking || speech.pending) { speech.cancel(); setTimeout(() => speakSentence(first), 80); }
+    else speakSentence(first);
   }
+
+  // The sentence being spoken, via the CSS Custom Highlight API (no DOM changes,
+  // so GitHub's rendered Markdown is untouched). Browsers without it keep the block outline.
+  function highlightSentence(range) {
+    if (typeof CSS === 'undefined' || !CSS.highlights || typeof Highlight === 'undefined') return;
+    if (range) CSS.highlights.set('grdc-listen-sentence', new Highlight(range));
+    else CSS.highlights.delete('grdc-listen-sentence');
+  }
+
+  // ← / → while listening: previous / next sentence, crossing into the neighbouring change.
+  function listenStep(dir) {
+    if (!listening || !listenSentence) return;
+    const { idx, k, count } = listenSentence;
+    const next = Math.min(k, count - 1) + dir;
+    if (next >= 0 && next < count) listenFrom(idx, next);
+    else if (dir > 0) listenFrom(idx + 1, 0);
+    else if (idx > 0) listenFrom(idx - 1, -1);
+    else listenFrom(0, 0);
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (!listening || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    e.preventDefault();
+    e.stopPropagation();
+    listenStep(e.key === 'ArrowRight' ? 1 : -1);
+  }, true);
 
   if (typeof window !== 'undefined') window.addEventListener('pagehide', () => stopListening());
 

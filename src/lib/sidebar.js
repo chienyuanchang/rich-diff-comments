@@ -67,6 +67,22 @@
     return { left, top };
   }
 
+  // Where to put the docked bar inside GitHub's files toolbar row.
+  // `row` is the toolbar's rect; `gap` is `{left, right}` — the empty space
+  // between the toolbar's left controls and right controls; `size` is the
+  // bar's `{width, height}`. Centers the bar in the gap, never left of the
+  // gap start, and keeps it on-screen.
+  function dockedSidebarPos(row, gap, size, viewportWidth) {
+    const width = size?.width || 0;
+    const height = size?.height || 0;
+    let left = (gap.left + gap.right) / 2 - width / 2;
+    if (left + width > gap.right) left = gap.right - width;
+    if (left < gap.left) left = gap.left;
+    left = Math.max(0, Math.min(left, (viewportWidth || 0) - width));
+    const top = Math.max(0, row.top + (row.height - height) / 2);
+    return { left, top };
+  }
+
   // Modulo arithmetic for the prev/next thread cycle in the sidebar. Wraps
   // around at both ends. Returns 0 for an empty list. Negative deltas walk
   // backward; positive deltas walk forward; deltas larger than `total` are
@@ -316,6 +332,7 @@
     buildSnippet,
     getVisibleThreadComments,
     clampDragPos,
+    dockedSidebarPos,
     nextWrappingIndex,
     clampSize,
     isMarkdownPath,

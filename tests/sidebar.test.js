@@ -7,6 +7,7 @@ const {
   buildSnippet,
   getVisibleThreadComments,
   clampDragPos,
+  dockedSidebarPos,
   nextWrappingIndex,
   clampSize,
   isMarkdownPath,
@@ -84,6 +85,18 @@ test('getVisibleThreadComments — returns empty for all-deleted or malformed th
   assert.deepEqual(getVisibleThreadComments({ comments: [null, undefined] }), []);
   assert.deepEqual(getVisibleThreadComments({}), []);
   assert.deepEqual(getVisibleThreadComments(null), []);
+});
+
+// dockedSidebarPos
+const ROW = { top: 100, height: 48 };
+test('dockedSidebarPos — centers the bar in the toolbar gap, vertically centered', () => {
+  assert.deepEqual(dockedSidebarPos(ROW, { left: 200, right: 800 }, { width: 300, height: 32 }, 1200), { left: 350, top: 108 });
+});
+test('dockedSidebarPos — bar wider than the gap starts at the gap start', () => {
+  assert.deepEqual(dockedSidebarPos(ROW, { left: 200, right: 400 }, { width: 480, height: 32 }, 1200), { left: 200, top: 108 });
+});
+test('dockedSidebarPos — stays inside the viewport and never above it', () => {
+  assert.deepEqual(dockedSidebarPos({ top: -60, height: 48 }, { left: 900, right: 1000 }, { width: 480, height: 32 }, 1000), { left: 520, top: 0 });
 });
 
 // ───────────────────────────────────────────────────────────────────────────

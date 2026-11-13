@@ -27,7 +27,7 @@ GitHub rich diff and Azure DevOps Preview render Markdown beautifully, but neith
 - **Changes tab** in the sidebar lists every changed block (paragraph / list item / table row / code block / heading / blockquote) with a `+` / `−` / `±` kind glyph, file:line, and a snippet. The header also gets a `◀ N/M ▶` counter so you can step through changes without opening the tab. Best way to scan a Markdown PR for the first time without re-reading the unchanged prose.
 - **Native file navigation stays synchronized:** clicking a file in either host's file tree updates the rendered review surface and the extension's Changes, Threads, and Outline context; extension navigation selects the corresponding native file.
 - **Copy Markdown:** copy a rendered comment's original Markdown body for reuse in another discussion or document.
-- **Keyboard shortcuts:** `j` / `k` next / previous thread, `h` / `l` first / last thread, `[` / `]` previous / next change, `{` / `}` (Shift+[, Shift+]) first / last change, `1` / `2` / `3` switch sidebar tab (Changes / Threads / Outline), `t` toggle the sidebar, `Shift+T` reset its position.
+- **Keyboard shortcuts:** `j` / `k` next / previous thread, `h` / `l` first / last thread, `[` / `]` previous / next change, `{` / `}` (Shift+[, Shift+]) first / last change, `1` / `2` / `3` switch sidebar tab (Changes / Threads / Outline), `t` toggle the sidebar, `Shift+T` reset its position (docks it back in GitHub's file toolbar).
 - No PAT required — each target uses the existing signed-in session for its service.
 
 ### GitHub-specific features

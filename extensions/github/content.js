@@ -45,6 +45,7 @@
     parseLineFromAnchor,
     buildSnippet,
     clampDragPos,
+    dockedSidebarPos,
     nextWrappingIndex,
     isMarkdownPath,
     getMarkdownRenderState,
@@ -3612,6 +3613,7 @@
             top: parseFloat(sidebar.style.top),
           }));
         } catch (_) {}
+        placeDockedSidebar();
       };
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
@@ -3705,6 +3707,73 @@
       }, 200);
     });
   })();
+
+  // Docked mode (default): until the user drags the bar (no stored position),
+  // pin it inside GitHub's files toolbar row ("All commits … N / M viewed"),
+  // which GitHub keeps sticky while scrolling, so it never covers the diff.
+  // Dragging undocks it (the old floating mode); Shift+T docks it again.
+  // Falls back to the floating default when that row isn't on the page.
+  function findFilesToolbar() {
+    return document.querySelector('section[class*="updatedHeaderToolbar__"], section[class*="stickyHeader__"]');
+  }
+
+  let dockedToolbarObserved = null;
+  function placeDockedSidebar() {
+    const sidebar = document.querySelector('.grdc-sidebar');
+    if (!sidebar || sidebar.classList.contains('grdc-sidebar-dragging')) return;
+    let floating = false;
+    try { floating = !!localStorage.getItem(SIDEBAR_POS_KEY); } catch (_) {}
+    const toolbar = floating ? null : findFilesToolbar();
+    const row = toolbar ? toolbar.getBoundingClientRect() : null;
+    const docked = !!(row && row.width > 0 && row.height > 0);
+    const wasDocked = sidebar.classList.contains('grdc-sidebar-docked');
+    sidebar.classList.toggle('grdc-sidebar-docked', docked);
+    if (!docked) {
+      if (wasDocked) {
+        sidebar.style.maxHeight = '';
+        // A drag just set an explicit floating position; keep it.
+        if (!floating) sidebar.style.left = sidebar.style.top = sidebar.style.transform = '';
+      }
+      return;
+    }
+    // Toolbar width changes (file tree toggle) don't scroll, so watch it.
+    if (dockedToolbarObserved !== toolbar && typeof ResizeObserver !== 'undefined') {
+      dockedToolbarObserved = toolbar;
+      new ResizeObserver(scheduleDockedSidebarPlacement).observe(toolbar);
+    }
+    // The row's left controls ("All commits") and right controls ("viewed")
+    // are its first and last direct <div> children; the bar fills the gap.
+    const groups = toolbar.querySelectorAll(':scope > div');
+    const leftEl = groups.length > 1 ? groups[0] : null;
+    const rightEl = groups.length ? groups[groups.length - 1] : null;
+    const gap = {
+      left: (leftEl ? leftEl.getBoundingClientRect().right : row.left) + 8,
+      right: (rightEl ? rightEl.getBoundingClientRect().left : row.right) - 8,
+    };
+    const header = sidebar.querySelector('.grdc-sidebar-header');
+    const { left, top } = dockedSidebarPos(
+      row,
+      gap,
+      { width: sidebar.offsetWidth, height: header ? header.offsetHeight : 32 },
+      window.innerWidth
+    );
+    sidebar.style.left = `${left}px`;
+    sidebar.style.top = `${top}px`;
+    sidebar.style.right = 'auto';
+    sidebar.style.transform = 'none';
+    sidebar.style.maxHeight = `${Math.max(120, window.innerHeight - top - 8)}px`;
+  }
+
+  let dockedPlacementFrame = 0;
+  function scheduleDockedSidebarPlacement() {
+    if (dockedPlacementFrame) return;
+    dockedPlacementFrame = requestAnimationFrame(() => {
+      dockedPlacementFrame = 0;
+      placeDockedSidebar();
+    });
+  }
+  window.addEventListener('scroll', scheduleDockedSidebarPlacement, { passive: true });
+  window.addEventListener('resize', scheduleDockedSidebarPlacement);
 
   // Native `resize: both` can trigger browser scroll anchoring as card text
   // reflows. That changes scrollTop and visibly slides the scrollbar thumb
@@ -3988,7 +4057,7 @@
       sidebar.setAttribute('aria-label', 'Review threads');
       sidebar.innerHTML = `
         <div class="grdc-sidebar-header">
-          <button class="grdc-sidebar-collapse" title="Collapse / expand sidebar (t) — Shift+T to reset position" aria-label="Toggle sidebar">
+          <button class="grdc-sidebar-collapse" title="Collapse / expand sidebar (t) — drag the bar to float it, Shift+T to dock it back" aria-label="Toggle sidebar">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75Zm0 5A.75.75 0 0 1 1.75 7h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.75Zm0 5a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1-.75-.75Z"/></svg>
           </button>
           <span class="grdc-sidebar-separator" aria-hidden="true"></span>
@@ -4091,6 +4160,10 @@
       applySidebarPersistedPos(sidebar);
       attachSidebarResizeScrollLock(sidebar);
       observeSidebarResize(sidebar);
+      // Expand / collapse changes the bar's width; re-center it when docked.
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(scheduleDockedSidebarPlacement).observe(sidebar);
+      }
 
       sidebar.querySelector('.grdc-sidebar-collapse').addEventListener('click', () => {
         const isCollapsed = sidebar.classList.toggle('grdc-sidebar-collapsed');
@@ -4324,6 +4397,7 @@
     // saved preference resumes.
     const savedTab = localStorage.getItem(SIDEBAR_TAB_KEY) || 'changes';
     setSidebarTab(sidebar, forceOutlineTab ? 'outline' : savedTab);
+    placeDockedSidebar();
   }
 
   // Walk the rich-diff DOM and collect every heading (H1–H6) with metadata

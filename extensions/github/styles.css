@@ -939,16 +939,17 @@ li.grdc-hoverable .grdc-comment-btn {
   top: 16px;
   left: 50%;
   transform: translateX(-50%);
-  width: 480px;
+  width: 512px;
   height: auto;
-  min-width: 480px;
+  min-width: 512px;
   min-height: 120px;
   /* Cap height but NOT width — narrow viewports should still let the
-     sidebar be 480px (users will scroll the page horizontally if needed,
+     sidebar be 512px (users will scroll the page horizontally if needed,
      and the alternative is the funnel + nav clusters getting clipped
      because `max-width: 90vw` would cap the sidebar below its content).
      Width bumped from 420 → 480 in 1.8.0 to fit the file-scoped
-     counter format `3/8 (45)`. See `.grdc-sidebar-collapsed` comment. */
+     counter format `3/8 (45)`, and to 512 for the Listen button.
+     See `.grdc-sidebar-collapsed` comment. */
   max-height: calc(100vh - 40px);
   display: flex;
   flex-direction: column;
@@ -1000,8 +1001,8 @@ li.grdc-hoverable .grdc-comment-btn {
      old `3/8` format. Two counters + separators + filter margin pushed
      past 420 and the funnel got visually clipped off the right edge in
      collapsed mode. 480 restores comfortable spacing for `NN/NN (NNN)`
-     on both counters. */
-  width: 480px !important;
+     on both counters. 512: one more 24px button (Listen) + 8px gap. */
+  width: 512px !important;
 }
 /* Force the collapsed header to stay on ONE row. The expanded header uses
    `flex-wrap: wrap` so a user-shrunk sidebar degrades gracefully, but the
@@ -1797,4 +1798,20 @@ li.grdc-hoverable .grdc-comment-btn {
   .grdc-thread-body {
     background: rgba(56, 139, 253, 0.06);
   }
+}
+
+/* Listen to the changes (read aloud): play / stop toggle in the Changes nav. */
+.grdc-sidebar-listen .grdc-listen-pause,
+.grdc-sidebar-listen[aria-pressed="true"] .grdc-listen-play { display: none; }
+.grdc-sidebar-listen[aria-pressed="true"] .grdc-listen-pause { display: block; }
+/* The bar is accent-blue with white icons, so "on" is a light fill, not a color. */
+.grdc-sidebar-header .grdc-sidebar-listen[aria-pressed="true"] { background: rgba(255, 255, 255, 0.2); }
+.grdc-view-options label.grdc-listen-option { cursor: default; }
+.grdc-view-options .grdc-listen-option select { margin-left: auto; max-width: 150px; }
+.grdc-view-options [hidden] { display: none; }
+/* The change being read aloud. */
+.grdc-listen-active {
+  outline: 2px solid var(--bgColor-accent-emphasis, var(--color-accent-emphasis, #0969da));
+  outline-offset: 2px;
+  border-radius: 4px;
 }

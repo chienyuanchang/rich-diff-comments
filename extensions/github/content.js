@@ -61,6 +61,8 @@
     isInDeletedBlock,
     mapBlocksToSourceLines,
     buttonAnchor,
+    changeSpeech,
+    fileSpeech,
   } = (typeof window !== 'undefined' && window.GRDC) || {};
 
   // Wrap findTextInSource so we can keep the per-file diagnostic counter behavior
@@ -78,6 +80,13 @@
   // ── State ──────────────────────────────────────────────────────────────────
 
   let prInfo = null; // { owner, repo, pullNumber, commitId }
+  // Listen to the changes (read aloud) — see listenFrom().
+  const LISTEN_RATE_KEY = 'grdc_listen_rate';
+  const LISTEN_VOICE_KEY = 'grdc_listen_voice';
+  const speech = (typeof window !== 'undefined' && window.speechSynthesis) || null;
+  let listening = false;
+  let listenGen = 0; // bumped on every start / stop so stale utterance callbacks do nothing
+  let listenBlock = null;
   let fileLineMap = new Map(); // Map<element, { path, line }>
   let hideRemovedContent = false;
   const threadReviewAnchors = new WeakMap();
@@ -848,6 +857,7 @@
   // requests. Never let one PR's route payload, source files, comments, or
   // mention IDs leak into the next PR's review surface.
   function resetPrScopedState() {
+    stopListening();
     hideRemovedContent = false;
     clearRemovedContentVisibility();
     routeLifecycleGeneration++;
@@ -3486,7 +3496,7 @@
   // We clamp persisted sizes on both read and write so a transient narrow
   // render (e.g. during initial paint before content settles) can't poison
   // localStorage with a tiny size that the next page load would honor.
-  const SIDEBAR_MIN_WIDTH = 480;
+  const SIDEBAR_MIN_WIDTH = 512;
   const SIDEBAR_MIN_HEIGHT = 120;
   const SIDEBAR_TAB_KEY = 'grdc_sidebar_tab';
   function syncViewOptions(sidebar) {
@@ -4054,6 +4064,10 @@
               <!-- chevron-right -->
               <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"/></svg>
             </button>
+            <button class="grdc-sidebar-listen" title="Listen to the changes — reads each change aloud, then the next" aria-label="Listen to the changes" aria-pressed="false">
+              <svg class="grdc-listen-play" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M4.5 2.6v10.8a.6.6 0 0 0 .9.5l8.6-5.4a.6.6 0 0 0 0-1L5.4 2.1a.6.6 0 0 0-.9.5Z"/></svg>
+              <svg class="grdc-listen-pause" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M4 2.5h2.75v11H4zM9.25 2.5H12v11H9.25z"/></svg>
+            </button>
           </span>
           <span class="grdc-sidebar-separator" aria-hidden="true"></span>
           <span class="grdc-sidebar-nav">
@@ -4099,6 +4113,12 @@
           </fieldset>
           <fieldset><legend>Behavior</legend>
             <label><input type="checkbox" class="grdc-auto-render"> Render Markdown when selected</label>
+          </fieldset>
+          <fieldset class="grdc-listen-option"><legend>Listening</legend>
+            <label class="grdc-listen-option">Speed <select class="grdc-listen-rate">
+              <option value="0.8">0.8×</option><option value="1">1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="1.75">1.75×</option><option value="2">2×</option><option value="2.5">2.5×</option><option value="3">3×</option>
+            </select></label>
+            <label class="grdc-listen-option">Voice <select class="grdc-listen-voice"><option value="">Default</option></select></label>
           </fieldset>
           <button type="button" class="grdc-restore-defaults">Restore defaults</button>
         </div>
@@ -4192,6 +4212,7 @@
       // distinct from the thread prev/next chevrons next door.
       sidebar.querySelector('.grdc-sidebar-prev-change').addEventListener('click', () => changesJump(-1));
       sidebar.querySelector('.grdc-sidebar-next-change').addEventListener('click', () => changesJump(+1));
+      setupListenControls(sidebar);
       // Diff/Thread icon shortcuts — clicking the file-diff icon or the
       // comment-discussion icon acts as "go to next" (same as the right
       // chevron). The mockup spec calls this out: "File diff and comment
@@ -5364,6 +5385,7 @@
     // without re-walking the DOM. Live DOM references — if a MutationObserver
     // rebuild swaps these nodes, the next `buildChangesPane` will refresh.
     sidebar._grdcChangeBlocks = blocks;
+    sidebar._grdcWholeFileBlocks = wholeFileBlocks;
     // Snap the saved index inside the new range.
     if (changesCurrentIdx >= blocks.length) changesCurrentIdx = blocks.length - 1;
     if (changesCurrentIdx < 0) changesCurrentIdx = 0;
@@ -5412,6 +5434,7 @@
         `;
         card.addEventListener('click', () => {
           changesCurrentIdx = idx;
+          if (listening) { listenFrom(idx); return; }
           // Tell the Outline IO to stand down while the smooth-scroll
           // animation runs — otherwise it'd race us and yank the
           // selection back to the previous file (especially bad here
@@ -5475,6 +5498,7 @@
       `;
       card.addEventListener('click', () => {
         changesCurrentIdx = idx;
+        if (listening) { listenFrom(idx); return; }
         scrollToChange(block);
         updateChangesCount(sidebar);
       });
@@ -5499,6 +5523,7 @@
     const blocks = sidebar._grdcChangeBlocks || [];
     if (blocks.length === 0) return;
     changesCurrentIdx = nextChangeIndex(changesCurrentIdx, delta, blocks.length);
+    if (listening) { listenFrom(changesCurrentIdx); return; }
     scrollToChange(blocks[changesCurrentIdx]);
     updateChangesCount(sidebar);
     // Keep the active card visible in the Changes list (mirrors sidebarJump).
@@ -5507,6 +5532,111 @@
       revealSidebarCard(cards[changesCurrentIdx]);
     }
   }
+
+  // ── Listen to the changes (read aloud) ────────────────────────────────────
+  // Walks the Changes list in order: speaks each change with the browser's
+  // speechSynthesis, then moves to the next. ‹ / › and card clicks jump while
+  // listening. What to say comes from src/lib/readAloud.js.
+
+  function setupListenControls(sidebar) {
+    const button = sidebar.querySelector('.grdc-sidebar-listen');
+    if (!speech || typeof SpeechSynthesisUtterance === 'undefined') {
+      button.hidden = true;
+      sidebar.querySelectorAll('.grdc-listen-option').forEach((el) => { el.hidden = true; });
+      return;
+    }
+    button.addEventListener('click', () => (listening ? stopListening() : listenFrom(changesCurrentIdx)));
+    const rate = sidebar.querySelector('.grdc-listen-rate');
+    try { rate.value = localStorage.getItem(LISTEN_RATE_KEY) || '1'; } catch (_) { rate.value = '1'; }
+    if (!rate.value) rate.value = '1';
+    rate.addEventListener('change', () => { try { localStorage.setItem(LISTEN_RATE_KEY, rate.value); } catch (_) {} });
+    const voice = sidebar.querySelector('.grdc-listen-voice');
+    const fillVoices = () => {
+      let saved = '';
+      try { saved = localStorage.getItem(LISTEN_VOICE_KEY) || ''; } catch (_) {}
+      const lang = (navigator.language || 'en').slice(0, 2);
+      const voices = speech.getVoices().slice().sort((a, b) =>
+        (b.lang.startsWith(lang) - a.lang.startsWith(lang)) || a.name.localeCompare(b.name));
+      voice.innerHTML = '<option value="">Default</option>' + voices.map((v) =>
+        `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name.replace(/^Microsoft\s+/, ''))} (${escapeHtml(v.lang)})</option>`).join('');
+      voice.value = voices.some((v) => v.name === saved) ? saved : '';
+    };
+    fillVoices();
+    speech.addEventListener('voiceschanged', fillVoices);
+    voice.addEventListener('change', () => { try { localStorage.setItem(LISTEN_VOICE_KEY, voice.value); } catch (_) {} });
+  }
+
+  function updateListenButton() {
+    const button = document.querySelector('.grdc-sidebar-listen');
+    if (!button) return;
+    button.setAttribute('aria-pressed', String(listening));
+    button.setAttribute('aria-label', listening ? 'Stop listening' : 'Listen to the changes');
+    button.title = listening ? 'Stop listening' : 'Listen to the changes — reads each change aloud, then the next';
+  }
+
+  function setListenBlock(block) {
+    if (listenBlock) listenBlock.classList.remove('grdc-listen-active');
+    listenBlock = block || null;
+    if (listenBlock) listenBlock.classList.add('grdc-listen-active');
+  }
+
+  function stopListening() {
+    listenGen++;
+    if (!listening && !listenBlock) return;
+    listening = false;
+    if (speech) speech.cancel();
+    setListenBlock(null);
+    updateListenButton();
+  }
+
+  function listenFrom(idx) {
+    const sidebar = document.querySelector('.grdc-sidebar');
+    const blocks = (sidebar && sidebar._grdcChangeBlocks) || [];
+    if (!speech || idx < 0 || idx >= blocks.length) { stopListening(); return; }
+    const my = ++listenGen;
+    const block = blocks[idx];
+    listening = true;
+    changesCurrentIdx = idx;
+    setListenBlock(block);
+    scrollToChange(block);
+    updateChangesCount(sidebar);
+    const card = sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card')[idx];
+    if (card) revealSidebarCard(card);
+    updateListenButton();
+
+    const whole = sidebar._grdcWholeFileBlocks && sidebar._grdcWholeFileBlocks.get(block);
+    const sentences = whole
+      ? fileSpeech(block, whole.changeType, (whole.path || '').split('/').pop())
+      : changeSpeech(block, { includeRemoved: !hideRemovedContent });
+    const speakSentence = (k) => {
+      if (my !== listenGen) return;
+      if (k >= sentences.length) {
+        // The list may have been rebuilt meanwhile; continue after this block's current position.
+        setTimeout(() => {
+          if (my !== listenGen) return;
+          const now = (sidebar._grdcChangeBlocks || []).indexOf(block);
+          listenFrom((now >= 0 ? now : idx) + 1);
+        }, 400);
+        return;
+      }
+      const utterance = new SpeechSynthesisUtterance(sentences[k]);
+      utterance.rate = Number(sidebar.querySelector('.grdc-listen-rate').value) || 1;
+      const name = sidebar.querySelector('.grdc-listen-voice').value;
+      const voice = name && speech.getVoices().find((v) => v.name === name);
+      if (voice) { utterance.voice = voice; utterance.lang = voice.lang; }
+      utterance.onend = () => speakSentence(k + 1);
+      utterance.onerror = (e) => {
+        if (e.error === 'interrupted' || e.error === 'canceled') return;
+        speakSentence(k + 1);
+      };
+      speech.speak(utterance);
+    };
+    // Chrome drops an utterance queued right after cancel(); give it a moment.
+    if (speech.speaking || speech.pending) { speech.cancel(); setTimeout(() => speakSentence(0), 80); }
+    else speakSentence(0);
+  }
+
+  if (typeof window !== 'undefined') window.addEventListener('pagehide', () => stopListening());
 
   function scrollToChange(blockEl) {
     if (!blockEl) return;

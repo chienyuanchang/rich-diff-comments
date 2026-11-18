@@ -73,6 +73,8 @@ What it does:
 
 No Personal Access Token or separate setup is required. Requests use the Azure DevOps session already open in your browser and go only to the current dev.azure.com or legacy visualstudio.com organization. No third-party servers, telemetry, analytics, ads, or remote code.
 
+Also use GitHub? Our companion extension offers similar Markdown pull request review capabilities in GitHub's rich-diff view: https://microsoftedge.microsoft.com/addons/detail/agomibenjlnikaldoddminkjbokfocgb
+
 Open source: https://github.com/chienyuanchang/rich-diff-comments
 
 —
@@ -223,4 +225,3 @@ https://github.com/chienyuanchang/rich-diff-comments/blob/main/PRIVACY_ADO.md
 
 - Comments on list items stay attached to the selected bullet, with the comment button centered on its first rendered line.
 - Cross-file Outline navigation keeps the selected section centered with nearby headings visible.
-

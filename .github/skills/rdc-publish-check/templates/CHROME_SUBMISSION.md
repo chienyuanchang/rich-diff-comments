@@ -92,6 +92,8 @@ No Personal Access Token required — uses your existing GitHub session cookies.
 
 Best for PRs that include Markdown content — design docs, dev plans, READMEs, and ADRs. The extension activates wherever GitHub's rich-diff view is available; on source-only files (.js, .py, etc.) GitHub's normal source-diff continues to work as it always has.
 
+Also use Azure DevOps? Our companion extension offers similar Markdown pull request review capabilities in Azure DevOps Preview: https://chromewebstore.google.com/detail/markdown-pr-comments-for/habbfnkhgmnkhlbakjlnapadamjijbdh
+
 Open source on GitHub: https://github.com/chienyuanchang/rich-diff-comments — source, issue tracker, and roadmap.
 
 —

@@ -45,6 +45,11 @@ Priority applies to the shared user outcome:
 
 The targets version and release independently. These lists summarize the intended scope of each next release; the detailed shared outcomes and per-target statuses remain defined once in the roadmap sections below.
 
+### GitHub v1.15.0
+
+- [ ] **Switch the next Markdown file to rich diff in large pull requests** — replace passive one-file guidance with a sequential action that opens the next Markdown file in PR order and activates its rich diff without starting the unsupported PR-wide render sweep.
+- [ ] **Collapse or expand all inline conversations** — add a Threads-toolbar toggle across all currently rendered Markdown files while keeping comment badges and markers visible.
+
 ### Azure DevOps v1.5.0
 
 - [ ] **Remove full sidebar dismissal and its restore launcher** — keep the sidebar's discoverable collapse/expand behavior instead of allowing it to enter a fully hidden state. Preserve the existing keyboard toggle and saved layout preferences.
@@ -54,24 +59,6 @@ The targets version and release independently. These lists summarize the intende
 ### Azure DevOps v1.6.0
 
 - [ ] **Collapse or expand all inline conversations** — add a Threads-toolbar toggle scoped to the current Markdown Preview while keeping comment badges and markers visible.
-
-### GitHub v1.15.0
-
-- [ ] **Switch the next Markdown file to rich diff in large pull requests** — replace passive one-file guidance with a sequential action that opens the next Markdown file in PR order and activates its rich diff without starting the unsupported PR-wide render sweep.
-- [ ] **Collapse or expand all inline conversations** — add a Threads-toolbar toggle across all currently rendered Markdown files while keeping comment badges and markers visible.
-
-### GitHub v1.14.0
-
-- [x] **Choose visible content in View options** — keep the funnel icon and open a dropdown with independent Show removed content and Show resolved comments checkboxes. Keep a visible indicator whenever either option is unchecked.
-- [x] **Read updated content without deletions** — uncheck Show removed content while retaining added and unchanged content, addition highlights, and access to existing conversations.
-- [x] **Focus on unresolved conversations** — uncheck Show resolved comments to hide resolved conversations and their inline markers as well as their Threads cards, while keeping unresolved conversations visible.
-- [x] **Keep comment anchors accurate on newer GitHub file pages** — read the available source correctly so rendered comments retain their source-line targets.
-- [x] **Keep deletion near the current discussion** — do not return to a previously visited section link when deleting a comment.
-
-### GitHub v1.13.0
-
-- [x] **Make bulk rich-diff rendering observable and cancellable** — adapt to GitHub's lazy-mounted file controls, show real progress, allow Cancel or `Escape`, restore the same file-relative reading position when the modal render sweep ends, and preserve a collapsed sidebar when the book action prepares Outline. Continue withholding the PR-wide action in GitHub's virtualized large-PR mode, where offscreen rendered state is not retained.
-- [x] **Make sidebar navigation reach its target in one action** — keep Threads, Changes, Outline, and TOC jumps attached to their semantic target when GitHub recalculates intermediate file heights during a long scroll.
 
 ---
 
@@ -112,10 +99,12 @@ The targets version and release independently. These lists summarize the intende
 | Navigate changed rendered blocks with cards, counters, clicks, and keyboard shortcuts | ✅ | ✅ |
 | Show one summary card for a newly added, deleted, or renamed Markdown file where applicable | ✅ | ✅ |
 | Navigate threads globally and filter to unresolved conversations | ✅ | ✅ |
-| Hide resolved conversations throughout the rendered document and Threads | ✅ GitHub v1.14.0 | 📋 Threads-list filter only |
+| Hide resolved conversations throughout the rendered document and Threads | ✅ GitHub v1.14.0 | △ Threads-list filter only |
 | Hide removed prose while retaining updated content and access to conversations | ✅ GitHub v1.14.0 | ↔ Native Preview omits removals |
+| Independently choose removed-content and resolved-conversation visibility in View options | ✅ GitHub v1.14.0; active filters are indicated | — Preview omits removals; Threads has a separate unresolved filter |
 | Browse headings across changed Markdown files with per-section thread counts | ✅ | ✅ |
 | Keep the Outline focused when navigating to a heading in another file | ✅ | ✅ ADO v1.2.0 |
+| Reach distant navigation targets as page layout changes | ✅ GitHub v1.13.0 | ↔ Preview navigates one file at a time |
 | Fold individual sections or bulk-fold by H1/H2/H3 level and expand all | ✅ Bulk actions affect all rendered files | ✅ Bulk actions affect the current file |
 | Show file-scoped position with a PR-wide total and jump header icons to the current file first | ✅ | ✅ |
 | Follow native file navigation and keep sidebar selection synchronized | ✅ | ✅ |
@@ -127,6 +116,7 @@ The targets version and release independently. These lists summarize the intende
 | Capability | GitHub | Azure DevOps |
 |---|---|---|
 | Provide an obvious action when rendered Markdown is not active | ✅ Render all Markdown files | ✅ Open Markdown Preview, ADO v1.1.0 |
+| Show progress, allow cancellation, and restore reading position during bulk rendering | ✅ GitHub v1.13.0 | — Preview opens one file at a time |
 | Explain when GitHub's large-PR mode prevents PR-wide rendering instead of showing a transient bulk action | ✅ GitHub v1.10.0 | — |
 | Offer bulk rendering from empty Changes or Threads states only while eligible Markdown files still need rich diff | ✅ GitHub v1.11.0 | — |
 | Move between changed Markdown files without rebuilding all PR-wide review data | ✅ | ✅ ADO v1.1.0 |
@@ -148,6 +138,8 @@ The targets version and release independently. These lists summarize the intende
 | Build changed-block navigation from the host's available source information | ✅ Native rich-diff markers | ✅ Head/base source comparison |
 | Highlight added and modified rendered blocks persistently | ↔ Native rich diff already supplies this context | ✅ ADO v1.2.0 |
 | Keep diagnostic logging and local inspection hooks available without telemetry | ✅ | ✅ |
+
+See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, and bulk-rendering behavior, including the remaining uncaptured authored-strikethrough case.
 
 ---
 
@@ -183,9 +175,9 @@ The targets version and release independently. These lists summarize the intende
 
 - [ ] **P2 — Hide resolved conversations throughout rendered review**
   - **Outcome:** reviewers can focus on outstanding feedback without resolved conversation bodies, badges, or markers interrupting the document.
-  - **GitHub:** ✅ GitHub v1.14.0; live-PR verification confirmed by the user on 2026-11-03.
+  - **GitHub:** ✅ GitHub v1.14.0.
   - **ADO:** 📋 Planned; its current Unresolved only control filters the Threads list.
-  - **Acceptance:** expose the existing saved filter as a positive **Show resolved comments** checkbox in the header's **View options** dropdown, independent of **Show removed content**. Keep the funnel icon with a View options tooltip; replace the separate eye button and Threads checkbox. Apply the same saved filter to Threads cards, inline conversation bodies and badges, table-row and code-line markers, range highlights, navigation counts, and Outline conversation counts. Shared markers include only unresolved conversations and disappear when none remain. Resolving a conversation while filtered hides it immediately; showing resolved comments restores their prior expansion state unless a resolution action changed it. Preserve drafts, resolution state, and the selected tab. Apply the saved filter after review-data rebuilds and when additional files render.
+  - **Acceptance:** expose the existing saved filter as a positive **Show resolved comments** checkbox in the header's **View options** dropdown, using a funnel icon with a View options tooltip; replace the existing Threads filter control. Apply the same saved filter to Threads cards, inline conversation bodies and badges, table-row and code-line markers, range highlights, navigation counts, and Outline conversation counts. Shared markers include only unresolved conversations and disappear when none remain. Resolving a conversation while filtered hides it immediately; showing resolved comments restores their prior expansion state unless a resolution action changed it. Preserve drafts, resolution state, and the selected tab. Apply the saved filter after review-data rebuilds and when additional files render.
 
 - [ ] **P2 — Turn a conversation into tracked work if demand justifies it**
   - **Outcome:** reviewers can carry a rendered-review conversation into the host's work-tracking system with its source link and useful context already attached.
@@ -229,6 +221,13 @@ The targets version and release independently. These lists summarize the intende
   - **ADO:** 📋 Exploratory.
   - The Threads pane is the preferred notification and merge surface.
 
+- [ ] **P3 — Print or save a reviewed Markdown file with its conversations**
+  - **Outcome:** reviewers can produce a clean printout or PDF of one rendered Markdown file, optionally with its review conversations, for meetings, stakeholders without repository access, or a record of design decisions.
+  - **GitHub:** 📋 Exploratory. Scope output to one file even though the page shows several rich diffs; respect the current **Show removed content** choice for a final-state or change-aware printout.
+  - **ADO:** 📋 Exploratory. Preview already shows one final-state file.
+  - **MVP:** a **Print** action for the current file that uses the browser's print dialog (including Save as PDF) and a print stylesheet that hides host chrome, the sidebar, and comment buttons and expands collapsed sections. Offer **Document only** or **Document + conversations**; conversations appear as numbered in-text markers with full threads as endnotes, honoring **Show resolved comments**. Require no new permissions.
+  - Do not schedule without user-demand evidence; plain host printing already covers the document-only case.
+
 - [ ] **P3 — Always-visible inline reply editor**
   - **GitHub:** 📋 Exploratory.
   - **ADO:** 📋 Exploratory.
@@ -236,49 +235,17 @@ The targets version and release independently. These lists summarize the intende
 
 ### Navigation and focus
 
-- [x] **P1 — Preserve reading position when comment updates rebuild the review UI**
-  - **Outcome:** deleting or refreshing comments must not replay a previously visited section link and move the reviewer away from the current discussion.
-  - **GitHub:** ✅ GitHub v1.14.0. Successful deletion retains the review rebuild without replaying an already handled heading hash; live-PR verification confirmed by the user on 2026-11-03.
-  - **ADO:** No matching regression reported; no ADO change planned for this GitHub heading-hash lifecycle.
-  - **Acceptance:** consume initial heading navigation once its target is available; allow a later rich-diff mount to resolve an initially unavailable target. Explicit TOC clicks (including the same link again), hash changes, browser history, and navigation to a new review path must retain their intended behavior. Verify deletion of both a complete thread and a reply without replaying the old section anchor.
-  - **Validation:** 478 Node tests and all 69 GitHub browser tests pass. Both deletion regressions reproduced the old heading jump before the fix; current coverage also preserves repeated TOC clicks, history navigation, unresolved heading retries, and new review-path navigation. The user confirmed the final live-PR checks on 2026-11-03.
-
-- [x] **P2 — Hide removed content for preview-like reading**
-  - **Outcome:** reviewers can read the updated Markdown without deleted prose interrupting the document, then return to the full diff in one action.
-  - **GitHub:** ✅ GitHub v1.14.0; live-PR verification confirmed by the user on 2026-11-03.
-  - **ADO:** ↔ Native Preview already omits removed prose.
-  - **Acceptance:** provide a **Show removed content** checkbox in the sidebar's **View options** dropdown, checked by default, applying to all currently rendered Markdown files and files rendered later. Unchecking hides deleted text and wholly deleted blocks, list items, and table rows; retain added and unchanged portions of mixed-content blocks and cells. Keep addition highlights and underlines. Checking again restores the full diff without changing source-line anchors or review state. Changes navigation skips hidden deletion-only targets; existing conversations remain accessible in Threads, and selecting a conversation on hidden content temporarily reveals its target. Preserve the active mode across file navigation and dynamically loaded rich diffs within the current pull request.
-  - **Out of scope:** removing addition highlights or underlines; clean reading retains this review context.
-  - **Safeguards:** successful comment submission updates Threads, shows confirmation, and dismisses the editor through the unified rebuild path. Removal-visibility rescans respond only to rendered document mutations, excluding extension UI and unrelated host updates, while retaining updates for newly mounted rich diffs and changed document content.
-  - **Dynamic updates:** Changes cards, counts, and navigation targets refresh whenever document mutations update removal visibility, including removal-only mutations, without discarding drafts. View options closes on viewport resize so its previous coordinates cannot leave an open menu offscreen; checkbox values are preserved.
-  - **Authored strikethrough evidence:** the real DOM captured in test PR #2 represents both newly added `~~deprecated endpoint~~` and authored HTML `del` as `span.github-user-del`; neither matches the removal visibility selector, so the synthetic authored-`del` case is not a confirmed GitHub bug. No classification change is needed for these captures. Unchanged-base strikethrough still needs a separate capture before any heuristic is justified. See [GitHub developer notes](./github/DEV_NOTES.md#authored-strikethrough-in-rich-diff-2026-11-03).
-  - **Source retrieval follow-up (GitHub):** GitHub v1.14.0 supports the captured serialized blob source alongside existing textarea and JSON embedded data without executing page scripts. Exact captured-source and posted-line checks are recorded in [the GitHub developer notes](./github/DEV_NOTES.md#serialized-blob-data-2026-11-03). The user confirmed final live-PR verification on 2026-11-03. ADO is unaffected by this GitHub blob-page format.
-  - **Tryout behavior:** one compact 24-by-24-pixel funnel opens **View options** in both expanded and collapsed headers. Restore the original toolbar flow: 8-pixel gaps between groups, 8-pixel horizontal header padding, and a 12-pixel right margin on the funnel. It follows the last separator without an auto margin; widening the sidebar must not move it away from the navigation controls. Its two independent positive checkboxes mean checked = visible. Highlight the funnel with a white background and blue icon whenever either option is unchecked, including while the menu is closed, hovered, or focused in light and dark themes. Support keyboard access, Escape, and outside-click dismissal without clipping the dropdown in the collapsed sidebar. Keep the fixed 480-pixel minimum width and existing defaults/persistence. Revealed thread context stays visible until another thread is selected, the option changes, or review data is rebuilt. Removed-content visibility is local to the current review surface and resets when navigating to another pull request or reloading the page.
-  - **Validation:** 478 Node tests and all 69 GitHub browser tests pass, covering content visibility, independent View options, navigation, comment submission, dynamic document updates, exact source/posting anchors, and deletion without replaying old heading links. The user confirmed final live-PR checks on 2026-11-03. Captured authored strikethrough remains visible; uncaptured unchanged-base variants remain an additional coverage opportunity, not grounds for speculative classification changes.
-
 - [ ] **P1 — Preserve sidebar state and show active feedback while preparing rendered views**
   - **Outcome:** reviewers can prepare the rendered review surface without losing their compact sidebar layout and can see that longer setup phases are still active.
   - **GitHub:** ✅ GitHub v1.13.0. The book action prepares Outline without expanding a collapsed sidebar, and long rich-diff finishing phases show continuous activity.
   - **ADO:** 📋 Targeted for ADO v1.5.0. A book click preserves the collapsed sidebar while selecting and preparing Outline; the `b` shortcut retains its existing expand-and-show behavior. Preparation remains non-blocking and reports progress within both collapsed and expanded sidebar layouts.
   - **Acceptance:** for ADO, do not add a modal overlay or block page interaction during Preview preparation. Show compact animated activity in the collapsed sidebar and fixed-width animated feedback for `Opening Preview…`, `Preparing…`, and `Finding files…` in the expanded sidebar, keeping visible status text stable for assistive technology. Stop the animation at ready or error states. If the book action starts while the sidebar is collapsed, keep it collapsed throughout preparation and reveal the prepared Outline when the reviewer expands it later.
 
-- [x] **P1 — Make bulk rich-diff rendering observable and cancellable**
-  - **Outcome:** reviewers can activate every eligible Markdown file with clear progress, less waiting, and a way to stop without leaving the page in an uncertain state.
-  - **GitHub:** ✅ GitHub v1.13.0. Uses an adaptive mount-and-render sweep that advances after GitHub exposes new file controls, reports real progress such as `Rendering 4 of 7 Markdown files`, stops early when the expected files are accounted for, and supports cancellation. GitHub's virtualized large-PR mode retains one-file guidance because it discards offscreen rendered state.
-  - **ADO:** — Preview activates one selected Markdown file without a scroll-based render sweep.
-  - **Acceptance:** continue visiting intermediate viewports so lazy-mounted files are not skipped; combine animation-frame scheduling with DOM observation and a bounded timeout rather than relying on DOM silence alone. Treat the loading surface as modal: block pointer actions and extension navigation shortcuts while rendering, with Cancel and `Escape` as the only exits. Cancellation must stop further scrolling and clicks, remove loading UI, preserve files already rendered, and leave the sidebar consistent with the visible page. After activated rich content settles into layout, explicitly refresh review data so Threads and comment markers load even though sweep-time DOM mutations are intentionally suppressed; then restore the same file and relative reading position even when rich diff changes preceding content height. The book action selects Outline without overriding the reviewer's collapsed sidebar preference; expanding later reveals the prepared Outline. In large-PR mode, never start the scroll sweep; retain explanatory one-file guidance instead of showing a PR-wide action whose rendered state GitHub will discard.
-
 - [ ] **P1 — Switch the next Markdown file to rich diff in virtualized large pull requests**
   - **Outcome:** reviewers of a large pull request can continue to the next Markdown file in one action instead of manually finding the file and switching its view.
   - **GitHub:** 📋 Targeted for GitHub v1.15.0. Available only when GitHub's virtualized large-PR mode prevents the PR-wide render sweep.
   - **ADO:** — Preview already follows the selected file and does not have GitHub's per-file rich-diff mode.
   - **Acceptance:** replace passive large-PR guidance with a **Switch next Markdown file to rich diff** action. Use the ordered route file inventory to choose the next Markdown file after the current file, navigate through GitHub's native file destination, wait boundedly for that file to mount, and activate only its rich-diff toggle. Keep the page interactive, show progress in the initiating sidebar control, preserve the sidebar's collapsed state and selected tab, and refresh Threads, Changes, Outline, and comment markers after rich content appears. A newer navigation cancels an older pending switch. Do not wrap from the last Markdown file to the first; show that no later Markdown files remain. If navigation, mounting, or activation fails, leave the action retryable and do not start a page-wide scroll sweep. Validate the native destination against a live virtualized pull request before shipping.
-
-- [x] **P1 — Make sidebar navigation reach its target in one action**
-  - **Outcome:** selecting a distant thread, change, or heading lands on that target without requiring repeated clicks when intervening files change height during navigation.
-  - **GitHub:** ✅ GitHub v1.13.0. Uses semantic target tracking and bounded post-layout correction while keeping sidebar-list scrolling isolated from the page.
-  - **ADO:** — Preview navigation selects one file at a time through its host adapter and does not use GitHub's multi-file page scroll.
-  - **Acceptance:** use instant movement for long cross-file jumps and retain smooth movement for nearby targets; after scrolling and layout settle, re-resolve the same target and correct any remaining offset. A newer user navigation cancels older pending correction. Scrolling the selected card into the sidebar viewport must not scroll the document. Cover a target that moves after the initial scroll begins and verify one click reaches the final sticky-header position.
 
 - [ ] **P2 — Use discoverable sidebar collapse instead of full dismissal**
   - **Outcome:** reviewers can reclaim page space without creating a fully hidden state that is difficult to discover or recover from.

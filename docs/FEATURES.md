@@ -47,6 +47,10 @@ The targets version and release independently. These lists summarize the intende
 
 ### GitHub v1.15.0
 
+- [ ] **Automatically render a Markdown file selected from the file picker** — add an opt-in **Render Markdown when selected** setting to View options so a Markdown file chosen from GitHub's file tree or **Jump to file** opens in rich diff. Group the settings into sections, use a gear icon, and add a **Restore defaults** button.
+
+### GitHub v1.16.0
+
 - [ ] **Switch the next Markdown file to rich diff in large pull requests** — replace passive one-file guidance with a sequential action that opens the next Markdown file in PR order and activates its rich diff without starting the unsupported PR-wide render sweep.
 - [ ] **Collapse or expand all inline conversations** — add a Threads-toolbar toggle across all currently rendered Markdown files while keeping comment badges and markers visible.
 
@@ -177,7 +181,7 @@ See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, a
   - **Outcome:** reviewers can focus on outstanding feedback without resolved conversation bodies, badges, or markers interrupting the document.
   - **GitHub:** ✅ GitHub v1.14.0.
   - **ADO:** 📋 Planned; its current Unresolved only control filters the Threads list.
-  - **Acceptance:** expose the existing saved filter as a positive **Show resolved comments** checkbox in the header's **View options** dropdown, using a funnel icon with a View options tooltip; replace the existing Threads filter control. Apply the same saved filter to Threads cards, inline conversation bodies and badges, table-row and code-line markers, range highlights, navigation counts, and Outline conversation counts. Shared markers include only unresolved conversations and disappear when none remain. Resolving a conversation while filtered hides it immediately; showing resolved comments restores their prior expansion state unless a resolution action changed it. Preserve drafts, resolution state, and the selected tab. Apply the saved filter after review-data rebuilds and when additional files render.
+  - **ADO acceptance:** expose the existing saved filter as a positive **Show resolved comments** checkbox in the header's **View options** dropdown, using a funnel icon with a View options tooltip; replace the existing Threads filter control. Apply the same saved filter to Threads cards, inline conversation bodies and badges, table-row and code-line markers, range highlights, navigation counts, and Outline conversation counts. Shared markers include only unresolved conversations and disappear when none remain. Resolving a conversation while filtered hides it immediately; showing resolved comments restores their prior expansion state unless a resolution action changed it. Preserve drafts, resolution state, and the selected tab. Apply the saved filter after review-data rebuilds and when additional files render.
 
 - [ ] **P2 — Turn a conversation into tracked work if demand justifies it**
   - **Outcome:** reviewers can carry a rendered-review conversation into the host's work-tracking system with its source link and useful context already attached.
@@ -192,7 +196,7 @@ See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, a
 
 - [ ] **P2 — Collapse or expand all inline conversations**
   - **Outcome:** reviewers can return a comment-heavy rendered document to a compact reading view in one action, then reopen every conversation when needed.
-  - **GitHub:** 📋 Targeted for GitHub v1.15.0. Apply the action across all currently rendered Markdown files in the pull request.
+  - **GitHub:** 📋 Targeted for GitHub v1.16.0. Apply the action across all currently rendered Markdown files in the pull request.
   - **ADO:** 📋 Targeted for ADO v1.6.0. Apply the action to the current Markdown Preview, matching ADO's one-file-at-a-time review surface.
   - **Acceptance:** place a **Collapse all conversations** / **Expand all conversations** toggle in the Threads toolbar; collapse only conversation bodies while keeping badges, table-row markers, code-line markers, and the Threads list visible. Do not change resolution state, the unresolved filter, or saved sidebar preferences.
 
@@ -243,9 +247,19 @@ See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, a
 
 - [ ] **P1 — Switch the next Markdown file to rich diff in virtualized large pull requests**
   - **Outcome:** reviewers of a large pull request can continue to the next Markdown file in one action instead of manually finding the file and switching its view.
-  - **GitHub:** 📋 Targeted for GitHub v1.15.0. Available only when GitHub's virtualized large-PR mode prevents the PR-wide render sweep.
+  - **GitHub:** 📋 Targeted for GitHub v1.16.0. Available only when GitHub's virtualized large-PR mode prevents the PR-wide render sweep.
   - **ADO:** — Preview already follows the selected file and does not have GitHub's per-file rich-diff mode.
   - **Acceptance:** replace passive large-PR guidance with a **Switch next Markdown file to rich diff** action. Use the ordered route file inventory to choose the next Markdown file after the current file, navigate through GitHub's native file destination, wait boundedly for that file to mount, and activate only its rich-diff toggle. Keep the page interactive, show progress in the initiating sidebar control, preserve the sidebar's collapsed state and selected tab, and refresh Threads, Changes, Outline, and comment markers after rich content appears. A newer navigation cancels an older pending switch. Do not wrap from the last Markdown file to the first; show that no later Markdown files remain. If navigation, mounting, or activation fails, leave the action retryable and do not start a page-wide scroll sweep. Validate the native destination against a live virtualized pull request before shipping.
+
+- [ ] **P1 — Automatically render a Markdown file selected from the file picker**
+  - **Outcome:** reviewers who prefer rendered review can choose a Markdown file from the host's file tree or file picker and land directly in the rendered view, without a separate switch to rich diff.
+  - **GitHub:** 📋 Targeted for GitHub v1.15.0. Opt-in **Render Markdown when selected** checkbox in **View options**, off by default. When enabled, selecting a Markdown file from GitHub's file tree or **Jump to file** activates that file's rich diff once it mounts.
+  - **ADO:** ↔ Preview is already sticky across the pull request; once it is open, selecting another Markdown file keeps it in Preview.
+  - **Why opt-in:** many reviewers open a Markdown file to inspect its source diff, and silently changing GitHub's native view would surprise them. Reviewers who want it can turn it on once and keep it.
+  - **Acceptance:** render only the selected file and never start the PR-wide render sweep, including in GitHub's virtualized large-PR mode. Wait a limited time for the file to mount, keep the page interactive, and refresh Threads, Changes, Outline, and comment markers after rich content appears. A newer selection cancels an older pending one. Leave files the reviewer switched back to source diff in that view, and leave non-Markdown files untouched. Save the preference across page reloads and pull requests. Share the single-file activation path with **Switch the next Markdown file to rich diff**.
+  - **View options layout:** group **Show removed content** and **Show resolved comments** under **Visibility**, and **Render Markdown when selected** under **Behavior**. Place **Restore defaults** after both sections.
+  - **Settings icon:** replace the funnel with a gear while retaining the **View options** label. Show a small indicator on the gear whenever either visibility option hides content, including when the menu is closed; expose that state in the tooltip and accessible name. Enabling auto-render alone does not show the indicator.
+  - **Restore defaults:** add a **Restore defaults** button to View options that checks **Show removed content** and **Show resolved comments** and turns off **Render Markdown when selected**. It applies immediately, keeps the dropdown open, clears the hidden-content indicator, and does not change sidebar position, size, collapsed state, or selected tab. Disable it when every option already matches its default.
 
 - [ ] **P2 — Use discoverable sidebar collapse instead of full dismissal**
   - **Outcome:** reviewers can reclaim page space without creating a fully hidden state that is difficult to discover or recover from.

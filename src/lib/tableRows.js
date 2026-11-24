@@ -30,11 +30,11 @@
   }
 
   // The table a `<del>` / `<ins>` wraps, when it wraps nothing else
-  // (GitHub puts it inside a `<markdown-accessiblity-table>` element).
+  // (GitHub puts it inside a `<markdown-accessiblity-table>` element). It may
+  // hold nested tables, e.g. a YAML frontmatter value that is a list.
   function soleTable(wrapper) {
-    const tables = wrapper.querySelectorAll('table');
-    if (tables.length !== 1) return null;
-    return wrapper.textContent.trim() === tables[0].textContent.trim() ? tables[0] : null;
+    const table = wrapper.querySelector('table');
+    return table && wrapper.textContent.trim() === table.textContent.trim() ? table : null;
   }
 
   const rowText = (tr) => Array.from(tr.cells, (cell) => cell.textContent.trim()).join('\u0001');

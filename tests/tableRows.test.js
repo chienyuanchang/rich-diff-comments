@@ -132,3 +132,30 @@ test('mergeReplacedTables: merged rows still map to their source lines', () => {
   assert.deepEqual(lines, [3, 5, undefined, 6, 7], 'the removed row has no line and does not shift later rows');
   assert.equal(map.get(root.querySelectorAll('p')[1]).line, 9);
 });
+
+test('mergeReplacedTables: an edited YAML frontmatter with a nested list merges and keeps key lines', () => {
+  // GitHub renders frontmatter as a key/value table; a list value becomes nested tables.
+  const fm = (date) => '<table><tbody>' +
+    '<tr><th>PRD Name</th><td>Question Bank</td></tr>' +
+    `<tr><th>Last Updated</th><td>${date}</td></tr>` +
+    '<tr><th>Design Artifacts</th><td><table><tbody><tr><td><table><thead><tr><th>name</th></tr></thead>' +
+    '<tbody><tr><td>Flow</td></tr></tbody></table></td></tr></tbody></table></td></tr>' +
+    '</tbody></table>';
+  const doc = new JSDOM(`<div class="markdown-body"><del>${fm('17-11-2026')}</del><ins>${fm('18-11-2026')}</ins>` +
+    '<h1>Question Bank</h1></div>').window.document;
+  const root = doc.querySelector('.markdown-body');
+  assert.equal(mergeReplacedTables(root), 1);
+  const source = ['---', 'PRD Name: "Question Bank"', 'Last Updated: 18-11-2026', 'Design Artifacts:',
+    '  - name: Flow', '---', '', '# Question Bank'];
+  const map = mapBlocksToSourceLines(root, source, 'doc.md', {
+    buildSourceIndex: textMatch.buildSourceIndex,
+    findTextInSource: textMatch.findTextInSource,
+    cleanRenderedText: textMatch.cleanRenderedText,
+    computeTableRowLine,
+    findFrontmatterRange: textMatch.findFrontmatterRange,
+  });
+  const rows = root.querySelector('table').rows;
+  assert.deepEqual(Array.from(rows, (tr) => map.get(tr).line), [2, 3, 4]);
+  assert.equal(rows[1].cells[1].innerHTML, '<del>17-11-2026</del><ins>18-11-2026</ins>');
+  assert.equal(map.get(root.querySelector('h1')).line, 8);
+});

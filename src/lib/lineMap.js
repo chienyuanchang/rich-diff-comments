@@ -162,7 +162,10 @@
     const frontmatter = sourceLines && findFrontmatterRange
       ? findFrontmatterRange(sourceLines)
       : null;
-    const frontmatterTable = frontmatter ? richDiff.querySelector('table') : null;
+    // Never the old copy of an edited frontmatter that is still in <del>.
+    const frontmatterTable = frontmatter
+      ? Array.from(richDiff.querySelectorAll('table')).find((table) => !isInDeletedBlock(table)) || null
+      : null;
     const frontmatterRowToLine = new Map();
     if (frontmatterTable && frontmatter && frontmatter.keyLines.length > 0) {
       const bodyRows = frontmatterTable.querySelectorAll(':scope > tbody > tr');

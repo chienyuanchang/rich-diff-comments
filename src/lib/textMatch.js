@@ -73,7 +73,8 @@
   // `related:`, etc. — without giving up the body-line correctness.
   //
   // "Top-level key" = a line that starts at column 0 (no indentation) and
-  // matches `<identifier>:` or `<identifier>: <value>`. Indented continuation
+  // matches `<key>:` or `<key>: <value>`, where the key may contain spaces
+  // (`PRD Name:`) or be quoted (`"PRD Name":`). Indented continuation
   // lines, array items (`- foo`), and YAML comments (`# ...`) are excluded.
   function findFrontmatterRange(lines) {
     let i = 0;
@@ -85,10 +86,10 @@
       if (lines[j].trim() === '---') {
         return { start: start + 1, end: j + 1, keyLines };
       }
-      // Top-level YAML key: starts at column 0 (no indentation), begins with
-      // an identifier char, contains `:`. Excludes indented continuations,
-      // array items (`- ...`), and comment lines (`# ...`).
-      if (/^[A-Za-z_][\w-]*\s*:/.test(lines[j])) {
+      // Top-level YAML key: starts at column 0 (no indentation), a key then
+      // `:` followed by a space or end of line. Excludes indented
+      // continuations, array items (`- ...`), and comment lines (`# ...`).
+      if (/^(?![\s#-])(?:"[^"]*"|'[^']*'|[^:#]+?)\s*:(\s|$)/.test(lines[j])) {
         keyLines.push(j + 1);
       }
     }

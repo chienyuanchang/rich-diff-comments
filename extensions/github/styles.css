@@ -1046,6 +1046,22 @@ li.grdc-hoverable .grdc-comment-btn {
   cursor: move;
   user-select: none;
 }
+/* Docked in GitHub's sticky files toolbar row (see `placeDockedSidebar`).
+   JS sets left/top/max-height; here we make the bar compact enough to fit
+   the row, and let the collapsed strip shrink to its content. */
+.grdc-sidebar.grdc-sidebar-docked .grdc-sidebar-header {
+  min-height: 32px;
+  gap: 6px;
+}
+.grdc-sidebar.grdc-sidebar-docked .grdc-sidebar-header button { padding: 4px; }
+.grdc-sidebar.grdc-sidebar-docked .grdc-sidebar-separator { height: 18px; }
+.grdc-sidebar.grdc-sidebar-docked.grdc-sidebar-collapsed {
+  width: auto !important;
+  min-width: 0;
+  /* Size containment would make `width: auto` ignore the content (0px). */
+  container-type: normal;
+  box-shadow: none;
+}
 .grdc-sidebar-dragging {
   opacity: 0.85;
   cursor: grabbing;

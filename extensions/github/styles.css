@@ -75,9 +75,29 @@ th.grdc-hoverable:hover {
   background: rgba(9, 105, 218, 0.06);
 }
 
-/* Thread bodies stay below a complete table because arbitrary elements are
-   invalid between rows. Reserve the first cell's right edge for a persistent
-   row-level control without disturbing the existing left-side `+` button. */
+/* An edited table is merged into one table: show cell edits and added /
+   removed rows the way GitHub shows prose edits. */
+.prose-diff td > del,
+.prose-diff th > del,
+.prose-diff tr.removed > td {
+  background: var(--bgColor-danger-muted, #ffebe9);
+  text-decoration: line-through;
+}
+.prose-diff td > ins,
+.prose-diff th > ins,
+.prose-diff tr.added > td {
+  background: var(--bgColor-success-muted, #dafbe1);
+  text-decoration: none;
+}
+
+/* Comment boxes and threads on a table row sit in one full-width row under it. */
+.markdown-body tr.grdc-thread-row > td {
+  padding: 4px 8px;
+  white-space: normal;
+}
+
+/* Reserve the first cell's right edge for a persistent row-level thread
+   control without disturbing the existing left-side `+` button. */
 td.grdc-table-thread-marker-host,
 th.grdc-table-thread-marker-host {
   position: relative;

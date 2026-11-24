@@ -35,6 +35,7 @@
     getGitHubCommentLink,
     parseMarkersMap,
     computeTableRowLine,
+    mergeReplacedTables,
     renderMarkdownPreview,
     findFenceRangeAroundLine,
     sortThreadHeads,
@@ -1641,6 +1642,7 @@
       findTextInSource._logCount = 0; // reset per-file diagnostic counter
       const rawSource = rawSources[idx];
       const sourceLines = rawSource ? rawSource.split('\n') : null;
+      mergeReplacedTables(richDiff);
       const perFileMap = mapBlocksToSourceLines(richDiff, sourceLines, path, deps, console.log.bind(console));
       perFileMap.forEach((info, el) => {
         fileLineMap.set(el, info);
@@ -1718,11 +1720,30 @@
   }
 
   function siblingAnchor(element) {
-    // For tables, hop out to the parent <table> (a <div> between rows is
-    // illegal HTML and gets repaired/scrambled by the parser).
+    // For table rows, use a full-width row right under this one (a <div>
+    // directly between rows is illegal HTML and gets moved by the parser).
     if (element.tagName === 'TR') {
-      const table = element.closest('table') || element;
-      return topUnderlinedAncestor(table) || table;
+      const existing = () => {
+        const next = element.nextElementSibling;
+        return next && next.classList.contains('grdc-thread-row') ? next.cells[0] : null;
+      };
+      return {
+        after(node) {
+          let cell = existing();
+          if (!cell) {
+            const row = document.createElement('tr');
+            row.className = 'grdc-thread-row';
+            cell = row.insertCell();
+            cell.colSpan = Math.max(1, element.cells.length);
+            element.after(row);
+          }
+          cell.prepend(node);
+        },
+        get nextElementSibling() {
+          const cell = existing();
+          return cell ? cell.firstElementChild : null;
+        },
+      };
     }
     // For <li> that contains a nested <ul>/<ol>, anchor right BEFORE the
     // nested list so threads / comment boxes appear directly under the
@@ -2667,12 +2688,11 @@
     });
   }
 
-  // Full thread bodies cannot be inserted between <tr> elements without
-  // producing invalid table markup, so they remain below the complete table.
-  // Add one compact, persistent button to each affected row's first cell to
-  // preserve the missing in-place signal. Activating it cycles through the
+  // Threads on a table row sit in a full-width row under it. Add one compact,
+  // persistent button to each affected row's first cell as well, so a row
+  // with collapsed threads still shows them. Activating it cycles through the
   // row's conversations, expands a collapsed thread, and moves focus to its
-  // badge below the table.
+  // badge.
   function renderTableRowThreadMarkers(threadEls) {
     clearTableRowThreadMarkers();
 
@@ -3377,7 +3397,7 @@
   // to render after a re-init).
   function clearInjectedDom() {
     document.querySelectorAll(
-      '.grdc-comment-btn, .grdc-collapse-toggle, .grdc-existing-thread, .grdc-comment-box, .grdc-reply-box, .grdc-table-thread-marker, .grdc-code-line-thread-marker'
+      '.grdc-comment-btn, .grdc-collapse-toggle, .grdc-existing-thread, .grdc-comment-box, .grdc-reply-box, .grdc-table-thread-marker, .grdc-code-line-thread-marker, .grdc-thread-row'
     ).forEach((el) => el.remove());
     document.querySelectorAll(
       '.grdc-hoverable, .grdc-collapsible, .grdc-section-collapsed, .grdc-collapsed-hidden, .grdc-thread-range, .grdc-range-hover, .grdc-table-thread-marker-host, .grdc-table-thread-marked, .grdc-code-thread-marker-host'
@@ -5877,7 +5897,7 @@
   function observe() {
     const reviewUiSelector = '.grdc-existing-thread, .grdc-comment-box, .grdc-comment-btn, ' +
       '.grdc-table-thread-marker, .grdc-code-line-thread-marker, .grdc-collapse-toggle, ' +
-      '.grdc-reply-box, .grdc-comment-edit, .grdc-sidebar';
+      '.grdc-reply-box, .grdc-comment-edit, .grdc-sidebar, .grdc-thread-row';
     const observer = new MutationObserver((mutations) => {
       let contentChanged = false;
       let shouldReinit = false;

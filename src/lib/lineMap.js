@@ -209,6 +209,8 @@
         if (nested) nested.remove();
       }
       if (clone.tagName === 'TR') {
+        // An edited cell holds `<del>old</del><ins>new</ins>`; only the new text is in the source.
+        clone.querySelectorAll('del').forEach((element) => element.remove());
         const cells = clone.querySelectorAll('td, th');
         if (cells.length) return Array.from(cells).map((cell) => cell.textContent).join(' ');
       }
@@ -218,6 +220,7 @@
     blocks.forEach((block) => {
       if (isDiagramBlock(block)) return;
       if (isInDeletedBlock(block)) return;
+      if (block.classList.contains('grdc-thread-row')) return;
       // Frontmatter handling: top-level YAML rows get mapped to their
       // source line. Nested rows / inner blocks are skipped (and crucially
       // do NOT advance `lastOffset`) so their text can't poison the body
@@ -239,7 +242,8 @@
       // |---| divider that exists in source but not in DOM).
       if (block.tagName === 'TR' && sourceIndex) {
         const table = block.closest('table');
-        const allRows = table ? Array.from(table.querySelectorAll('tr')) : [block];
+        // Removed rows and our thread rows are not in the source.
+        const allRows = table ? Array.from(table.querySelectorAll('tr:not(.removed):not(.grdc-thread-row)')) : [block];
         const rowIndex = allRows.indexOf(block);
 
         if (rowIndex === 0 || !tableHeaderLine.has(table)) {

@@ -49,7 +49,7 @@
   // Containers we inject ourselves — must be excluded so reading a comment
   // body doesn't register as a "change in the document".
   const INJECTED_UI_SELECTOR =
-    '.grdc-comment-box, .grdc-thread, .grdc-sidebar, .grdc-comment-edit, .grdc-reply-box, ' +
+    '.grdc-comment-box, .grdc-thread-row, .grdc-thread, .grdc-sidebar, .grdc-comment-edit, .grdc-reply-box, ' +
     '.adrc-editor, .adrc-thread-badge, .adrc-thread-panel, .adrc-sidebar, ' +
     '.adrc-comment-btn, .adrc-collapse-toggle';
 

@@ -4,6 +4,11 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+### Fixed
+
+- **Edited tables show only what changed.** Changing one cell used to show the whole table twice, once as removed and once as added, and every row counted as changed. The table now appears once: edited cells show the old and new text, and only added, removed or edited rows are highlighted and counted in Changes.
+- **Comments on a table row appear under that row.** They used to collect below the whole table, which made it hard to tell which row each comment was about.
+
 ## [1.14.0] — 2026-11-03
 
 ### Added

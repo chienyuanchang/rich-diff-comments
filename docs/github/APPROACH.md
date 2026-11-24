@@ -82,7 +82,8 @@ These are the hard-won lessons. Each one used to be a bug. See [DEV_NOTES.md#res
 
 The `+` button and the comment box have to live somewhere in the page. Two non-obvious constraints:
 
-1. **`<button>` and `<div>` are not valid children of `<tr>`.** The HTML parser silently hoists them out of the table on insertion. The button disappears or jumps to a weird spot. → `buttonAnchor(tr)` returns the first `<td>`; `siblingAnchor(tr)` returns the parent `<table>` (so comment boxes / thread renders go *after* the table, not between rows).
+1. **`<button>` and `<div>` are not valid children of `<tr>`.** The HTML parser silently hoists them out of the table on insertion. The button disappears or jumps to a weird spot. → `buttonAnchor(tr)` returns the first `<td>`; `siblingAnchor(tr)` puts comment boxes and threads in a full-width `<tr class="grdc-thread-row"><td colspan=N>` right under the row (valid markup; the line mapper and change finder skip these rows).
+1. **GitHub shows an edited table as `<del><table>old</table></del><ins><table>new</table></ins>`.** → `mergeReplacedTables` folds the pair into the new table before line mapping: rows aligned by text (then by first cell), edited cells get `<del>old</del><ins>new</ins>`, new rows `.added`, dropped rows return in place as `.removed`.
 
 2. **Our own injected nodes trigger the `MutationObserver`** that watches for new files loading via SPA navigation. Without a filter we loop infinitely. → Explicit ignore-list of CSS classes; every new injected class must be added.
 

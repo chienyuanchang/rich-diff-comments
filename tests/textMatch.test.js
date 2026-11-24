@@ -271,6 +271,21 @@ test('findFrontmatterRange — keyLines excludes comment lines (`# ...`)', () =>
   assert.deepEqual(fm.keyLines, [3]);
 });
 
+test('findFrontmatterRange — keyLines includes keys with spaces and quoted keys', () => {
+  const src = [
+    '---',
+    'PRD Name: "Question Bank"',
+    'Phase: 1 Pre-MVP',
+    '"Quoted key": yes',
+    "'Single quoted': yes",
+    'Link: https://example.com/a:b',
+    'Design Artifacts:',
+    '  - name: Flow',
+    '---',
+  ];
+  assert.deepEqual(findFrontmatterRange(src).keyLines, [2, 3, 4, 5, 6, 7]);
+});
+
 test('buildSourceIndex — masks YAML frontmatter so body content matches its real line', () => {
   // Mirrors the bug from local-only/138_line_issue.md, in miniature:
   // a `related:` array value that textually overlaps with a Change Log row

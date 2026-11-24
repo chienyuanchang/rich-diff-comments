@@ -78,7 +78,7 @@ What it does:
 • Copy a direct link or the original Markdown body from any visible review comment's header.
 • Comment box matches GitHub's UI: Markdown toolbar, Write / Preview tabs, @mention autocomplete, Cmd/Ctrl+Enter to submit.
 • Threads sidebar — a draggable, resizable panel lists review threads on the page, with prev / next navigation and j / k / h / l keyboard shortcuts. Press `t` to toggle the sidebar, `Shift+T` to reset its position.
-• View options — open the sidebar's funnel menu for independent Show removed content and Show resolved comments checkboxes. Hide deleted prose for easier reading or hide resolved conversations throughout the document and Threads. The funnel stays highlighted whenever either option is hidden.
+• View options — open the sidebar's gear to control removed content and resolved comments independently, or opt in to automatically rendering selected Markdown files while respecting your choice to switch a file to source. An indicator shows when content is hidden, and Restore defaults resets the options.
 • Changes tab — a list of every changed block in document order with an added / removed / mixed glyph and a snippet, so you can scan the edits without reading the kept prose. Step through with `[` / `]`, click the page icon in the header to jump to the next change in one tap, or press `1` / `2` / `3` to switch sidebar tabs (Changes / Threads / Outline) from the keyboard.
 • Outline button in the sidebar header — click the book icon (or press `b`) to switch to the Outline tab. If any Markdown files in a standard PR aren't rendered yet, they're rendered first so the outline has headings to show. On GitHub's optimized large-PR view, the sidebar instead explains that Markdown files must be reviewed and switched to rich diff one at a time because offscreen files are unloaded.
 • Outline tab — a heading tree of every modified Markdown file with a comment-count pill per section; click to jump, fold individual sections or bulk-fold by level (Fold H1 / H2 / H3 / Expand all).
@@ -203,7 +203,7 @@ This extension activates only on GitHub Pull Request pages (https://github.com/*
 5. Hover over any paragraph, heading, list item, or table row — a blue "+" appears at the left. Click it, type a comment, click "Comment". Verify it appears in GitHub's own "Conversation" tab too.
 6. Existing review threads appear inline as "N comments" badges. Click to expand, then Reply or Resolve.
 7. Optional: drag "+" from one block to another for a multi-line range comment. Click the chevron next to a heading to collapse a section.
-8. Open View options from the sidebar's funnel. Uncheck Show removed content or Show resolved comments; verify the document and Threads update. Check them again to restore visibility.
+8. Open View options from the sidebar's gear. Uncheck Show removed content or Show resolved comments; verify the document and Threads update. Try Restore defaults, then enable automatic rendering and select another Markdown file.
 
 == Authentication ==
 
@@ -223,6 +223,11 @@ https://github.com/chienyuanchang/rich-diff-comments/blob/main/PRIVACY.md
 - **Markets:** All
 
 ## What's new in this version
+
+### Unreleased draft
+
+- **Open selected Markdown files in rich diff automatically.** Turn on Render Markdown when selected in View options to open a file from the file tree or Jump to file in rich diff, including on the first selection. If you manually switch a file to source diff, later selections keep it in source until you switch back to rich diff. Your source choice resets when you reload or switch pull requests.
+- **Find review settings together.** View options now groups visibility and behavior settings under a gear, shows when content is hidden, and lets you restore the default settings.
 
 Includes all changes from v1.14.0, v1.13.0, and v1.12.0.
 

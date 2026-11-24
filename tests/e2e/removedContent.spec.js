@@ -45,14 +45,48 @@ async function setup(page, { deletionsOnly = false } = {}) {
 }
 
 async function toggleRemovedContent(page) {
-  await page.getByRole('button', { name: 'View options', exact: true }).click();
+  await page.getByRole('button', { name: /^View options/ }).click();
   await page.getByRole('checkbox', { name: 'Show removed content', exact: true }).click();
   await page.keyboard.press('Escape');
 }
 
+test('grouped settings persist auto-render and restore defaults without closing the menu', async ({ page }) => {
+  await setup(page);
+  const button = page.getByRole('button', { name: /^View options/ });
+  const menu = page.getByRole('dialog', { name: 'View options', exact: true });
+  await button.click();
+  await expect(menu.getByRole('group', { name: 'Visibility' })).toBeVisible();
+  await expect(menu.getByRole('group', { name: 'Behavior' })).toBeVisible();
+  const autoRender = menu.getByRole('checkbox', { name: 'Render Markdown when selected' });
+  const restore = menu.getByRole('button', { name: 'Restore defaults' });
+  await expect(autoRender).not.toBeChecked();
+  await expect(restore).toBeDisabled();
+  await autoRender.check();
+  await expect(button).toHaveAttribute('data-filtered', 'false');
+  await expect(restore).toBeEnabled();
+  expect(await page.evaluate(() => localStorage.getItem('grdc_auto_render_selected_markdown'))).toBe('1');
+  await gotoPRPage(page);
+  await injectExtension(page);
+  await waitForInit(page);
+  await button.click();
+  await expect(autoRender).toBeChecked();
+  await menu.getByRole('checkbox', { name: 'Show removed content' }).uncheck();
+  await menu.getByRole('checkbox', { name: 'Show resolved comments' }).uncheck();
+  await expect(button).toHaveAccessibleName('View options — content hidden');
+  await expect(button.locator('.grdc-filter-indicator')).toBeVisible();
+  await restore.click();
+  await expect(menu).toBeVisible();
+  await expect(autoRender).not.toBeChecked();
+  await expect(menu.getByRole('checkbox', { name: 'Show removed content' })).toBeChecked();
+  await expect(menu.getByRole('checkbox', { name: 'Show resolved comments' })).toBeChecked();
+  await expect(button).toHaveAccessibleName('View options');
+  await expect(button.locator('.grdc-filter-indicator')).toBeHidden();
+  await expect(restore).toBeDisabled();
+});
+
 test('hides deletions reversibly without disturbing additions, tables, code, or comment anchors', async ({ page }) => {
   await setup(page);
-  const toggle = page.getByRole('button', { name: 'View options', exact: true });
+  const toggle = page.getByRole('button', { name: /^View options/ });
   await expect(toggle).toHaveAttribute('data-filtered', 'false');
   const hiddenIds = ['old-inline', 'old-block', 'empty-paragraph', 'old-item', 'old-cell', 'old-row', 'empty-row', 'old-code', 'deletion-only', 'deleted-file-content'];
   for (const id of hiddenIds) await expect(page.locator(`#${id}`)).toBeVisible();
@@ -94,7 +128,7 @@ test('Changes cards and keyboard navigation skip deletion-only targets', async (
 
 test('Threads navigation reveals its removed context while keeping the mode active', async ({ page }) => {
   await setup(page);
-  const toggle = page.getByRole('button', { name: 'View options', exact: true });
+  const toggle = page.getByRole('button', { name: /^View options/ });
   await toggleRemovedContent(page);
   await expect(page.locator('#empty-paragraph')).toBeHidden();
   await page.getByRole('tab', { name: 'Threads', exact: true }).click();
@@ -117,18 +151,18 @@ test('new rich diffs inherit the mode and another pull request resets it', async
     history.pushState(null, '', '/test-owner/test-repo/pull/1/changes?file=docs/visibility.md');
   });
   await expect(page.locator('#later-old')).toBeHidden();
-  await expect(page.getByRole('button', { name: 'View options', exact: true })).toHaveAttribute('data-filtered', 'true');
+  await expect(page.getByRole('button', { name: /^View options/ })).toHaveAttribute('data-filtered', 'true');
   await page.evaluate(() => {
     history.pushState(null, '', '/test-owner/test-repo/pull/2/files');
     window.dispatchEvent(new PopStateEvent('popstate'));
   });
-  await expect(page.getByRole('button', { name: 'View options', exact: true })).toHaveAttribute('data-filtered', 'false');
+  await expect(page.getByRole('button', { name: /^View options/ })).toHaveAttribute('data-filtered', 'false');
   await expect(page.locator('#later-old')).toBeVisible();
 });
 
 test('View options preserves the original toolbar flow at minimum and expanded widths', async ({ page }) => {
   await setup(page);
-  const toggle = page.getByRole('button', { name: 'View options', exact: true });
+  const toggle = page.getByRole('button', { name: /^View options/ });
   let originalOffset;
   for (const collapsed of [false, true]) {
     if (collapsed) await page.locator('.grdc-sidebar-collapse').click();
@@ -167,7 +201,7 @@ for (const theme of [
       document.documentElement.style.setProperty('--fgColor-accent', accent);
       document.documentElement.style.setProperty('--fgColor-onEmphasis', '#ffffff');
     }, theme.accent);
-    const funnel = page.getByRole('button', { name: 'View options', exact: true });
+    const funnel = page.getByRole('button', { name: /^View options/ });
     for (const collapsed of [false, true]) {
       if (collapsed) await page.locator('.grdc-sidebar-collapse').click();
       await page.mouse.move(20, 700);
@@ -338,7 +372,7 @@ test('removal-only document updates refresh Changes without discarding a draft',
   });
   await expect(page.locator('.grdc-sidebar-changes-list .grdc-sidebar-card')).toHaveCount(before.count - 1);
   await expect(draft).toHaveValue('Keep this draft during a document update.');
-  await page.getByRole('button', { name: 'View options', exact: true }).focus();
+  await page.getByRole('button', { name: /^View options/ }).focus();
   for (let index = 0; index < before.count; index++) {
     await page.keyboard.press(']');
     await expect(page.locator('.grdc-removed-hidden.grdc-change-flash')).toHaveCount(0);
@@ -349,7 +383,7 @@ test('removal-only document updates refresh Changes without discarding a draft',
 test('resizing the viewport dismisses View options without changing visibility preferences', async ({ page }) => {
   await setup(page);
   await toggleRemovedContent(page);
-  const button = page.getByRole('button', { name: 'View options', exact: true });
+  const button = page.getByRole('button', { name: /^View options/ });
   const menu = page.getByRole('dialog', { name: 'View options', exact: true });
   for (const viewport of [{ width: 800, height: 720 }, { width: 1280, height: 80 }]) {
     await button.click();
@@ -368,7 +402,7 @@ test('resizing the viewport dismisses View options without changing visibility p
 
 test('View options supports keyboard access and outside dismissal without changing settings', async ({ page }) => {
   await setup(page);
-  const button = page.getByRole('button', { name: 'View options', exact: true });
+  const button = page.getByRole('button', { name: /^View options/ });
   const menu = page.getByRole('dialog', { name: 'View options', exact: true });
   await expect(button).toHaveAttribute('title', 'View options');
   await expect(page.locator('.grdc-sidebar-hide-removed, .grdc-sidebar-filter-cb')).toHaveCount(0);
@@ -405,7 +439,7 @@ test('View options is not clipped by the collapsed sidebar or viewport edges', a
     sidebar.style.left = `${window.innerWidth - sidebar.offsetWidth}px`;
     sidebar.style.top = `${window.innerHeight - sidebar.offsetHeight}px`;
   });
-  await page.getByRole('button', { name: 'View options', exact: true }).click();
+  await page.getByRole('button', { name: /^View options/ }).click();
   const menu = page.getByRole('dialog', { name: 'View options', exact: true });
   const box = await menu.boundingBox();
   const viewport = page.viewportSize();

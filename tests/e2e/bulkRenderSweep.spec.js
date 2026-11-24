@@ -88,6 +88,73 @@ async function startSweep(page) {
   await expect(page.locator('.grdc-render-overlay')).toBeVisible();
 }
 
+test('selected Markdown auto-renders only when enabled and follows the latest selection', async ({ page }) => {
+  await setupBulkRenderPage(page);
+  await page.evaluate(() => {
+    history.replaceState(null, '', '?mode=virtualization');
+    const nav = document.createElement('nav');
+    nav.innerHTML = '<a href="#diff-bulk0" title="docs/first.md">First</a>' +
+      '<a href="#diff-bulk1" title="docs/second.md">Second</a>';
+    document.body.prepend(nav);
+    nav.lastElementChild.addEventListener('click', () => {
+      setTimeout(() => {
+        const mount = document.getElementById('lazy-file-mount');
+        if (!mount.querySelector('#diff-second')) {
+          mount.appendChild(document.getElementById('second-file-template').content.cloneNode(true));
+        }
+      }, 400);
+    });
+  });
+  const first = page.getByRole('link', { name: 'First', exact: true });
+  const second = page.getByRole('link', { name: 'Second', exact: true });
+  await first.click();
+  await expect(page.locator('#diff-first .prose-diff')).toHaveCount(0);
+  await page.getByRole('button', { name: /^View options/ }).click();
+  await page.getByRole('checkbox', { name: 'Render Markdown when selected' }).check();
+  await page.keyboard.press('Escape');
+
+  await second.click();
+  await first.click();
+  await expect(page.locator('#diff-first .prose-diff')).toHaveCount(1);
+  await expect(page.locator('#diff-second')).toBeVisible();
+  await page.waitForTimeout(600);
+  await expect(page.locator('#diff-second .prose-diff')).toHaveCount(0);
+  await expect(page.locator('.grdc-render-overlay')).toHaveCount(0);
+  await expect(page.locator('.grdc-existing-thread')).toHaveCount(1);
+  await second.click();
+  await expect(page.locator('#diff-second .prose-diff')).toHaveCount(1);
+});
+
+test('a manually selected source view stays in source when the file is selected again', async ({ page }) => {
+  await setupBulkRenderPage(page);
+  await page.evaluate(() => {
+    const nav = document.createElement('a');
+    nav.href = '#diff-bulk0';
+    nav.title = 'docs/first.md';
+    nav.textContent = 'Select first file';
+    document.body.prepend(nav);
+    const header = document.querySelector('#diff-first .file-header');
+    const source = document.createElement('button');
+    source.setAttribute('aria-label', 'Display the source diff');
+    source.textContent = 'Source';
+    source.addEventListener('click', () => {
+      document.querySelector('#diff-first .prose-diff')?.remove();
+      header.querySelector('[aria-label="Display the rich diff"]').setAttribute('aria-pressed', 'false');
+    });
+    header.appendChild(source);
+  });
+  await page.getByRole('button', { name: /^View options/ }).click();
+  await page.getByRole('checkbox', { name: 'Render Markdown when selected' }).check();
+  await page.keyboard.press('Escape');
+  await page.getByRole('link', { name: 'Select first file' }).click();
+  await expect(page.locator('#diff-first .prose-diff')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Display the source diff' }).click();
+  await expect(page.locator('#diff-first .prose-diff')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Select first file' }).click();
+  await page.waitForTimeout(500);
+  await expect(page.locator('#diff-first .prose-diff')).toHaveCount(0);
+});
+
 test('bulk render discovers lazy-mounted files and reports real progress', async ({ page }) => {
   await setupBulkRenderPage(page);
   await expect(page.locator('.grdc-existing-thread')).toHaveCount(0);

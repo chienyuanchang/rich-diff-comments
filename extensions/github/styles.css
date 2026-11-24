@@ -1144,14 +1144,25 @@ li.grdc-hoverable .grdc-comment-btn {
 .grdc-sidebar-header .grdc-sidebar-prev svg,
 .grdc-sidebar-header .grdc-sidebar-next svg,
 .grdc-sidebar-header-filter svg { display: block; }
-/* Keep hidden-content status visible independently of dropdown expansion. */
-.grdc-sidebar-header-filter .grdc-icon-solid { display: none; }
-.grdc-sidebar-header-filter[data-filtered="true"] .grdc-icon-outline { display: none; }
-.grdc-sidebar-header-filter[data-filtered="true"] .grdc-icon-solid { display: inline; }
 .grdc-sidebar-header-filter {
+  position: relative;
   flex-shrink: 0;
   margin-right: 12px;
   transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.grdc-filter-indicator {
+  display: none;
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 6px;
+  height: 6px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: currentColor;
+}
+.grdc-sidebar-header-filter[data-filtered="true"] .grdc-filter-indicator {
+  display: block;
 }
 .grdc-sidebar-collapsed .grdc-sidebar-header-filter {
   display: inline-flex;
@@ -1193,6 +1204,23 @@ li.grdc-hoverable .grdc-comment-btn {
 .grdc-view-options-title {
   padding: 4px 8px;
   font-weight: 600;
+}
+.grdc-view-options fieldset {
+  min-width: 0;
+  margin: 4px 0;
+  padding: 0;
+  border: 0;
+}
+.grdc-view-options legend {
+  padding: 4px 8px;
+  font-weight: 600;
+}
+.grdc-restore-defaults {
+  margin: 4px 8px;
+  cursor: pointer;
+}
+.grdc-restore-defaults:disabled {
+  cursor: default;
 }
 .grdc-view-options label {
   display: flex;

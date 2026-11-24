@@ -5,14 +5,14 @@ const { setupFixture, gotoPRPage, injectExtension, waitForInit } = require('./_h
 
 // A fake speechSynthesis: records what is spoken and "finishes" each utterance
 // on demand, so the test controls the pace.
-async function fakeSpeech(page) {
-  await page.addInitScript(() => {
+async function fakeSpeech(page, voices) {
+  await page.addInitScript((voices) => {
     window.__spoken = [];
     let current = null;
     const synth = {
       speaking: false,
       pending: false,
-      getVoices: () => [],
+      getVoices: () => voices,
       addEventListener() {},
       speak(u) { window.__spoken.push(u.text); current = u; this.speaking = true; },
       cancel() { const u = current; current = null; this.speaking = false; if (u && u.onerror) u.onerror({ error: 'canceled' }); },
@@ -20,11 +20,11 @@ async function fakeSpeech(page) {
     window.__finishUtterance = () => { const u = current; current = null; synth.speaking = false; if (u && u.onend) u.onend({}); };
     Object.defineProperty(window, 'speechSynthesis', { value: synth, configurable: true });
     window.SpeechSynthesisUtterance = function (text) { this.text = text; };
-  });
+  }, voices || [{ name: 'Local', lang: 'en-US', localService: true, default: true }]);
 }
 
-async function setup(page) {
-  await fakeSpeech(page);
+async function setup(page, voices) {
+  await fakeSpeech(page, voices);
   await setupFixture(page, 'removed-content', {
     rawSource: { 'docs/visibility.md': '# Visibility example\n\nKept new words ending.\n', 'docs/deleted.md': '' },
     routeData: {
@@ -147,4 +147,15 @@ test('with Show removed content off, edits are read without the deleted words', 
   await expect.poll(() => spoken(page)).toEqual(['Kept new words ending.']);
   await finish(page);
   await expect.poll(() => (spoken(page)).then((s) => s[1])).not.toBe('Removed: old words.');
+});
+
+test('with only network voices, Listen is off so no PR text leaves the browser', async ({ page }) => {
+  await setup(page, [{ name: 'Google US English', lang: 'en-US', localService: false, default: true }]);
+  const play = page.locator('.grdc-sidebar-listen');
+  await expect(play).toBeDisabled();
+  await play.click({ force: true });
+  await page.waitForTimeout(300);
+  expect(await spoken(page)).toEqual([]);
+  await page.locator('.grdc-sidebar-header-filter').click();
+  await expect(page.locator('.grdc-listen-voice option')).toHaveText(['Default']);
 });

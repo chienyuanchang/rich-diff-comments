@@ -24,6 +24,8 @@ The extension sends data **only to `github.com`**, the same origin you are alrea
 
 No data is sent to any other server, analytics provider, or third party. The extension contains no telemetry.
 
+**Listen to the changes** speaks the PR text with your browser's built-in speech synthesis, using only voices installed on your device. Network voices (such as Chrome's "Google …" voices or Edge's "… Online" voices) are never offered or used, because they would send the text to a speech provider. If no on-device voice is available, Listen is turned off.
+
 ## Permissions
 
 | Permission | Why |

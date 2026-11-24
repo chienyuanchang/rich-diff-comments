@@ -64,6 +64,8 @@
     changeSpeech,
     fileSpeech,
     sentenceRange,
+    localVoices,
+    pickVoice,
   } = (typeof window !== 'undefined' && window.GRDC) || {};
 
   // Wrap findTextInSource so we can keep the per-file diagnostic counter behavior
@@ -5581,12 +5583,13 @@
     const fillVoices = () => {
       let saved = '';
       try { saved = localStorage.getItem(LISTEN_VOICE_KEY) || ''; } catch (_) {}
-      const lang = (navigator.language || 'en').slice(0, 2);
-      const voices = speech.getVoices().slice().sort((a, b) =>
-        (b.lang.startsWith(lang) - a.lang.startsWith(lang)) || a.name.localeCompare(b.name));
+      const voices = localVoices(speech.getVoices(), navigator.language);
       voice.innerHTML = '<option value="">Default</option>' + voices.map((v) =>
         `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name.replace(/^Microsoft\s+/, ''))} (${escapeHtml(v.lang)})</option>`).join('');
       voice.value = voices.some((v) => v.name === saved) ? saved : '';
+      // Without an on-device voice there is nothing to play: the browser would fall back to a network one.
+      button.disabled = !voices.length;
+      button.title = voices.length ? '' : 'No on-device voice is installed, so Listen is off (network voices would send the text to a speech provider).';
     };
     fillVoices();
     speech.addEventListener('voiceschanged', fillVoices);
@@ -5665,9 +5668,10 @@
       }
       const utterance = new SpeechSynthesisUtterance(sentences[k]);
       utterance.rate = Number(sidebar.querySelector('.grdc-listen-rate').value) || 1;
-      const name = sidebar.querySelector('.grdc-listen-voice').value;
-      const voice = name && speech.getVoices().find((v) => v.name === name);
-      if (voice) { utterance.voice = voice; utterance.lang = voice.lang; }
+      // Always set an on-device voice: left unset, the browser may pick a network voice.
+      const voice = pickVoice(speech.getVoices(), sidebar.querySelector('.grdc-listen-voice').value, navigator.language);
+      if (!voice) { stopListening(); return; }
+      utterance.voice = voice; utterance.lang = voice.lang;
       utterance.onend = () => speakSentence(k + 1);
       utterance.onerror = (e) => {
         if (e.error === 'interrupted' || e.error === 'canceled') return;

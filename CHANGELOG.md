@@ -6,7 +6,7 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ### Added
 
-- **Listen to the changes.** A new play button next to the Changes `◀ N/M ▶` counter reads each change aloud with your browser's voice, highlights it, and moves on to the next one. The sentence being spoken is highlighted. `◀` / `▶` and clicking a Changes card skip while it reads, and `←` / `→` step to the previous or next sentence; press the button again to stop. An edited block is read as it is now, followed by the deleted words when Show removed content is checked; a deleted block is announced as "Removed block starting with" its first two words; a new file is read in full. Speed and voice are in View options. Nothing is spoken until you press play.
+- **Listen to the changes.** A new play button next to the Changes `◀ N/M ▶` counter reads each change aloud with your browser's voice, highlights it, and moves on to the next one. The sentence being spoken is highlighted. `◀` / `▶` and clicking a Changes card skip while it reads, and `←` / `→` step to the previous or next sentence; press the button again to stop. An edited block is read as it is now, followed by the deleted words when Show removed content is checked; a deleted block is announced as "Removed block starting with" its first two words; a new file is read in full. Speed and voice are in View options. Only voices installed on your device are offered, so nothing you listen to leaves your browser; if none is installed, the play button is greyed out. Nothing is spoken until you press play.
 
 ### Changed
 

@@ -146,5 +146,19 @@
     return { range, end: at + needle.length };
   }
 
-  return { splitSentences, changeSpeech, fileSpeech, sentenceRange };
+  // Only on-device voices (localService): a network voice would send the PR text to a speech provider.
+  // Sorted with the page language first, the browser's default first among those.
+  function localVoices(voices, lang) {
+    const l = (lang || 'en').slice(0, 2);
+    return (voices || []).filter((v) => v.localService === true).sort((a, b) =>
+      (b.lang.startsWith(l) - a.lang.startsWith(l)) || (b.default - a.default) || a.name.localeCompare(b.name));
+  }
+
+  // The voice to speak with: the saved one if it is on-device, else the best on-device one; null if none.
+  function pickVoice(voices, savedName, lang) {
+    const local = localVoices(voices, lang);
+    return local.find((v) => v.name === savedName) || local[0] || null;
+  }
+
+  return { splitSentences, changeSpeech, fileSpeech, sentenceRange, localVoices, pickVoice };
 });

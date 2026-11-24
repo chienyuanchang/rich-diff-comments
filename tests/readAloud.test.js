@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
-const { splitSentences, changeSpeech, fileSpeech, sentenceRange } = require('../src/lib/readAloud.js');
+const { splitSentences, changeSpeech, fileSpeech, sentenceRange, localVoices, pickVoice } = require('../src/lib/readAloud.js');
 
 const dom = (html) => new JSDOM(`<div class="prose-diff"><div class="markdown-body">${html}</div></div>`).window.document;
 
@@ -64,4 +64,15 @@ test('sentenceRange: finds each spoken sentence in the visible text, skipping de
   assert.equal(b.range.toString(), 'Second one.');
   assert.equal(sentenceRange(block, 'Removed: gone.', 0), null);
   assert.equal(sentenceRange(null, 'x', 0), null);
+});
+
+test('localVoices / pickVoice: only on-device voices, never a network one', () => {
+  const v = (name, lang, localService, isDefault) => ({ name, lang, localService, default: !!isDefault });
+  const voices = [v('Google US English', 'en-US', false, true), v('Zira', 'en-US', true), v('David', 'en-US', true, true), v('Hila', 'he-IL', true), v('Aria Online (Natural)', 'en-US', false)];
+  assert.deepEqual(localVoices(voices, 'en-US').map((x) => x.name), ['David', 'Zira', 'Hila']);
+  assert.equal(pickVoice(voices, '', 'en-US').name, 'David');
+  assert.equal(pickVoice(voices, 'Hila', 'en-US').name, 'Hila');
+  assert.equal(pickVoice(voices, 'Google US English', 'en-US').name, 'David'); // a saved network voice is not used
+  assert.equal(pickVoice([v('Google US English', 'en-US', false)], '', 'en'), null);
+  assert.equal(pickVoice([], '', 'en'), null);
 });

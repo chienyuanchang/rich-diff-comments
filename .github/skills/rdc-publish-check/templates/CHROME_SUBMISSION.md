@@ -69,7 +69,7 @@ v1.12.0 (2026-09-25)
 
 —
 
-GitHub's "Files changed" rich-diff renders Markdown beautifully — design docs, dev plans, READMEs — but provides no way to click on a paragraph and leave a review comment; the extension is open source on GitHub: https://github.com/chienyuanchang/rich-diff-comments. You have to flip back to source-diff mode to comment, then back again to see how it renders. This extension closes that gap.
+GitHub's "Files changed" rich-diff renders Markdown beautifully — design docs, dev plans, READMEs — but provides no way to click on a paragraph and leave a review comment (using Azure DevOps? Try our companion extension: https://chromewebstore.google.com/detail/markdown-pr-comments-for/habbfnkhgmnkhlbakjlnapadamjijbdh). You have to flip back to source-diff mode to comment, then back again to see how it renders. This extension closes that gap.
 
 What it does:
 
@@ -92,7 +92,7 @@ No Personal Access Token required — uses your existing GitHub session cookies.
 
 Best for PRs that include Markdown content — design docs, dev plans, READMEs, and ADRs. The extension activates wherever GitHub's rich-diff view is available; on source-only files (.js, .py, etc.) GitHub's normal source-diff continues to work as it always has.
 
-Also use Azure DevOps? Our companion extension offers similar Markdown pull request review capabilities in Azure DevOps Preview: https://chromewebstore.google.com/detail/markdown-pr-comments-for/habbfnkhgmnkhlbakjlnapadamjijbdh
+Open source on GitHub: https://github.com/chienyuanchang/rich-diff-comments — source, issue tracker, and roadmap.
 
 —
 

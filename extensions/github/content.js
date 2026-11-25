@@ -86,6 +86,7 @@
   // Listen to the changes (read aloud) — see listenFrom().
   const LISTEN_RATE_KEY = 'grdc_listen_rate';
   const LISTEN_VOICE_KEY = 'grdc_listen_voice';
+  const LISTEN_ENABLED_KEY = 'grdc_listen_enabled';
   const speech = (typeof window !== 'undefined' && window.speechSynthesis) || null;
   let listening = false;
   let listenGen = 0; // bumped on every start / stop so stale utterance callbacks do nothing
@@ -3500,7 +3501,7 @@
   // We clamp persisted sizes on both read and write so a transient narrow
   // render (e.g. during initial paint before content settles) can't poison
   // localStorage with a tiny size that the next page load would honor.
-  const SIDEBAR_MIN_WIDTH = 512;
+  const SIDEBAR_MIN_WIDTH = 480;
   const SIDEBAR_MIN_HEIGHT = 120;
   const SIDEBAR_TAB_KEY = 'grdc_sidebar_tab';
   function syncViewOptions(sidebar) {
@@ -3513,8 +3514,10 @@
     button.dataset.filtered = String(filtered);
     button.title = label;
     button.setAttribute('aria-label', label);
+    const listenEnabled = sidebar.querySelector('.grdc-listen-enabled');
+    sidebar.classList.toggle('grdc-listen-on', listenEnabled.checked);
     sidebar.querySelector('.grdc-restore-defaults').disabled =
-      removed.checked && resolved.checked && !autoRender.checked;
+      removed.checked && resolved.checked && !autoRender.checked && !listenEnabled.checked;
   }
   let sidebarCurrentIdx = 0;
   // Per-block index for the "prev/next change" feature — separate from
@@ -4144,10 +4147,11 @@
             <label><input type="checkbox" class="grdc-auto-render"> Render Markdown when selected</label>
           </fieldset>
           <fieldset class="grdc-listen-option"><legend>Listening</legend>
-            <label class="grdc-listen-option">Speed <select class="grdc-listen-rate">
+            <label><input type="checkbox" class="grdc-listen-enabled"> Enable Listening</label>
+            <label class="grdc-listen-option grdc-listen-setting">Speed <select class="grdc-listen-rate">
               <option value="0.8">0.8×</option><option value="1">1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="1.75">1.75×</option><option value="2">2×</option><option value="2.5">2.5×</option><option value="3">3×</option>
             </select></label>
-            <label class="grdc-listen-option">Voice <select class="grdc-listen-voice"><option value="">Default</option></select></label>
+            <label class="grdc-listen-option grdc-listen-setting">Voice <select class="grdc-listen-voice"><option value="">Default</option></select></label>
           </fieldset>
           <button type="button" class="grdc-restore-defaults">Restore defaults</button>
         </div>
@@ -4223,6 +4227,7 @@
       sidebar.querySelector('.grdc-restore-defaults').addEventListener('click', () => {
         for (const [selector, checked] of [
           ['.grdc-auto-render', false],
+          ['.grdc-listen-enabled', false],
           ['.grdc-show-removed', true],
           ['.grdc-show-resolved', true],
         ]) {
@@ -4317,6 +4322,7 @@
     sidebar.querySelector('.grdc-show-resolved').checked = !unresolvedOnly;
     sidebar.querySelector('.grdc-show-removed').checked = !hideRemovedContent;
     sidebar.querySelector('.grdc-auto-render').checked = localStorage.getItem(AUTO_RENDER_KEY) === '1';
+    sidebar.querySelector('.grdc-listen-enabled').checked = localStorage.getItem(LISTEN_ENABLED_KEY) === '1';
     syncViewOptions(sidebar);
 
     // When Threads is empty but Outline still has content, force-switch
@@ -5575,6 +5581,11 @@
       return;
     }
     button.addEventListener('click', () => (listening ? stopListening() : listenFrom(changesCurrentIdx)));
+    sidebar.querySelector('.grdc-listen-enabled').addEventListener('change', (event) => {
+      try { localStorage.setItem(LISTEN_ENABLED_KEY, event.target.checked ? '1' : '0'); } catch (_) {}
+      if (!event.target.checked) stopListening();
+      syncViewOptions(sidebar);
+    });
     const rate = sidebar.querySelector('.grdc-listen-rate');
     try { rate.value = localStorage.getItem(LISTEN_RATE_KEY) || '1'; } catch (_) { rate.value = '1'; }
     if (!rate.value) rate.value = '1';

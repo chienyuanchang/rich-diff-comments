@@ -23,7 +23,7 @@ async function fakeSpeech(page, voices) {
   }, voices || [{ name: 'Local', lang: 'en-US', localService: true, default: true }]);
 }
 
-async function setup(page, voices) {
+async function setup(page, voices, { enabled = true } = {}) {
   await fakeSpeech(page, voices);
   await setupFixture(page, 'removed-content', {
     rawSource: { 'docs/visibility.md': '# Visibility example\n\nKept new words ending.\n', 'docs/deleted.md': '' },
@@ -38,7 +38,10 @@ async function setup(page, voices) {
     },
   });
   await gotoPRPage(page);
-  await page.evaluate(() => localStorage.setItem('grdc_sidebar_pos', JSON.stringify({ left: 720, top: 8 })));
+  await page.evaluate((on) => {
+    localStorage.setItem('grdc_sidebar_pos', JSON.stringify({ left: 720, top: 8 }));
+    if (on) localStorage.setItem('grdc_listen_enabled', '1');
+  }, enabled);
   await injectExtension(page);
   await waitForInit(page);
   await expect(page.locator('.grdc-sidebar-changes-count')).not.toHaveText('0/0');
@@ -158,4 +161,43 @@ test('with only network voices, Listen is off so no PR text leaves the browser',
   expect(await spoken(page)).toEqual([]);
   await page.locator('.grdc-sidebar-header-filter').click();
   await expect(page.locator('.grdc-listen-voice option')).toHaveText(['Default']);
+});
+
+test('Listening is off by default; Enable Listening shows the play button, speed and voice', async ({ page }) => {
+  await setup(page, undefined, { enabled: false });
+  const play = page.locator('.grdc-sidebar-listen');
+  const menu = page.getByRole('dialog', { name: 'View options', exact: true });
+  const enable = menu.getByRole('checkbox', { name: 'Enable Listening' });
+  const restore = menu.getByRole('button', { name: 'Restore defaults' });
+  await expect(play).toBeHidden();
+  await expect(page.locator('.grdc-sidebar')).toHaveCSS('min-width', '480px');
+
+  await page.getByRole('button', { name: /^View options/ }).click();
+  await expect(menu.getByRole('group', { name: 'Listening' })).toBeVisible();
+  await expect(enable).not.toBeChecked();
+  await expect(menu.locator('.grdc-listen-rate')).toBeHidden();
+  await expect(menu.locator('.grdc-listen-voice')).toBeHidden();
+  await expect(restore).toBeDisabled();
+
+  await enable.check();
+  await expect(menu.locator('.grdc-listen-rate')).toBeVisible();
+  await expect(menu.locator('.grdc-listen-voice')).toBeVisible();
+  await expect(restore).toBeEnabled();
+  expect(await page.evaluate(() => localStorage.getItem('grdc_listen_enabled'))).toBe('1');
+  await page.keyboard.press('Escape');
+  await expect(play).toBeVisible();
+  await expect(page.locator('.grdc-sidebar')).toHaveCSS('min-width', '512px');
+
+  // Turning it off stops speech in progress; Restore defaults turns it off too.
+  await play.click();
+  expect((await spoken(page)).length).toBe(1);
+  await page.getByRole('button', { name: /^View options/ }).click();
+  await enable.uncheck();
+  await expect(play).toBeHidden();
+  expect(await page.evaluate(() => window.speechSynthesis.speaking)).toBe(false);
+  await enable.check();
+  await restore.click();
+  await expect(enable).not.toBeChecked();
+  await expect(menu.locator('.grdc-listen-rate')).toBeHidden();
+  expect(await page.evaluate(() => localStorage.getItem('grdc_listen_enabled'))).toBe('0');
 });

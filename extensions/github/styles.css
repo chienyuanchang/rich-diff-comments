@@ -939,16 +939,16 @@ li.grdc-hoverable .grdc-comment-btn {
   top: 16px;
   left: 50%;
   transform: translateX(-50%);
-  width: 512px;
+  width: 480px;
   height: auto;
-  min-width: 512px;
+  min-width: 480px;
   min-height: 120px;
   /* Cap height but NOT width — narrow viewports should still let the
-     sidebar be 512px (users will scroll the page horizontally if needed,
+     sidebar be 480px (users will scroll the page horizontally if needed,
      and the alternative is the funnel + nav clusters getting clipped
      because `max-width: 90vw` would cap the sidebar below its content).
      Width bumped from 420 → 480 in 1.8.0 to fit the file-scoped
-     counter format `3/8 (45)`, and to 512 for the Listen button.
+     counter format `3/8 (45)`; 512 when Listening is enabled (its button).
      See `.grdc-sidebar-collapsed` comment. */
   max-height: calc(100vh - 40px);
   display: flex;
@@ -1001,8 +1001,8 @@ li.grdc-hoverable .grdc-comment-btn {
      old `3/8` format. Two counters + separators + filter margin pushed
      past 420 and the funnel got visually clipped off the right edge in
      collapsed mode. 480 restores comfortable spacing for `NN/NN (NNN)`
-     on both counters. 512: one more 24px button (Listen) + 8px gap. */
-  width: 512px !important;
+     on both counters. */
+  width: 480px !important;
 }
 /* Force the collapsed header to stay on ONE row. The expanded header uses
    `flex-wrap: wrap` so a user-shrunk sidebar degrades gracefully, but the
@@ -1800,7 +1800,13 @@ li.grdc-hoverable .grdc-comment-btn {
   }
 }
 
-/* Listen to the changes (read aloud): play / stop toggle in the Changes nav. */
+/* Listen to the changes (read aloud): opt-in via View options → Enable Listening.
+   Off: no play button, speed or voice. On: one more 24px button + 8px gap. */
+.grdc-sidebar:not(.grdc-listen-on) .grdc-sidebar-listen,
+.grdc-sidebar:not(.grdc-listen-on) .grdc-listen-setting { display: none; }
+.grdc-sidebar.grdc-listen-on { width: 512px; min-width: 512px; }
+.grdc-sidebar.grdc-listen-on.grdc-sidebar-collapsed { width: 512px !important; }
+/* Play / stop toggle in the Changes nav. */
 .grdc-sidebar-listen .grdc-listen-pause,
 .grdc-sidebar-listen[aria-pressed="true"] .grdc-listen-play { display: none; }
 .grdc-sidebar-listen[aria-pressed="true"] .grdc-listen-pause { display: block; }

@@ -166,7 +166,7 @@ test('View options preserves the original toolbar flow at minimum and expanded w
   let originalOffset;
   for (const collapsed of [false, true]) {
     if (collapsed) await page.locator('.grdc-sidebar-collapse').click();
-    for (const width of [512, 640]) {
+    for (const width of [480, 640]) {
       await page.locator('.grdc-sidebar').evaluate((sidebar, value) => {
         sidebar.style.width = `${value}px`;
         sidebar.style.left = '500px';
@@ -205,7 +205,7 @@ for (const theme of [
     for (const collapsed of [false, true]) {
       if (collapsed) await page.locator('.grdc-sidebar-collapse').click();
       await page.mouse.move(20, 700);
-      await expect(page.locator('.grdc-sidebar')).toHaveCSS('min-width', '512px');
+      await expect(page.locator('.grdc-sidebar')).toHaveCSS('min-width', '480px');
       for (const option of ['Show removed content', 'Show resolved comments']) {
         const button = funnel;
         const inactiveBox = await button.boundingBox();

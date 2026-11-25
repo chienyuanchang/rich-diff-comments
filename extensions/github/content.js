@@ -834,6 +834,7 @@
   const manuallySelectedSourcePaths = new Set();
   let autoRenderGeneration = 0;
   let autoRenderClick = false;
+  let fileSelectionGeneration = 0;
 
   // Invalidate the route-data cache so the next `fetchRouteData()` re-fetches.
   // Call this after any mutation that adds a comment / reply / resolution so
@@ -5911,6 +5912,29 @@
   // ── Observe DOM Changes (GitHub uses SPA navigation) ───────────────────────
 
   let reinitTimer = null;
+  function waitForScrollToSettle() {
+    return new Promise((resolve) => {
+      let frame = 0;
+      let lastY = window.scrollY;
+      let stableSince = performance.now();
+      const finish = () => {
+        clearTimeout(timeout);
+        cancelAnimationFrame(frame);
+        resolve();
+      };
+      const timeout = setTimeout(finish, 2000);
+      function check(now) {
+        if (Math.abs(window.scrollY - lastY) > 0.5) {
+          lastY = window.scrollY;
+          stableSince = now;
+        }
+        if (now - stableSince >= 150) return finish();
+        frame = requestAnimationFrame(check);
+      }
+      frame = requestAnimationFrame(check);
+    });
+  }
+
   function scheduleReinit() {
     if (reinitTimer) return;
     // Capture scroll position BEFORE the 500ms debounce window. GitHub's own
@@ -5925,13 +5949,23 @@
     // intentionally land at top, so this restore only fires for
     // mutation-driven re-inits.
     const savedScrollY = window.scrollY;
+    const selectionAtSchedule = fileSelectionGeneration;
     reinitTimer = setTimeout(async () => {
+      // Do not interrupt a newer navigation or an in-progress scroll with
+      // a stale position captured before the debounce.
+      const skipRestore = selectionAtSchedule !== fileSelectionGeneration ||
+        Math.abs(window.scrollY - savedScrollY) > 1;
+      if (skipRestore) await waitForScrollToSettle();
       reinitTimer = null;
+      const selectionBeforeInit = fileSelectionGeneration;
       await init();
+      if (skipRestore || selectionBeforeInit !== fileSelectionGeneration) return;
       // Restore after the next paint so layout has settled. Use both
       // `requestAnimationFrame` and a microtask fallback in case the page is
       // backgrounded (rAF doesn't fire for hidden tabs).
-      const restore = () => window.scrollTo(0, savedScrollY);
+      const restore = () => {
+        if (selectionBeforeInit === fileSelectionGeneration) window.scrollTo(0, savedScrollY);
+      };
       requestAnimationFrame(restore);
       Promise.resolve().then(restore);
     }, 500);
@@ -6023,6 +6057,7 @@
       if (!path) return;
 
       console.log(`[GRDC] File-tree click → ${path}`);
+      fileSelectionGeneration++;
       jumpSidebarListsToFile(sidebar, path);
       const generation = ++autoRenderGeneration;
       if (localStorage.getItem(AUTO_RENDER_KEY) === '1' && isMarkdownPath(path) &&

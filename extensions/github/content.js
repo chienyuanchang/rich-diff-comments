@@ -831,6 +831,10 @@
   // alone caused worse regressions — see the 2026-06-17 conversation).
   let pathChangeTypeMap = new Map();
   const renderedMarkdownPaths = new Set();
+  const manuallySelectedSourcePaths = new Set();
+  let autoRenderGeneration = 0;
+  let autoRenderClick = false;
+  let fileSelectionGeneration = 0;
 
   // Invalidate the route-data cache so the next `fetchRouteData()` re-fetches.
   // Call this after any mutation that adds a comment / reply / resolution so
@@ -851,6 +855,8 @@
     pathDigestMap.clear();
     pathChangeTypeMap.clear();
     renderedMarkdownPaths.clear();
+    manuallySelectedSourcePaths.clear();
+    autoRenderGeneration++;
     rawSourceCache.clear();
     fileLineMap.clear();
     existingComments = [];
@@ -1365,13 +1371,25 @@
 
   document.addEventListener('click', (e) => {
     if (!looksLikeDiffToggle(e.target)) return;
+    const toggle = e.target.closest('button, a[role="button"], [data-tab-item]');
+    const container = toggle?.closest('div[id^="diff-"], [data-tagsearch-path], .file[data-path]');
+    const path = container && getContainerPath(container);
+    const label = toggle && resolveButtonHaystack(toggle);
+    if (e.isTrusted && path && label) {
+      if (/\bsource\b/.test(label) && !/rich|render/.test(label)) {
+        manuallySelectedSourcePaths.add(path);
+        autoRenderGeneration++;
+      } else if (/rich|render/.test(label)) {
+        manuallySelectedSourcePaths.delete(path);
+      }
+    }
     // Refresh the threads sidebar after the toggle completes — when the
     // user switches to source-diff our threads stay in the DOM (just
     // hidden), so `buildThreadsSidebar` itself decides whether to keep
     // showing the sidebar based on whether `.prose-diff` is visible.
     // Wrapped in a short delay so GitHub's toggle handler finishes first.
     setTimeout(() => { try { buildThreadsSidebar(); } catch (_) {} }, 100);
-    if (!sourceDiffDirty) {
+    if (!sourceDiffDirty || autoRenderClick) {
       console.log('[GRDC] Diff-toggle clicked but no pending mutation — letting GitHub handle it normally.');
       return;
     }
@@ -3461,6 +3479,7 @@
 
   const SIDEBAR_COLLAPSE_KEY = 'grdc_sidebar_collapsed';
   const SIDEBAR_FILTER_KEY = 'grdc_sidebar_unresolved_only';
+  const AUTO_RENDER_KEY = 'grdc_auto_render_selected_markdown';
   const SIDEBAR_POS_KEY = 'grdc_sidebar_pos';
   const SIDEBAR_SIZE_KEY = 'grdc_sidebar_size';
   // Floors must match the CSS `min-width` / `min-height` on `.grdc-sidebar`.
@@ -3470,6 +3489,19 @@
   const SIDEBAR_MIN_WIDTH = 480;
   const SIDEBAR_MIN_HEIGHT = 120;
   const SIDEBAR_TAB_KEY = 'grdc_sidebar_tab';
+  function syncViewOptions(sidebar) {
+    const removed = sidebar.querySelector('.grdc-show-removed');
+    const resolved = sidebar.querySelector('.grdc-show-resolved');
+    const autoRender = sidebar.querySelector('.grdc-auto-render');
+    const button = sidebar.querySelector('.grdc-sidebar-header-filter');
+    const filtered = !removed.checked || !resolved.checked;
+    const label = filtered ? 'View options — content hidden' : 'View options';
+    button.dataset.filtered = String(filtered);
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    sidebar.querySelector('.grdc-restore-defaults').disabled =
+      removed.checked && resolved.checked && !autoRender.checked;
+  }
   let sidebarCurrentIdx = 0;
   // Per-block index for the "prev/next change" feature — separate from
   // `sidebarCurrentIdx` because change-nav (walks `.added`/`.removed`/`<ins>`
@@ -4052,16 +4084,23 @@
           </span>
           <span class="grdc-sidebar-separator" aria-hidden="true"></span>
           <button type="button" class="grdc-sidebar-header-filter" title="View options" aria-label="View options" aria-haspopup="dialog" aria-expanded="false" aria-controls="grdc-view-options" popovertarget="grdc-view-options" data-filtered="false">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-              <path class="grdc-icon-outline" fill="currentColor" fill-rule="evenodd" d="M.75 3A.75.75 0 0 1 1.5 2.25h13a.75.75 0 0 1 .6 1.2L10 10.25v3.25a.75.75 0 0 1-1.2.6l-2.5-1.88a.75.75 0 0 1-.3-.6V10.25L.9 3.45A.75.75 0 0 1 .75 3Zm2.25.75 4.6 6.13a.75.75 0 0 1 .15.45v1.69l1 .75v-2.44a.75.75 0 0 1 .15-.45L13.5 3.75h-10.5Z"/>
-              <path class="grdc-icon-solid" fill="currentColor" d="M.75 3A.75.75 0 0 1 1.5 2.25h13a.75.75 0 0 1 .6 1.2L10 10.25v3.25a.75.75 0 0 1-1.2.6l-2.5-1.88a.75.75 0 0 1-.3-.6V10.25L.9 3.45A.75.75 0 0 1 .75 3Z"/>
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round">
+              <path d="M6.7 1h2.6l.3 1.5c.4.1.8.25 1.1.45l1.3-.85 1.85 1.85-.85 1.3c.2.3.35.7.45 1.1l1.5.35v2.6l-1.5.3c-.1.4-.25.8-.45 1.1l.85 1.3-1.85 1.85-1.3-.85c-.3.2-.7.35-1.1.45L9.3 15H6.7l-.3-1.55a5 5 0 0 1-1.1-.45l-1.3.85-1.85-1.85.85-1.3a5 5 0 0 1-.45-1.1L1 9.3V6.7l1.55-.35c.1-.4.25-.8.45-1.1l-.85-1.3L4 2.1l1.3.85c.3-.2.7-.35 1.1-.45Z"/>
+              <circle cx="8" cy="8" r="1.7"/>
             </svg>
+            <span class="grdc-filter-indicator" aria-hidden="true"></span>
           </button>
         </div>
         <div id="grdc-view-options" class="grdc-view-options" popover role="dialog" aria-label="View options">
           <div class="grdc-view-options-title">View options</div>
-          <label><input type="checkbox" class="grdc-show-removed" autofocus> Show removed content</label>
-          <label><input type="checkbox" class="grdc-show-resolved"> Show resolved comments</label>
+          <fieldset><legend>Visibility</legend>
+            <label><input type="checkbox" class="grdc-show-removed" autofocus> Show removed content</label>
+            <label><input type="checkbox" class="grdc-show-resolved"> Show resolved comments</label>
+          </fieldset>
+          <fieldset><legend>Behavior</legend>
+            <label><input type="checkbox" class="grdc-auto-render"> Render Markdown when selected</label>
+          </fieldset>
+          <button type="button" class="grdc-restore-defaults">Restore defaults</button>
         </div>
         <div class="grdc-sidebar-tabs" role="tablist">
           <button class="grdc-sidebar-tab grdc-sidebar-tab-active" data-grdc-tab="changes" role="tab" aria-selected="true" title="Changes (1)">Changes</button>
@@ -4117,8 +4156,33 @@
         hideRemovedContent = !event.target.checked;
         clearRemovedContentVisibility();
         applyRemovedContentVisibility();
-        viewButton.dataset.filtered = String(hideRemovedContent || !sidebar.querySelector('.grdc-show-resolved').checked);
+        syncViewOptions(sidebar);
         buildChangesPane(sidebar);
+      });
+      sidebar.querySelector('.grdc-auto-render').addEventListener('change', (event) => {
+        try {
+          localStorage.setItem(AUTO_RENDER_KEY, event.target.checked ? '1' : '0');
+        } catch (error) {
+          console.warn('[GRDC] Could not save auto-render preference:', error);
+          event.target.checked = !event.target.checked;
+          syncViewOptions(sidebar);
+          return;
+        }
+        if (!event.target.checked) autoRenderGeneration++;
+        syncViewOptions(sidebar);
+      });
+      sidebar.querySelector('.grdc-restore-defaults').addEventListener('click', () => {
+        for (const [selector, checked] of [
+          ['.grdc-auto-render', false],
+          ['.grdc-show-removed', true],
+          ['.grdc-show-resolved', true],
+        ]) {
+          const input = sidebar.querySelector(selector);
+          if (input.checked === checked) continue;
+          input.checked = checked;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        syncViewOptions(sidebar);
       });
       sidebar.querySelector('.grdc-sidebar-prev').addEventListener('click', () => sidebarJump(-1));
       sidebar.querySelector('.grdc-sidebar-next').addEventListener('click', () => sidebarJump(+1));
@@ -4202,8 +4266,8 @@
     }
     sidebar.querySelector('.grdc-show-resolved').checked = !unresolvedOnly;
     sidebar.querySelector('.grdc-show-removed').checked = !hideRemovedContent;
-    const headerFilter = sidebar.querySelector('.grdc-sidebar-header-filter');
-    headerFilter.dataset.filtered = String(unresolvedOnly || hideRemovedContent);
+    sidebar.querySelector('.grdc-auto-render').checked = localStorage.getItem(AUTO_RENDER_KEY) === '1';
+    syncViewOptions(sidebar);
 
     // When Threads is empty but Outline still has content, force-switch
     // to the Outline tab. Also rebuild the outline pane since its content
@@ -5848,6 +5912,29 @@
   // ── Observe DOM Changes (GitHub uses SPA navigation) ───────────────────────
 
   let reinitTimer = null;
+  function waitForScrollToSettle() {
+    return new Promise((resolve) => {
+      let frame = 0;
+      let lastY = window.scrollY;
+      let stableSince = performance.now();
+      const finish = () => {
+        clearTimeout(timeout);
+        cancelAnimationFrame(frame);
+        resolve();
+      };
+      const timeout = setTimeout(finish, 2000);
+      function check(now) {
+        if (Math.abs(window.scrollY - lastY) > 0.5) {
+          lastY = window.scrollY;
+          stableSince = now;
+        }
+        if (now - stableSince >= 150) return finish();
+        frame = requestAnimationFrame(check);
+      }
+      frame = requestAnimationFrame(check);
+    });
+  }
+
   function scheduleReinit() {
     if (reinitTimer) return;
     // Capture scroll position BEFORE the 500ms debounce window. GitHub's own
@@ -5862,13 +5949,23 @@
     // intentionally land at top, so this restore only fires for
     // mutation-driven re-inits.
     const savedScrollY = window.scrollY;
+    const selectionAtSchedule = fileSelectionGeneration;
     reinitTimer = setTimeout(async () => {
+      // Do not interrupt a newer navigation or an in-progress scroll with
+      // a stale position captured before the debounce.
+      const skipRestore = selectionAtSchedule !== fileSelectionGeneration ||
+        Math.abs(window.scrollY - savedScrollY) > 1;
+      if (skipRestore) await waitForScrollToSettle();
       reinitTimer = null;
+      const selectionBeforeInit = fileSelectionGeneration;
       await init();
+      if (skipRestore || selectionBeforeInit !== fileSelectionGeneration) return;
       // Restore after the next paint so layout has settled. Use both
       // `requestAnimationFrame` and a microtask fallback in case the page is
       // backgrounded (rAF doesn't fire for hidden tabs).
-      const restore = () => window.scrollTo(0, savedScrollY);
+      const restore = () => {
+        if (selectionBeforeInit === fileSelectionGeneration) window.scrollTo(0, savedScrollY);
+      };
       requestAnimationFrame(restore);
       Promise.resolve().then(restore);
     }, 500);
@@ -5960,8 +6057,42 @@
       if (!path) return;
 
       console.log(`[GRDC] File-tree click → ${path}`);
+      fileSelectionGeneration++;
       jumpSidebarListsToFile(sidebar, path);
+      const generation = ++autoRenderGeneration;
+      if (localStorage.getItem(AUTO_RENDER_KEY) === '1' && isMarkdownPath(path) &&
+          !manuallySelectedSourcePaths.has(path) && !activeRenderSweep) {
+        autoRenderSelectedFile(path, generation).catch((error) => {
+          console.error('[GRDC] Could not render selected Markdown file:', error);
+        });
+      }
     }, { capture: true });
+  }
+
+  async function autoRenderSelectedFile(path, generation) {
+    const deadline = Date.now() + 5000;
+    const startPath = window.location.pathname;
+    let activated = false;
+    while (Date.now() < deadline && generation === autoRenderGeneration &&
+           window.location.pathname === startPath) {
+      const container = findFileContainers().find((file) => getContainerPath(file) === path);
+      if (container) {
+        if (container.querySelector('.prose-diff')) {
+          if (activated) scheduleReinit();
+          return;
+        }
+        const toggle = !activated && findRichDiffToggleIn(container);
+        if (toggle) {
+          autoRenderClick = true;
+          try { toggle.click(); } finally { autoRenderClick = false; }
+          activated = true;
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (generation === autoRenderGeneration && window.location.pathname === startPath) {
+      console.warn(`[GRDC] Timed out rendering selected Markdown file: ${path}`);
+    }
   }
 
   // Extract a PR file path from a clicked file-tree anchor / row wrapper.
@@ -5978,9 +6109,9 @@
       if (!href) return '';
       const hashIdx = href.indexOf('#diff-');
       if (hashIdx < 0) return '';
-      const hash = href.slice(hashIdx + 1);
+      const hash = href.slice(hashIdx + 1).split(/[?#]/)[0];
       const container = document.getElementById(hash);
-      if (!container) return '';
+      if (!container) return pathDigestMap.get(hash.slice('diff-'.length)) || '';
       try { return getFilePath(container) || ''; } catch (_) { return ''; }
     };
     let path = tryHrefResolve(el);

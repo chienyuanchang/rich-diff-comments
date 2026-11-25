@@ -1144,14 +1144,25 @@ li.grdc-hoverable .grdc-comment-btn {
 .grdc-sidebar-header .grdc-sidebar-prev svg,
 .grdc-sidebar-header .grdc-sidebar-next svg,
 .grdc-sidebar-header-filter svg { display: block; }
-/* Keep hidden-content status visible independently of dropdown expansion. */
-.grdc-sidebar-header-filter .grdc-icon-solid { display: none; }
-.grdc-sidebar-header-filter[data-filtered="true"] .grdc-icon-outline { display: none; }
-.grdc-sidebar-header-filter[data-filtered="true"] .grdc-icon-solid { display: inline; }
 .grdc-sidebar-header-filter {
+  position: relative;
   flex-shrink: 0;
   margin-right: 12px;
   transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.grdc-filter-indicator {
+  display: none;
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 6px;
+  height: 6px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: currentColor;
+}
+.grdc-sidebar-header-filter[data-filtered="true"] .grdc-filter-indicator {
+  display: block;
 }
 .grdc-sidebar-collapsed .grdc-sidebar-header-filter {
   display: inline-flex;
@@ -1193,6 +1204,46 @@ li.grdc-hoverable .grdc-comment-btn {
 .grdc-view-options-title {
   padding: 4px 8px;
   font-weight: 600;
+}
+.grdc-view-options fieldset {
+  min-width: 0;
+  margin: 4px 0;
+  padding: 0;
+  border: 0;
+}
+.grdc-view-options legend {
+  padding: 4px 8px;
+  font-weight: 600;
+}
+.grdc-restore-defaults {
+  display: block;
+  box-sizing: border-box;
+  width: calc(100% - 16px);
+  min-height: 32px;
+  margin: 8px;
+  padding: 5px 12px;
+  border: 1px solid var(--button-default-borderColor-rest, var(--color-btn-border, rgba(31, 35, 40, 0.15)));
+  border-radius: 6px;
+  background: var(--button-default-bgColor-rest, var(--color-btn-bg, #f6f8fa));
+  color: var(--button-default-fgColor-rest, var(--color-btn-text, #24292f));
+  font: inherit;
+  font-weight: 500;
+  text-align: center;
+  transition: background-color 0.12s, border-color 0.12s, box-shadow 0.12s;
+  cursor: pointer;
+}
+.grdc-restore-defaults:hover:not(:disabled) {
+  background: var(--button-default-bgColor-hover, var(--color-btn-hover-bg, #f3f4f6));
+  border-color: var(--button-default-borderColor-hover, var(--color-btn-border, rgba(31, 35, 40, 0.15)));
+}
+.grdc-restore-defaults:focus-visible {
+  outline: 2px solid var(--fgColor-accent, var(--color-accent-fg, #0969da));
+  outline-offset: 2px;
+}
+.grdc-restore-defaults:disabled {
+  background: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
+  color: var(--fgColor-muted, var(--color-fg-muted, #656d76));
+  cursor: not-allowed;
 }
 .grdc-view-options label {
   display: flex;

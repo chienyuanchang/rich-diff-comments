@@ -88,6 +88,153 @@ async function startSweep(page) {
   await expect(page.locator('.grdc-render-overlay')).toBeVisible();
 }
 
+test('selected Markdown auto-renders only when enabled and follows the latest selection', async ({ page }) => {
+  await setupBulkRenderPage(page);
+  await page.evaluate(() => {
+    history.replaceState(null, '', '?mode=virtualization');
+    const nav = document.createElement('nav');
+    nav.innerHTML = '<a href="#diff-bulk0" title="docs/first.md">First</a>' +
+      '<a href="#diff-bulk1" title="docs/second.md">Second</a>';
+    document.body.prepend(nav);
+    nav.lastElementChild.addEventListener('click', () => {
+      setTimeout(() => {
+        const mount = document.getElementById('lazy-file-mount');
+        if (!mount.querySelector('#diff-second')) {
+          mount.appendChild(document.getElementById('second-file-template').content.cloneNode(true));
+        }
+      }, 400);
+    });
+  });
+  const first = page.getByRole('link', { name: 'First', exact: true });
+  const second = page.getByRole('link', { name: 'Second', exact: true });
+  await first.click();
+  await expect(page.locator('#diff-first .prose-diff')).toHaveCount(0);
+  await page.getByRole('button', { name: /^View options/ }).click();
+  await page.getByRole('checkbox', { name: 'Render Markdown when selected' }).check();
+  await page.keyboard.press('Escape');
+
+  await second.click();
+  await first.click();
+  await expect(page.locator('#diff-first .prose-diff')).toHaveCount(1);
+  await expect(page.locator('#diff-second')).toBeVisible();
+  await page.waitForTimeout(600);
+  await expect(page.locator('#diff-second .prose-diff')).toHaveCount(0);
+  await expect(page.locator('.grdc-render-overlay')).toHaveCount(0);
+  await expect(page.locator('.grdc-existing-thread')).toHaveCount(1);
+  await second.click();
+  await expect(page.locator('#diff-second .prose-diff')).toHaveCount(1);
+});
+
+test('a fast newer selection is not pulled back when an earlier auto-render finishes', async ({ page }) => {
+  await setupBulkRenderPage(page);
+  await page.evaluate(() => {
+    document.body.style.paddingBottom = '3000px';
+    const mount = document.getElementById('lazy-file-mount');
+    if (!mount.querySelector('#diff-second')) {
+      mount.appendChild(document.getElementById('second-file-template').content.cloneNode(true));
+    }
+    const nav = document.createElement('nav');
+    nav.style.position = 'fixed';
+    nav.style.top = '0';
+    nav.style.zIndex = '10000';
+    nav.innerHTML = '<a href="#diff-bulk0" title="docs/first.md">First</a> ' +
+      '<a href="#diff-bulk1" title="docs/second.md">Second</a>';
+    document.body.prepend(nav);
+    nav.lastElementChild.addEventListener('click', (event) => {
+      event.preventDefault();
+      document.getElementById('diff-second').scrollIntoView({ block: 'start' });
+    });
+    nav.firstElementChild.addEventListener('click', (event) => {
+      event.preventDefault();
+      document.getElementById('diff-first').scrollIntoView({ block: 'start' });
+    });
+  });
+  await page.getByRole('button', { name: /^View options/ }).click();
+  await page.getByRole('checkbox', { name: 'Render Markdown when selected' }).check();
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('link', { name: 'First', exact: true }).click();
+  await expect(page.locator('#diff-first .prose-diff')).toHaveCount(1);
+  await page.getByRole('link', { name: 'Second', exact: true }).click();
+  const secondTop = await page.evaluate(() => window.scrollY);
+  expect(secondTop).toBeGreaterThan(1000);
+  await page.waitForTimeout(900);
+  expect(Math.abs(await page.evaluate(() => window.scrollY) - secondTop)).toBeLessThan(200);
+});
+
+test('a newer file selection finishes its smooth scroll during auto-render refresh', async ({ page }) => {
+  await setupBulkRenderPage(page);
+  await page.evaluate(() => {
+    document.body.style.paddingBottom = '3000px';
+    document.querySelector('.file-spacer').style.height = '6500px';
+    window.scrollTo(0, 500);
+  });
+  await expect(page.locator('#diff-second')).toBeVisible();
+  await page.evaluate(() => {
+    window.scrollTo(0, 0);
+    const nav = document.createElement('nav');
+    nav.style.cssText = 'position: fixed; top: 0; z-index: 10000';
+    nav.innerHTML = '<a href="#diff-bulk0" title="docs/first.md">First</a> ' +
+      '<a href="#diff-bulk1" title="docs/second.md">Second</a>';
+    nav.addEventListener('click', (event) => {
+      event.preventDefault();
+      const target = event.target.title === 'docs/first.md' ? 'diff-first' : 'diff-second';
+      document.getElementById(target).scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+    document.body.prepend(nav);
+  });
+  await page.getByRole('button', { name: /^View options/ }).click();
+  await page.getByRole('checkbox', { name: 'Render Markdown when selected' }).check();
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('link', { name: 'First', exact: true }).click();
+  await expect(page.locator('#diff-first .prose-diff')).toHaveCount(1);
+  await page.getByRole('link', { name: 'Second', exact: true }).click();
+  await expect(page.locator('#diff-second .prose-diff')).toHaveCount(1);
+  await expect.poll(async () => page.locator('#diff-second').evaluate(el => Math.abs(el.getBoundingClientRect().top)), {
+    timeout: 3000,
+  }).toBeLessThan(20);
+  await page.waitForTimeout(500);
+  expect(Math.abs(await page.locator('#diff-second').evaluate(el => el.getBoundingClientRect().top))).toBeLessThan(20);
+
+  await page.locator('#diff-second .markdown-body').evaluate((body) => {
+    body.appendChild(document.createElement('p'));
+  });
+  await page.evaluate(() => window.scrollTo({ top: 3000, behavior: 'instant' }));
+  await page.waitForTimeout(1200);
+  expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(3000, 0);
+});
+
+test('a manually selected source view stays in source when the file is selected again', async ({ page }) => {
+  await setupBulkRenderPage(page);
+  await page.evaluate(() => {
+    const nav = document.createElement('a');
+    nav.href = '#diff-bulk0';
+    nav.title = 'docs/first.md';
+    nav.textContent = 'Select first file';
+    document.body.prepend(nav);
+    const header = document.querySelector('#diff-first .file-header');
+    const source = document.createElement('button');
+    source.setAttribute('aria-label', 'Display the source diff');
+    source.textContent = 'Source';
+    source.addEventListener('click', () => {
+      document.querySelector('#diff-first .prose-diff')?.remove();
+      header.querySelector('[aria-label="Display the rich diff"]').setAttribute('aria-pressed', 'false');
+    });
+    header.appendChild(source);
+  });
+  await page.getByRole('button', { name: /^View options/ }).click();
+  await page.getByRole('checkbox', { name: 'Render Markdown when selected' }).check();
+  await page.keyboard.press('Escape');
+  await page.getByRole('link', { name: 'Select first file' }).click();
+  await expect(page.locator('#diff-first .prose-diff')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Display the source diff' }).click();
+  await expect(page.locator('#diff-first .prose-diff')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Select first file' }).click();
+  await page.waitForTimeout(500);
+  await expect(page.locator('#diff-first .prose-diff')).toHaveCount(0);
+});
+
 test('bulk render discovers lazy-mounted files and reports real progress', async ({ page }) => {
   await setupBulkRenderPage(page);
   await expect(page.locator('.grdc-existing-thread')).toHaveCount(0);

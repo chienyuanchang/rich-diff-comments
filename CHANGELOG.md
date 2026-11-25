@@ -4,6 +4,16 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+## [1.15.0] — 2026-11-24
+
+### Added
+
+- **Open selected Markdown files in rich diff automatically.** Turn on Render Markdown when selected in View options to open a file from the file tree or Jump to file in rich diff, including on the first selection. If you manually switch a file to source diff, later selections keep it in source while you stay on the same pull request's Files changed page. Your source choice resets when you leave Files changed, reload, or switch pull requests.
+
+### Changed
+
+- **Find review settings together.** View options now groups visibility and behavior settings under a gear, shows when content is hidden, and lets you restore the default settings.
+
 ## [1.14.0] — 2026-11-03
 
 ### Added

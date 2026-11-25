@@ -51,7 +51,7 @@ v1.2.0 (2026-09-17)
 
 —
 
-Azure DevOps Preview makes Markdown design documents, plans, READMEs, and ADRs easy to read—but reviewing them still means switching back to source diff to find the right line and conversation. This extension turns Preview into a complete rendered-document review surface.
+Azure DevOps Preview makes Markdown design documents, plans, READMEs, and ADRs easy to read—but reviewing them still means switching back to source diff to find the right line and conversation (using GitHub? Try our companion extension: https://chromewebstore.google.com/detail/markdown-pr-comments-for/bdkcmcdfnhonfcpdgcmemkpcmnhnhemj). This extension turns Preview into a complete rendered-document review surface.
 
 What it does:
 
@@ -72,8 +72,6 @@ What it does:
 • The interface follows Azure DevOps light, dark, and Windows high-contrast themes without closing drafts or resetting navigation.
 
 No Personal Access Token or separate setup is required. Requests use the Azure DevOps session already open in your browser and go only to the current dev.azure.com or legacy visualstudio.com organization. No third-party servers, telemetry, analytics, ads, or remote code.
-
-Also use GitHub? Our companion extension offers similar Markdown pull request review capabilities in GitHub's rich-diff view: https://chromewebstore.google.com/detail/markdown-pr-comments-for/bdkcmcdfnhonfcpdgcmemkpcmnhnhemj
 
 Open source: https://github.com/chienyuanchang/rich-diff-comments
 

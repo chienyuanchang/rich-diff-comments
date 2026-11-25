@@ -87,7 +87,7 @@ async function openThreads(page) {
 }
 
 async function setViewOption(page, name, checked) {
-  await page.getByRole('button', { name: 'View options', exact: true }).click();
+  await page.getByRole('button', { name: /^View options/ }).click();
   await page.getByRole('checkbox', { name, exact: true }).setChecked(checked);
   await page.keyboard.press('Escape');
 }
@@ -156,7 +156,7 @@ test('the collapsed funnel and persisted filter also apply to newly rendered fil
   await setupReview(page, { savedFilter: true, extraFile: true });
   await expect(thread(page, '201')).toBeHidden();
   await page.locator('.grdc-sidebar-collapse').click();
-  const funnel = page.getByRole('button', { name: 'View options', exact: true });
+  const funnel = page.getByRole('button', { name: /^View options/ });
   await expect(funnel).toHaveAttribute('data-filtered', 'true');
   await setViewOption(page, 'Show resolved comments', true);
   await expect(thread(page, '201')).toBeVisible();
@@ -230,7 +230,7 @@ test('Show resolved comments preserves drafts and remains independent of Show re
   await thread(page, '202').getByRole('button', { name: 'Reply', exact: true }).click();
   const draft = thread(page, '202').locator('textarea');
   await draft.fill('Unresolved draft stays intact.');
-  const viewOptions = page.getByRole('button', { name: 'View options', exact: true });
+  const viewOptions = page.getByRole('button', { name: /^View options/ });
   await expect(page.locator('#review-removed')).toBeVisible();
   await setViewOption(page, 'Show removed content', false);
   await expect(page.locator('#review-removed')).toBeHidden();

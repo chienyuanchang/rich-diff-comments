@@ -19,7 +19,7 @@
         "https://github.com/*/pull/*",
         "https://github.com/*/pulls*"
       ],
-      "js": ["src/lib/textMatch.js", "src/lib/responses.js", "src/lib/tableRows.js", "src/lib/markdownPreview.js", "src/lib/codeBlocks.js", "src/lib/sidebar.js", "src/lib/anchors.js", "src/lib/outline.js", "src/lib/roles.js", "src/lib/sectionCollapse.js", "src/lib/changes.js", "src/lib/lineMap.js", "content.js"],
+      "js": ["src/lib/textMatch.js", "src/lib/responses.js", "src/lib/tableRows.js", "src/lib/markdownPreview.js", "src/lib/codeBlocks.js", "src/lib/sidebar.js", "src/lib/anchors.js", "src/lib/outline.js", "src/lib/roles.js", "src/lib/sectionCollapse.js", "src/lib/changes.js", "src/lib/lineMap.js", "src/lib/readAloud.js", "content.js"],
       "css": ["styles.css"]
     }
   ]

@@ -4,6 +4,18 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+### Added
+
+- **Listen to the changes (optional).** Turn on Enable Listening under Listening in View options to add a play button next to the Changes `◀ N/M ▶` counter that reads each change aloud with your browser's voice, highlights it, and moves on to the next one. The sentence being spoken is highlighted. `◀` / `▶` and clicking a Changes card skip while it reads, and `←` / `→` step to the previous or next sentence; press the button again to stop. An edited block is read as it is now, followed by the deleted words when Show removed content is checked; a deleted block is announced as "Removed block starting with" its first two words; a new file is read in full. Speed and voice are in View options. Only voices installed on your device are offered, so nothing you listen to leaves your browser; if none is installed, the play button is greyed out. Nothing is spoken until you press play.
+
+### Changed
+
+- **The sidebar is 32px wider** (512px instead of 480px) while Listening is enabled, to fit the play button. With Listening off (the default), nothing changes.
+
+### Fixed
+
+- **Navigating no longer hides the target under GitHub's sticky headers.** Moving to a change, thread, or Outline heading used to stop it a line too high, under the sticky file name bar; it now lands just below the toolbar and file header.
+
 ## [1.15.0] — 2026-11-24
 
 ### Added

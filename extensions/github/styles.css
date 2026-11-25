@@ -948,7 +948,8 @@ li.grdc-hoverable .grdc-comment-btn {
      and the alternative is the funnel + nav clusters getting clipped
      because `max-width: 90vw` would cap the sidebar below its content).
      Width bumped from 420 → 480 in 1.8.0 to fit the file-scoped
-     counter format `3/8 (45)`. See `.grdc-sidebar-collapsed` comment. */
+     counter format `3/8 (45)`; 512 when Listening is enabled (its button).
+     See `.grdc-sidebar-collapsed` comment. */
   max-height: calc(100vh - 40px);
   display: flex;
   flex-direction: column;
@@ -1797,4 +1798,31 @@ li.grdc-hoverable .grdc-comment-btn {
   .grdc-thread-body {
     background: rgba(56, 139, 253, 0.06);
   }
+}
+
+/* Listen to the changes (read aloud): opt-in via View options → Enable Listening.
+   Off: no play button, speed or voice. On: one more 24px button + 8px gap. */
+.grdc-sidebar:not(.grdc-listen-on) .grdc-sidebar-listen,
+.grdc-sidebar:not(.grdc-listen-on) .grdc-listen-setting { display: none; }
+.grdc-sidebar.grdc-listen-on { width: 512px; min-width: 512px; }
+.grdc-sidebar.grdc-listen-on.grdc-sidebar-collapsed { width: 512px !important; }
+/* Play / stop toggle in the Changes nav. */
+.grdc-sidebar-listen .grdc-listen-pause,
+.grdc-sidebar-listen[aria-pressed="true"] .grdc-listen-play { display: none; }
+.grdc-sidebar-listen[aria-pressed="true"] .grdc-listen-pause { display: block; }
+/* The bar is accent-blue with white icons, so "on" is a light fill, not a color. */
+.grdc-sidebar-header .grdc-sidebar-listen[aria-pressed="true"] { background: rgba(255, 255, 255, 0.2); }
+.grdc-sidebar-header .grdc-sidebar-listen:disabled { opacity: 0.4; cursor: not-allowed; }
+.grdc-view-options label.grdc-listen-option { cursor: default; }
+.grdc-view-options .grdc-listen-option select { margin-left: auto; max-width: 150px; }
+.grdc-view-options [hidden] { display: none; }
+/* The change being read aloud. */
+.grdc-listen-active {
+  outline: 2px solid var(--bgColor-accent-emphasis, var(--color-accent-emphasis, #0969da));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* The sentence being read aloud (CSS Custom Highlight API). */
+::highlight(grdc-listen-sentence) {
+  background-color: rgba(84, 174, 255, 0.35);
 }

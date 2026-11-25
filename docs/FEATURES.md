@@ -103,6 +103,7 @@ The release notes use a draft date of 2026-11-24; update it if the release occur
 | Use a draggable, resizable, collapsible sidebar with persistent layout and selected tab | ✅ Resizing preserves tab scroll position | ✅ |
 | Browse PR-wide Changes, Threads, and Outline lists grouped in stable file order | ✅ | ✅ |
 | Navigate changed rendered blocks with cards, counters, clicks, and keyboard shortcuts | ✅ | ✅ |
+| Listen to the changes (opt-in via Enable Listening): read each changed block aloud in order, with speed and voice in View options | ✅ Unreleased | 📋 |
 | Show one summary card for a newly added, deleted, or renamed Markdown file where applicable | ✅ | ✅ |
 | Navigate threads globally and filter to unresolved conversations | ✅ | ✅ |
 | Hide resolved conversations throughout the rendered document and Threads | ✅ GitHub v1.14.0 | △ Threads-list filter only |

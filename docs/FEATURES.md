@@ -47,9 +47,15 @@ The targets version and release independently. These lists summarize the intende
 
 ### GitHub v1.16.0
 
+Release preparations are in [PR #23](https://github.com/chienyuanchang/rich-diff-comments/pull/23). Implementation, automated tests, live-PR verification, preflight, and package verification are complete. Chrome and Edge store submissions are separate.
+
+- [x] **Listen to changes** — offer optional read-aloud playback, voice and speed settings, and opt-in online voices with a privacy notice.
+- [x] **Make new features discoverable after an update** — show an unread indicator and dismissible changelog for the latest five releases.
+
+### GitHub — future releases
+
 - [ ] **Switch the next Markdown file to rich diff in large pull requests** — replace passive one-file guidance with a sequential action that opens the next Markdown file in PR order and activates its rich diff without starting the unsupported PR-wide render sweep.
 - [ ] **Collapse or expand all inline conversations** — add a Threads-toolbar toggle across all currently rendered Markdown files while keeping comment badges and markers visible.
-- [ ] **Make new features discoverable after an update** — show an unread indicator and dismissible changelog for the latest five releases.
 
 ### Azure DevOps v1.5.0
 
@@ -60,6 +66,16 @@ The targets version and release independently. These lists summarize the intende
 ### Azure DevOps v1.6.0
 
 - [ ] **Collapse or expand all inline conversations** — add a Threads-toolbar toggle scoped to the current Markdown Preview while keeping comment badges and markers visible.
+
+### Azure DevOps — parity candidates
+
+These are candidates for later releases, not additions to the v1.5.0 or v1.6.0 scope above. Preview and origin differences may require different behavior from GitHub.
+
+- [ ] **Listen to changes** — investigate read-aloud playback for ADO's Changes list, including safe cross-file navigation and online-voice privacy.
+- [ ] **Discover feature updates** — show ADO's own release notes and unread indicator in the sidebar.
+- [ ] **Hide resolved conversations throughout Preview** — align the filter and View options experience with GitHub while retaining ADO's Preview-specific behavior.
+- [ ] **Keep sidebar list position while resizing** — verify the ADO experience against GitHub before deciding whether a fix is needed.
+- [ ] **Confirm frontmatter line mapping** — validate ADO Preview and comment placement before claiming GitHub parity.
 
 ---
 
@@ -99,10 +115,10 @@ The targets version and release independently. These lists summarize the intende
 | Use a draggable, resizable, collapsible sidebar with persistent layout and selected tab | ✅ Resizing preserves tab scroll position | ✅ |
 | Browse PR-wide Changes, Threads, and Outline lists grouped in stable file order | ✅ | ✅ |
 | Navigate changed rendered blocks with cards, counters, clicks, and keyboard shortcuts | ✅ | ✅ |
-| Listen to changes with adjustable speed and voice; sync settings across open tabs and stop playback when online voices are disabled; online voices require opt-in and a privacy notice | ✅ Unreleased | 📋 |
+| Listen to changes with adjustable speed and voice; sync settings across open tabs and stop playback when online voices are disabled; online voices require opt-in and a privacy notice | ✅ GitHub v1.16.0 | 📋 |
 | Show one summary card for a newly added, deleted, or renamed Markdown file where applicable | ✅ | ✅ |
 | Navigate threads globally and filter to unresolved conversations | ✅ | ✅ |
-| Hide resolved conversations throughout the rendered document and Threads | ✅ GitHub v1.14.0 | △ Threads-list filter only |
+| Hide resolved conversations throughout the rendered document and Threads | ✅ GitHub v1.14.0 | △ Threads-list filter only; broader parity planned |
 | Hide removed prose while retaining updated content and access to conversations | ✅ GitHub v1.14.0 | ↔ Native Preview omits removals |
 | Independently choose removed-content and resolved-conversation visibility in View options | ✅ GitHub v1.14.0; active filters are indicated | — Preview omits removals; Threads has a separate unresolved filter |
 | Browse headings across changed Markdown files with per-section thread counts | ✅ | ✅ |
@@ -150,6 +166,12 @@ See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, a
 
 ### Correctness
 
+- [ ] **P1 — Keep comment line mapping accurate after YAML frontmatter**
+  - **Outcome:** frontmatter does not shift comments on later Markdown content to the wrong source lines.
+  - **GitHub:** ✅ GitHub v1.5.1.
+  - **ADO:** △ Shared frontmatter masking is available, but the Preview rendering and comment placement need ADO-specific validation.
+  - **Validation:** capture ADO's actual frontmatter rendering and check source-line targets for headings, paragraphs, and ordinary tables after it, including posting a comment on a later block. Do not assume ADO renders frontmatter as GitHub does; change the mapper only if the target-specific case requires it.
+
 - [ ] **P1 — Improve rendered-block text-match accuracy**
   - **Outcome:** fewer comments rely on approximate fallback lines, especially in nested lists, blockquotes, fenced prose, and HTML-backed Markdown.
   - **GitHub:** 📋 Planned.
@@ -179,8 +201,9 @@ See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, a
 - [ ] **P2 — Hide resolved conversations throughout rendered review**
   - **Outcome:** reviewers can focus on outstanding feedback without resolved conversation bodies, badges, or markers interrupting the document.
   - **GitHub:** ✅ GitHub v1.14.0.
-  - **ADO:** 📋 Planned; its current Unresolved only control filters the Threads list.
-  - **ADO acceptance:** expose the existing saved filter as a positive **Show resolved comments** checkbox in the header's **View options** dropdown, using a funnel icon with a View options tooltip; replace the existing Threads filter control. Apply the same saved filter to Threads cards, inline conversation bodies and badges, table-row and code-line markers, range highlights, navigation counts, and Outline conversation counts. Shared markers include only unresolved conversations and disappear when none remain. Resolving a conversation while filtered hides it immediately; showing resolved comments restores their prior expansion state unless a resolution action changed it. Preserve drafts, resolution state, and the selected tab. Apply the saved filter after review-data rebuilds and when additional files render.
+  - **ADO:** △ The existing Unresolved only control filters the Threads list; broader filtering and View options are planned, with no release assigned.
+  - **ADO acceptance:** expose the existing saved filter as a positive **Show resolved comments** checkbox in a header **View options** menu, aligned with GitHub's gear and hidden-content indicator; replace the existing Threads-only filter control. Apply the filter to Threads cards, inline conversation bodies and badges, table-row and code-line markers, range highlights, navigation counts, and Outline conversation counts. Shared markers include only unresolved conversations and disappear when none remain. Resolving a conversation while filtered hides it immediately; showing resolved comments restores their prior expansion state unless a resolution action changed it. Preserve drafts, resolution state, the selected tab, and the existing saved preference across Preview rebuilds and file switches.
+  - **Options scope:** support keyboard focus, Escape and outside-click dismissal. Offer **Restore defaults** for supported options without resetting sidebar layout or unrelated preferences. Do not copy GitHub's removed-content or auto-render switches: ADO Preview already omits removed prose and stays open across file selections.
 
 - [ ] **P2 — Turn a conversation into tracked work if demand justifies it**
   - **Outcome:** reviewers can carry a rendered-review conversation into the host's work-tracking system with its source link and useful context already attached.
@@ -195,7 +218,7 @@ See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, a
 
 - [ ] **P2 — Collapse or expand all inline conversations**
   - **Outcome:** reviewers can return a comment-heavy rendered document to a compact reading view in one action, then reopen every conversation when needed.
-  - **GitHub:** 📋 Targeted for GitHub v1.16.0. Apply the action across all currently rendered Markdown files in the pull request.
+  - **GitHub:** 📋 Planned after v1.16.0; version not yet decided. Apply the action across all currently rendered Markdown files in the pull request.
   - **ADO:** 📋 Targeted for ADO v1.6.0. Apply the action to the current Markdown Preview, matching ADO's one-file-at-a-time review surface.
   - **Acceptance:** place a **Collapse all conversations** / **Expand all conversations** toggle in the Threads toolbar; collapse only conversation bodies while keeping badges, table-row markers, code-line markers, and the Threads list visible. Do not change resolution state, the unresolved filter, or saved sidebar preferences.
 
@@ -238,11 +261,24 @@ See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, a
 
 ### Navigation and focus
 
+- [ ] **P2 — Listen to changes**
+  - **Outcome:** reviewers can optionally hear Markdown changes read aloud, follow the current sentence, and navigate changes and sentences while retaining control of the page.
+  - **GitHub:** ✅ GitHub v1.16.0.
+  - **ADO:** 📋 Parity candidate; version not yet decided. Its PR-wide Changes list and single-file Preview require ADO-specific navigation and speech mapping.
+  - **Shared acceptance:** Listening is off by default. Provide voice and speed choices, sentence navigation, and visible speech errors; prefer browser-reported on-device voices and require separate opt-in with a privacy notice for online voices. Sync Listening, voice, speed, and online-voice preferences across open tabs on the same origin and browser profile; disabling Listening or online voices stops playback in the other tabs. Manual scrolling pauses automatic following until explicit Listening navigation resumes it.
+  - **ADO validation before implementation:** define behavior for removed, deleted-file, renamed, and unavailable stops without inventing removed Preview content. Verify cross-file playback against ADO's asynchronous file selection and Preview remounts; never read stale content or include injected comment UI. Decide how automatic playback crosses files without pulling a reviewer away after manual scrolling.
+
 - [ ] **P2 — Make new features discoverable after an update**
   - **Outcome:** reviewers discover notable new features after an automatic update and can revisit recent release details later.
-  - **GitHub:** △ Unreleased in PR #22; real-PR validation pending.
-  - **ADO:** 📋 Planned separately.
-  - **Acceptance:** after a feature release, offer the changelog in the sidebar and an unread indicator on a separate help control; opening it clears the indicator, and an × closes it. Show the complete changelog for the latest five releases, newest first, including bug-fix-only releases without generating an extra announcement for them. Avoid opening it over a collapsed sidebar or an active comment draft, and preserve the selected tab and drafts. Bundle the notes locally without external requests or new permissions. Fresh installations may also show the latest announcement once.
+  - **GitHub:** ✅ GitHub v1.16.0.
+  - **ADO:** 📋 Parity candidate; version not yet decided. Use ADO's own changelog and independent feature-announcement version.
+  - **Acceptance:** after a feature release, offer the changelog in the sidebar and an unread indicator on a separate help control; opening it clears the indicator, and an × closes it. Show the complete changelog for up to the latest five releases, newest first, including bug-fix-only releases without generating an extra announcement for them. Sync the unread state across open tabs on the same origin and browser profile. Avoid opening it over a collapsed sidebar or an active comment draft, and preserve the selected tab and drafts. Bundle the target's notes locally without external requests or new permissions. Fresh installations may also show the latest announcement once.
+
+- [ ] **P2 — Keep sidebar list position while resizing**
+  - **Outcome:** resizing the sidebar does not unexpectedly move the reviewer's place in Changes, Threads, or Outline.
+  - **GitHub:** ✅ GitHub v1.10.0.
+  - **ADO:** △ Resizing and layout persistence exist; list-position preservation during resize has not been validated in an ADO fixture.
+  - **Validation:** check long, scrollable lists in all three panes while changing sidebar height and width. Preserve existing layout persistence and make an implementation change only if ADO does not already retain the reading position.
 
 - [ ] **P1 — Preserve sidebar state and show active feedback while preparing rendered views**
   - **Outcome:** reviewers can prepare the rendered review surface without losing their compact sidebar layout and can see that longer setup phases are still active.
@@ -252,7 +288,7 @@ See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, a
 
 - [ ] **P1 — Switch the next Markdown file to rich diff in virtualized large pull requests**
   - **Outcome:** reviewers of a large pull request can continue to the next Markdown file in one action instead of manually finding the file and switching its view.
-  - **GitHub:** 📋 Targeted for GitHub v1.16.0. Available only when GitHub's virtualized large-PR mode prevents the PR-wide render sweep.
+  - **GitHub:** 📋 Planned after v1.16.0; version not yet decided. Available only when GitHub's virtualized large-PR mode prevents the PR-wide render sweep.
   - **ADO:** — Preview already follows the selected file and does not have GitHub's per-file rich-diff mode.
   - **Acceptance:** replace passive large-PR guidance with a **Switch next Markdown file to rich diff** action. Use the ordered route file inventory to choose the next Markdown file after the current file, navigate through GitHub's native file destination, wait boundedly for that file to mount, and activate only its rich-diff toggle. Keep the page interactive, show progress in the initiating sidebar control, preserve the sidebar's collapsed state and selected tab, and refresh Threads, Changes, Outline, and comment markers after rich content appears. A newer navigation cancels an older pending switch. Do not wrap from the last Markdown file to the first; show that no later Markdown files remain. If navigation, mounting, or activation fails, leave the action retryable and do not start a page-wide scroll sweep. Validate the native destination against a live virtualized pull request before shipping.
 

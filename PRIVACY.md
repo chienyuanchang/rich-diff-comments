@@ -1,6 +1,7 @@
 # Privacy Policy — Markdown PR — Markdown PR Comments for GitHub
 
 **Effective date:** May 18, 2026
+**Last updated:** November 26, 2026
 
 Markdown PR — Markdown PR Comments for GitHub is a browser extension that adds inline commenting to GitHub Pull Request rich-diff (rendered markdown) views.
 
@@ -15,14 +16,14 @@ The extension runs as a content script on `https://github.com/*/pull/*` pages. W
 
 ## What data the extension sends
 
-The extension itself sends data **only to `github.com`**, the same origin you are already logged into. Requests are made on your behalf using the session cookies your browser already holds for `github.com`, with no separate authentication. Specifically:
+The extension's own GitHub requests go **only to `github.com`**, the same origin you are already logged into. Requests are made on your behalf using the session cookies your browser already holds for `github.com`, with no separate authentication. Specifically:
 
 - New review comments and replies are posted to `github.com` via the same endpoints the GitHub web UI itself uses.
 - Resolve / unresolve actions on review threads, again via GitHub's own endpoints.
 - A markdown preview request to `github.com/preview` to render the comment-preview tab.
 - A user-suggestions request to `github.com/suggestions/...` for `@mention` autocomplete.
 
-No data is sent by the extension to any other server, analytics provider, or third party. The extension contains no telemetry.
+The extension has no backend, analytics, or telemetry. As described below, the browser may send spoken PR text to an online voice provider if you opt in to online voices.
 
 **Listen to the changes** (off unless you turn on Enable Listening) speaks PR text with your browser's built-in speech synthesis. By default it offers only voices the browser reports as on-device. If none is available, the play button is disabled unless you opt in to online voices.
 
@@ -38,7 +39,7 @@ The extension does not request any other permissions and does not have access to
 
 ## Local storage
 
-The extension stores sidebar layout, display preferences, and the last feature announcement you opened or dismissed in your browser's local storage under the `github.com` origin. It does not store credentials, comment drafts, raw Markdown files, or review-thread contents. Version 1.10.0 also deletes the two legacy PAT-related keys used by an older dormant fallback without reading their values.
+The extension stores sidebar layout, display and Listening preferences, and the last feature announcement you opened or dismissed in your browser's local storage under the `github.com` origin. It does not store credentials, comment drafts, raw Markdown files, or review-thread contents. Version 1.10.0 also deletes the two legacy PAT-related keys used by an older dormant fallback without reading their values.
 
 ## Authentication
 

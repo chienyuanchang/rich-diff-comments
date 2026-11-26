@@ -16,6 +16,7 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 ### Fixed
 
 - **Navigating no longer hides the target under GitHub's sticky headers.** Moving to a change, thread, or Outline heading used to stop it a line too high, under the sticky file name bar; it now lands just below the toolbar and file header.
+- **Toolbar controls now sit evenly within the sidebar.** The space at the left and right edges stays balanced whether Listening is on or off.
 
 ## [1.15.0] — 2026-11-24
 

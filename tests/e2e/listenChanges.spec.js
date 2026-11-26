@@ -91,6 +91,33 @@ test('Play reads each change aloud and moves on; ‹ › jump while listening; P
   expect((await spoken(page)).length).toBe(before);
 });
 
+test('toolbar keeps balanced outer insets with Listening on and off', async ({ page }) => {
+  await setup(page, undefined, { enabled: false });
+
+  const expectBalancedInsets = async () => {
+    const insets = await page.evaluate(() => {
+      const header = document.querySelector('.grdc-sidebar-header');
+      const leftIcon = header.querySelector('.grdc-sidebar-collapse svg').getBoundingClientRect();
+      const rightIcon = header.querySelector('.grdc-sidebar-header-filter svg').getBoundingClientRect();
+      const bounds = header.getBoundingClientRect();
+      return {
+        left: leftIcon.left - bounds.left,
+        right: bounds.right - rightIcon.right,
+      };
+    });
+    expect(Math.abs(insets.left - insets.right)).toBeLessThanOrEqual(1);
+  };
+
+  await expectBalancedInsets();
+  await page.getByRole('button', { name: /^View options/ }).click();
+  await page.getByRole('checkbox', { name: 'Enable Listening', exact: true }).check();
+  await page.keyboard.press('Escape');
+  await expectBalancedInsets();
+
+  await page.locator('.grdc-sidebar-collapse').click();
+  await expectBalancedInsets();
+});
+
 test('← / → step by sentence while listening, and the spoken sentence is highlighted', async ({ page }) => {
   await setup(page);
   const highlighted = () => page.evaluate(() => {

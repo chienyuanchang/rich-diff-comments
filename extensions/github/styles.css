@@ -1148,7 +1148,8 @@ li.grdc-hoverable .grdc-comment-btn {
 .grdc-sidebar-header-filter {
   position: relative;
   flex-shrink: 0;
-  margin-right: 12px;
+  margin-left: auto;
+  margin-right: 0;
   transition: opacity 0.12s, background 0.12s, color 0.12s;
 }
 .grdc-filter-indicator {

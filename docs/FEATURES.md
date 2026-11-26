@@ -47,10 +47,10 @@ The targets version and release independently. These lists summarize the intende
 
 ### GitHub v1.16.0
 
-The release notes use a draft date of 2026-11-26; update it if the release occurs later. The release and real-PR verification are pending.
+Release candidate in [PR #23](https://github.com/chienyuanchang/rich-diff-comments/pull/23). Implementation and automated tests are complete; live-PR verification, preflight, packaging, and store disclosure review remain. The changelog uses a draft date of 2026-11-26; update it if the release occurs later.
 
-- [ ] **Listen to changes** — offer optional read-aloud playback, voice and speed settings, and opt-in online voices with a privacy notice.
-- [ ] **Make new features discoverable after an update** — show an unread indicator and dismissible changelog for the latest five releases.
+- [x] **Listen to changes** — offer optional read-aloud playback, voice and speed settings, and opt-in online voices with a privacy notice.
+- [x] **Make new features discoverable after an update** — show an unread indicator and dismissible changelog for the latest five releases.
 
 ### GitHub — future releases
 
@@ -105,7 +105,7 @@ The release notes use a draft date of 2026-11-26; update it if the release occur
 | Use a draggable, resizable, collapsible sidebar with persistent layout and selected tab | ✅ Resizing preserves tab scroll position | ✅ |
 | Browse PR-wide Changes, Threads, and Outline lists grouped in stable file order | ✅ | ✅ |
 | Navigate changed rendered blocks with cards, counters, clicks, and keyboard shortcuts | ✅ | ✅ |
-| Listen to changes with adjustable speed and voice; sync settings across open tabs and stop playback when online voices are disabled; online voices require opt-in and a privacy notice | ✅ GitHub v1.16.0 release candidate; verification pending | 📋 |
+| Listen to changes with adjustable speed and voice; sync settings across open tabs and stop playback when online voices are disabled; online voices require opt-in and a privacy notice | △ GitHub v1.16.0 release candidate in PR #23; real-PR verification pending | 📋 |
 | Show one summary card for a newly added, deleted, or renamed Markdown file where applicable | ✅ | ✅ |
 | Navigate threads globally and filter to unresolved conversations | ✅ | ✅ |
 | Hide resolved conversations throughout the rendered document and Threads | ✅ GitHub v1.14.0 | △ Threads-list filter only |
@@ -246,7 +246,7 @@ See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, a
 
 - [ ] **P2 — Make new features discoverable after an update**
   - **Outcome:** reviewers discover notable new features after an automatic update and can revisit recent release details later.
-  - **GitHub:** ✅ GitHub v1.16.0 release candidate; real-PR validation pending.
+  - **GitHub:** △ GitHub v1.16.0 release candidate in PR #23; real-PR validation pending.
   - **ADO:** 📋 Planned separately.
   - **Acceptance:** after a feature release, offer the changelog in the sidebar and an unread indicator on a separate help control; opening it clears the indicator, and an × closes it. Show the complete changelog for the latest five releases, newest first, including bug-fix-only releases without generating an extra announcement for them. Avoid opening it over a collapsed sidebar or an active comment draft, and preserve the selected tab and drafts. Bundle the notes locally without external requests or new permissions. Fresh installations may also show the latest announcement once.
 

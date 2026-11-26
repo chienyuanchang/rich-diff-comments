@@ -64,8 +64,9 @@
     changeSpeech,
     fileSpeech,
     sentenceRange,
-    localVoices,
+    availableVoices,
     pickVoice,
+    sentenceStep,
   } = (typeof window !== 'undefined' && window.GRDC) || {};
 
   // Wrap findTextInSource so we can keep the per-file diagnostic counter behavior
@@ -87,11 +88,16 @@
   const LISTEN_RATE_KEY = 'grdc_listen_rate';
   const LISTEN_VOICE_KEY = 'grdc_listen_voice';
   const LISTEN_ENABLED_KEY = 'grdc_listen_enabled';
+  const LISTEN_ONLINE_KEY = 'grdc_listen_online_voices';
   const speech = (typeof window !== 'undefined' && window.speechSynthesis) || null;
   let listening = false;
   let listenGen = 0; // bumped on every start / stop so stale utterance callbacks do nothing
   let listenBlock = null;
   let listenSentence = null; // { idx, k, count } of the sentence being spoken
+  // Whether moving to the next change scrolls the page to it. Turned off when the reader
+  // scrolls the page themselves; turned back on by any explicit jump (play, ◀ ▶, a card, ← →).
+  let listenFollow = true;
+  let listenError = '';
   let fileLineMap = new Map(); // Map<element, { path, line }>
   let hideRemovedContent = false;
   const threadReviewAnchors = new WeakMap();
@@ -3515,9 +3521,10 @@
     button.title = label;
     button.setAttribute('aria-label', label);
     const listenEnabled = sidebar.querySelector('.grdc-listen-enabled');
+    const listenOnline = sidebar.querySelector('.grdc-listen-online');
     sidebar.classList.toggle('grdc-listen-on', listenEnabled.checked);
     sidebar.querySelector('.grdc-restore-defaults').disabled =
-      removed.checked && resolved.checked && !autoRender.checked && !listenEnabled.checked;
+      removed.checked && resolved.checked && !autoRender.checked && !listenEnabled.checked && !listenOnline.checked;
   }
   let sidebarCurrentIdx = 0;
   // Per-block index for the "prev/next change" feature — separate from
@@ -4137,6 +4144,7 @@
             <span class="grdc-filter-indicator" aria-hidden="true"></span>
           </button>
         </div>
+        <div class="grdc-error grdc-listen-status" role="alert"></div>
         <div id="grdc-view-options" class="grdc-view-options" popover role="dialog" aria-label="View options">
           <div class="grdc-view-options-title">View options</div>
           <fieldset><legend>Visibility</legend>
@@ -4152,6 +4160,8 @@
               <option value="0.8">0.8×</option><option value="1">1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="1.75">1.75×</option><option value="2">2×</option><option value="2.5">2.5×</option><option value="3">3×</option>
             </select></label>
             <label class="grdc-listen-option grdc-listen-setting">Voice <select class="grdc-listen-voice"><option value="">Default</option></select></label>
+            <label class="grdc-listen-setting"><input type="checkbox" class="grdc-listen-online" aria-describedby="grdc-listen-online-note"> Allow online voices</label>
+            <p id="grdc-listen-online-note" class="grdc-listen-setting grdc-listen-online-note">When you use an online voice, the PR text being read may be sent to its provider, such as Google or Microsoft.</p>
           </fieldset>
           <button type="button" class="grdc-restore-defaults">Restore defaults</button>
         </div>
@@ -4228,6 +4238,7 @@
         for (const [selector, checked] of [
           ['.grdc-auto-render', false],
           ['.grdc-listen-enabled', false],
+          ['.grdc-listen-online', false],
           ['.grdc-show-removed', true],
           ['.grdc-show-resolved', true],
         ]) {
@@ -4323,6 +4334,7 @@
     sidebar.querySelector('.grdc-show-removed').checked = !hideRemovedContent;
     sidebar.querySelector('.grdc-auto-render').checked = localStorage.getItem(AUTO_RENDER_KEY) === '1';
     sidebar.querySelector('.grdc-listen-enabled').checked = localStorage.getItem(LISTEN_ENABLED_KEY) === '1';
+    sidebar.querySelector('.grdc-listen-online').checked = localStorage.getItem(LISTEN_ONLINE_KEY) === '1';
     syncViewOptions(sidebar);
 
     // When Threads is empty but Outline still has content, force-switch
@@ -5583,7 +5595,11 @@
     button.addEventListener('click', () => (listening ? stopListening() : listenFrom(changesCurrentIdx)));
     sidebar.querySelector('.grdc-listen-enabled').addEventListener('change', (event) => {
       try { localStorage.setItem(LISTEN_ENABLED_KEY, event.target.checked ? '1' : '0'); } catch (_) {}
-      if (!event.target.checked) stopListening();
+      if (!event.target.checked) {
+        stopListening();
+        listenError = '';
+        updateListenButton();
+      }
       syncViewOptions(sidebar);
     });
     const rate = sidebar.querySelector('.grdc-listen-rate');
@@ -5594,25 +5610,48 @@
     const fillVoices = () => {
       let saved = '';
       try { saved = localStorage.getItem(LISTEN_VOICE_KEY) || ''; } catch (_) {}
-      const voices = localVoices(speech.getVoices(), navigator.language);
+      const online = allowOnlineVoices();
+      const voices = availableVoices(speech.getVoices(), navigator.language, online);
       voice.innerHTML = '<option value="">Default</option>' + voices.map((v) =>
-        `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name.replace(/^Microsoft\s+/, ''))} (${escapeHtml(v.lang)})</option>`).join('');
+        `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name.replace(/^Microsoft\s+/, ''))} (${escapeHtml(v.lang)})${v.localService === true ? '' : ' \u2014 online'}</option>`).join('');
       voice.value = voices.some((v) => v.name === saved) ? saved : '';
-      // Without an on-device voice there is nothing to play: the browser would fall back to a network one.
+      // Without an allowed voice there is nothing to play: left unset, the browser could fall back to a network one.
       button.disabled = !voices.length;
-      button.title = voices.length ? '' : 'No on-device voice is installed, so Listen is off (network voices would send the text to a speech provider).';
+      updateListenButton();
     };
     fillVoices();
     speech.addEventListener('voiceschanged', fillVoices);
     voice.addEventListener('change', () => { try { localStorage.setItem(LISTEN_VOICE_KEY, voice.value); } catch (_) {} });
+    sidebar.querySelector('.grdc-listen-online').addEventListener('change', (event) => {
+      try { localStorage.setItem(LISTEN_ONLINE_KEY, event.target.checked ? '1' : '0'); } catch (_) {}
+      // Turning online voices off must not let an online voice keep reading.
+      if (!event.target.checked) stopListening();
+      fillVoices();
+      syncViewOptions(sidebar);
+    });
+  }
+
+  function allowOnlineVoices() {
+    try { return localStorage.getItem(LISTEN_ONLINE_KEY) === '1'; } catch (_) { return false; }
   }
 
   function updateListenButton() {
     const button = document.querySelector('.grdc-sidebar-listen');
     if (!button) return;
+    const status = document.querySelector('.grdc-listen-status');
+    if (status) status.textContent = listenError;
     button.setAttribute('aria-pressed', String(listening));
     button.setAttribute('aria-label', listening ? 'Stop listening' : 'Listen to the changes');
-    button.title = listening ? 'Stop listening' : 'Listen to the changes — reads each change aloud, then the next';
+    button.classList.toggle('grdc-listen-error', !listening && !!listenError);
+    if (button.disabled) {
+      button.title = 'No on-device voice is installed. To use a voice from a speech provider, turn on Allow online voices in View options.';
+    } else if (listening) {
+      button.title = listenFollow
+        ? 'Stop listening'
+        : 'Stop listening \u2014 the page no longer follows the reading because you scrolled; use \u25c0 \u25b6 or click a change to jump back';
+    } else {
+      button.title = listenError || 'Listen to the changes \u2014 reads each change aloud, then the next';
+    }
   }
 
   function setListenBlock(block) {
@@ -5633,20 +5672,27 @@
   }
 
   // Start reading change `idx` at sentence `startAt` (negative counts from the end).
-  function listenFrom(idx, startAt) {
+  // `auto` marks the automatic move to the next change, which only scrolls while the
+  // page is following the reading; every other call is an explicit jump and follows again.
+  function listenFrom(idx, startAt, auto) {
     const sidebar = document.querySelector('.grdc-sidebar');
     const blocks = (sidebar && sidebar._grdcChangeBlocks) || [];
     if (!speech || idx < 0 || idx >= blocks.length) { stopListening(); return; }
     const my = ++listenGen;
     const block = blocks[idx];
     listening = true;
+    listenError = '';
+    const resumeFollow = !auto && !listenFollow;
+    if (!auto) listenFollow = true;
     changesCurrentIdx = idx;
     if (block !== listenBlock) {
       setListenBlock(block);
-      scrollToChange(block);
+      if (listenFollow) scrollToChange(block);
       updateChangesCount(sidebar);
       const card = sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card')[idx];
       if (card) revealSidebarCard(card);
+    } else if (resumeFollow) {
+      scrollToChange(block);
     }
     updateListenButton();
 
@@ -5673,20 +5719,24 @@
         setTimeout(() => {
           if (my !== listenGen) return;
           const now = (sidebar._grdcChangeBlocks || []).indexOf(block);
-          listenFrom((now >= 0 ? now : idx) + 1);
+          listenFrom((now >= 0 ? now : idx) + 1, 0, true);
         }, 400);
         return;
       }
       const utterance = new SpeechSynthesisUtterance(sentences[k]);
       utterance.rate = Number(sidebar.querySelector('.grdc-listen-rate').value) || 1;
-      // Always set an on-device voice: left unset, the browser may pick a network voice.
-      const voice = pickVoice(speech.getVoices(), sidebar.querySelector('.grdc-listen-voice').value, navigator.language);
+      // Always set an allowed voice: left unset, the browser may pick a network voice.
+      const voice = pickVoice(speech.getVoices(), sidebar.querySelector('.grdc-listen-voice').value, navigator.language, allowOnlineVoices());
       if (!voice) { stopListening(); return; }
       utterance.voice = voice; utterance.lang = voice.lang;
       utterance.onend = () => speakSentence(k + 1);
       utterance.onerror = (e) => {
-        if (e.error === 'interrupted' || e.error === 'canceled') return;
-        speakSentence(k + 1);
+        if (my !== listenGen) return;
+        // Stop rather than skip, so no text goes unread without the reader knowing.
+        console.warn('[GRDC] Listening stopped: speech error', e.error);
+        stopListening();
+        listenError = `Listening stopped: the voice could not read a sentence (${e.error || 'speech error'}). Press play to try again.`;
+        updateListenButton();
       };
       speech.speak(utterance);
     };
@@ -5706,12 +5756,11 @@
   // ← / → while listening: previous / next sentence, crossing into the neighbouring change.
   function listenStep(dir) {
     if (!listening || !listenSentence) return;
-    const { idx, k, count } = listenSentence;
-    const next = Math.min(k, count - 1) + dir;
-    if (next >= 0 && next < count) listenFrom(idx, next);
-    else if (dir > 0) listenFrom(idx + 1, 0);
-    else if (idx > 0) listenFrom(idx - 1, -1);
-    else listenFrom(0, 0);
+    const sidebar = document.querySelector('.grdc-sidebar');
+    const total = ((sidebar && sidebar._grdcChangeBlocks) || []).length;
+    const target = sentenceStep(listenSentence, dir, total);
+    if (target) listenFrom(target.idx, target.k);
+    else stopListening();
   }
 
   document.addEventListener('keydown', (e) => {
@@ -5725,6 +5774,28 @@
   }, true);
 
   if (typeof window !== 'undefined') window.addEventListener('pagehide', () => stopListening());
+
+  // The reader scrolling the page themselves (wheel, touch, scrollbar, scroll keys) stops the
+  // reading from pulling the page back when it moves to the next change. Scrolling inside our
+  // sidebar does not count.
+  const PAGE_SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
+  function pauseListenFollow(e) {
+    if (!listening || !listenFollow) return;
+    const t = e.target;
+    if (t && t.closest && t.closest('.grdc-sidebar')) return;
+    if (e.type === 'keydown') {
+      if (!PAGE_SCROLL_KEYS.has(e.key) || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(t.tagName))) return;
+    }
+    // A press on the page's own scrollbar targets the root element.
+    if (e.type === 'mousedown' && t !== document.documentElement) return;
+    listenFollow = false;
+    // Also end any scroll correction still settling on the change being read.
+    pageNavigationSequence++;
+    updateListenButton();
+  }
+  ['wheel', 'touchmove', 'mousedown', 'keydown'].forEach((type) =>
+    document.addEventListener(type, pauseListenFollow, { capture: true, passive: true }));
 
   function scrollToChange(blockEl) {
     if (!blockEl) return;

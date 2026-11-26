@@ -15,16 +15,18 @@ The extension runs as a content script on `https://github.com/*/pull/*` pages. W
 
 ## What data the extension sends
 
-The extension sends data **only to `github.com`**, the same origin you are already logged into. Requests are made on your behalf using the session cookies your browser already holds for `github.com`, with no separate authentication. Specifically:
+The extension itself sends data **only to `github.com`**, the same origin you are already logged into. Requests are made on your behalf using the session cookies your browser already holds for `github.com`, with no separate authentication. Specifically:
 
 - New review comments and replies are posted to `github.com` via the same endpoints the GitHub web UI itself uses.
 - Resolve / unresolve actions on review threads, again via GitHub's own endpoints.
 - A markdown preview request to `github.com/preview` to render the comment-preview tab.
 - A user-suggestions request to `github.com/suggestions/...` for `@mention` autocomplete.
 
-No data is sent to any other server, analytics provider, or third party. The extension contains no telemetry.
+No data is sent by the extension to any other server, analytics provider, or third party. The extension contains no telemetry.
 
-**Listen to the changes** speaks the PR text with your browser's built-in speech synthesis, using only voices installed on your device. Network voices (such as Chrome's "Google …" voices or Edge's "… Online" voices) are never offered or used, because they would send the text to a speech provider. If no on-device voice is available, Listen is turned off.
+**Listen to the changes** (off unless you turn on Enable Listening) speaks PR text with your browser's built-in speech synthesis. By default it offers only voices the browser reports as on-device. If none is available, the play button is disabled unless you opt in to online voices.
+
+If you turn on **Allow online voices** in View options, network voices are also offered. When you listen with an online voice, your browser may send the text being read (PR content) to that voice's provider, such as Google or Microsoft, under that provider's privacy terms. The default voice remains on-device when one is available; otherwise, playback may use an online voice after you opt in. Turning the option off stops playback. Changing to an on-device voice takes effect with the next sentence; text already sent to a provider cannot be recalled.
 
 ## Permissions
 

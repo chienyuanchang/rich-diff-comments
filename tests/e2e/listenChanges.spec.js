@@ -18,8 +18,12 @@ async function fakeSpeech(page, voices) {
       cancel() { const u = current; current = null; this.speaking = false; if (u && u.onerror) u.onerror({ error: 'canceled' }); },
     };
     window.__finishUtterance = () => { const u = current; current = null; synth.speaking = false; if (u && u.onend) u.onend({}); };
+    window.__failUtterance = (error = 'synthesis-failed') => { const u = current; current = null; synth.speaking = false; if (u && u.onerror) u.onerror({ error }); };
     Object.defineProperty(window, 'speechSynthesis', { value: synth, configurable: true });
     window.SpeechSynthesisUtterance = function (text) { this.text = text; };
+    window.__voicesUsed = [];
+    const speak = synth.speak;
+    synth.speak = function (u) { window.__voicesUsed.push(u.voice && u.voice.name); speak.call(this, u); };
   }, voices || [{ name: 'Local', lang: 'en-US', localService: true, default: true }]);
 }
 
@@ -161,6 +165,126 @@ test('with only network voices, Listen is off so no PR text leaves the browser',
   expect(await spoken(page)).toEqual([]);
   await page.locator('.grdc-sidebar-header-filter').click();
   await expect(page.locator('.grdc-listen-voice option')).toHaveText(['Default']);
+
+  await page.getByRole('checkbox', { name: 'Allow online voices' }).check();
+  await expect(play).toBeEnabled();
+  await page.keyboard.press('Escape');
+  await play.click();
+  await expect.poll(() => page.evaluate(() => window.__voicesUsed.slice())).toEqual(['Google US English']);
+});
+
+test('Allow online voices is off by default, explains the privacy trade-off, and offers network voices once on', async ({ page }) => {
+  await setup(page, [
+    { name: 'Local', lang: 'en-US', localService: true, default: true },
+    { name: 'Google UK English Male', lang: 'en-GB', localService: false, default: false },
+  ]);
+  const menu = page.getByRole('dialog', { name: 'View options', exact: true });
+  const online = menu.getByRole('checkbox', { name: 'Allow online voices' });
+  await page.getByRole('button', { name: /^View options/ }).click();
+  await expect(online).not.toBeChecked();
+  await expect(menu.locator('.grdc-listen-online-note')).toContainText('PR text being read may be sent to its provider');
+  await expect(online).toHaveAccessibleDescription(/PR text being read may be sent to its provider/);
+  await expect(menu.locator('.grdc-listen-voice option')).toHaveText(['Default', 'Local (en-US)']);
+
+  await online.check();
+  expect(await page.evaluate(() => localStorage.getItem('grdc_listen_online_voices'))).toBe('1');
+  await expect(menu.locator('.grdc-listen-voice option')).toHaveText(['Default', 'Local (en-US)', 'Google UK English Male (en-GB) — online']);
+  await menu.locator('.grdc-listen-voice').selectOption('Google UK English Male');
+  await page.keyboard.press('Escape');
+  await page.locator('.grdc-sidebar-listen').click();
+  await expect.poll(() => page.evaluate(() => window.__voicesUsed.slice())).toEqual(['Google UK English Male']);
+
+  // Turning it off stops the online voice and falls back to on-device voices.
+  await page.getByRole('button', { name: /^View options/ }).click();
+  await online.uncheck();
+  await expect(page.locator('.grdc-sidebar-listen')).toHaveAttribute('aria-pressed', 'false');
+  await expect(menu.locator('.grdc-listen-voice option')).toHaveText(['Default', 'Local (en-US)']);
+  await page.keyboard.press('Escape');
+  await page.locator('.grdc-sidebar-listen').click();
+  await expect.poll(() => page.evaluate(() => window.__voicesUsed.at(-1))).toBe('Local');
+});
+
+test('a speech error stops reading instead of silently skipping the sentence', async ({ page }) => {
+  await setup(page);
+  const play = page.locator('.grdc-sidebar-listen');
+  const alert = page.locator('.grdc-listen-status');
+  await play.click();
+  await expect.poll(() => spoken(page)).toEqual(['Kept new words ending.']);
+  await page.evaluate(() => window.__failUtterance());
+  await expect(play).toHaveAttribute('aria-pressed', 'false');
+  await expect(play).toHaveAttribute('title', /Listening stopped/);
+  await expect(alert).toBeVisible();
+  await expect(alert).toContainText('Listening stopped');
+  await page.waitForTimeout(600);
+  expect(await spoken(page)).toEqual(['Kept new words ending.']);
+
+  await play.click();
+  await expect(alert).toBeHidden();
+  await page.evaluate(() => window.__failUtterance('interrupted'));
+  await expect(play).toHaveAttribute('aria-pressed', 'false');
+  await expect(alert).toContainText('interrupted');
+});
+
+test('← right after a change finishes replays its last sentence', async ({ page }) => {
+  await setup(page);
+  await page.locator('.grdc-sidebar-listen').click();
+  await expect.poll(() => spoken(page)).toEqual(['Kept new words ending.']);
+  await finish(page);
+  await expect.poll(() => spoken(page).then((s) => s.length)).toBe(2);
+  await finish(page); // last sentence done; the next change starts after a short pause
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(() => spoken(page).then((s) => s.at(-1))).toBe('Removed: old words.');
+  await expect(page.locator('#mixed')).toHaveClass(/grdc-listen-active/);
+});
+
+test('scrolling the page while listening stops the reading from pulling it back', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(() => {
+    const spacer = document.createElement('div');
+    spacer.style.height = '4000px';
+    document.body.append(spacer);
+    window.scrollTo(0, 0);
+  });
+  await page.locator('.grdc-sidebar-listen').click();
+  await expect.poll(() => spoken(page)).toEqual(['Kept new words ending.']);
+  await page.waitForTimeout(400);
+
+  await page.mouse.move(100, 400);
+  await page.mouse.wheel(0, 3000);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(1500);
+  const browsing = await page.evaluate(() => window.scrollY);
+
+  await finish(page);
+  await finish(page); // moves on to the next change by itself
+  await expect(page.locator('#old-block')).toHaveClass(/grdc-listen-active/);
+  await page.waitForTimeout(800);
+  expect(Math.abs((await page.evaluate(() => window.scrollY)) - browsing)).toBeLessThan(5);
+
+  // Clicking the currently active change resumes following, too.
+  await page.locator('.grdc-sidebar-changes-list .grdc-sidebar-card').nth(1).click();
+  await expect(page.locator('#old-block')).toHaveClass(/grdc-listen-active/);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(browsing - 500);
+});
+
+test('sentence navigation brings the current change back after manual scrolling', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(() => {
+    const spacer = document.createElement('div');
+    spacer.style.height = '4000px';
+    document.body.append(spacer);
+  });
+  await page.locator('.grdc-sidebar-listen').click();
+  await expect.poll(() => spoken(page)).toEqual(['Kept new words ending.']);
+  await page.waitForTimeout(400);
+  await page.mouse.move(100, 400);
+  await page.mouse.wheel(0, 3000);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(1500);
+  const browsing = await page.evaluate(() => window.scrollY);
+
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => spoken(page).then((s) => s.at(-1))).toBe('Removed: old words.');
+  await expect(page.locator('#mixed')).toHaveClass(/grdc-listen-active/);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(browsing - 500);
 });
 
 test('Listening is off by default; Enable Listening shows the play button, speed and voice', async ({ page }) => {
@@ -196,8 +320,11 @@ test('Listening is off by default; Enable Listening shows the play button, speed
   await expect(play).toBeHidden();
   expect(await page.evaluate(() => window.speechSynthesis.speaking)).toBe(false);
   await enable.check();
+  await menu.getByRole('checkbox', { name: 'Allow online voices' }).check();
   await restore.click();
   await expect(enable).not.toBeChecked();
+  await expect(menu.locator('.grdc-listen-online')).not.toBeChecked();
   await expect(menu.locator('.grdc-listen-rate')).toBeHidden();
   expect(await page.evaluate(() => localStorage.getItem('grdc_listen_enabled'))).toBe('0');
+  expect(await page.evaluate(() => localStorage.getItem('grdc_listen_online_voices'))).toBe('0');
 });

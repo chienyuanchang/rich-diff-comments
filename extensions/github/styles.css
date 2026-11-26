@@ -1813,6 +1813,16 @@ li.grdc-hoverable .grdc-comment-btn {
 /* The bar is accent-blue with white icons, so "on" is a light fill, not a color. */
 .grdc-sidebar-header .grdc-sidebar-listen[aria-pressed="true"] { background: rgba(255, 255, 255, 0.2); }
 .grdc-sidebar-header .grdc-sidebar-listen:disabled { opacity: 0.4; cursor: not-allowed; }
+.grdc-sidebar-header .grdc-sidebar-listen.grdc-listen-error { box-shadow: inset 0 0 0 2px #f0b72f; }
+.grdc-listen-status { margin: 0; padding: 6px 12px; }
+.grdc-listen-status:empty { display: none; }
+.grdc-view-options .grdc-listen-online-note {
+  margin: 0 0 0 22px;
+  max-width: 260px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--fgColor-muted, var(--color-fg-muted, #59636e));
+}
 .grdc-view-options label.grdc-listen-option { cursor: default; }
 .grdc-view-options .grdc-listen-option select { margin-left: auto; max-width: 150px; }
 .grdc-view-options [hidden] { display: none; }

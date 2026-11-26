@@ -47,9 +47,15 @@ The targets version and release independently. These lists summarize the intende
 
 ### GitHub v1.16.0
 
+The release notes use a draft date of 2026-11-26; update it if the release occurs later. The release and real-PR verification are pending.
+
+- [ ] **Listen to changes** — offer optional read-aloud playback, voice and speed settings, and opt-in online voices with a privacy notice.
+- [ ] **Make new features discoverable after an update** — show an unread indicator and dismissible changelog for the latest five releases.
+
+### GitHub — future releases
+
 - [ ] **Switch the next Markdown file to rich diff in large pull requests** — replace passive one-file guidance with a sequential action that opens the next Markdown file in PR order and activates its rich diff without starting the unsupported PR-wide render sweep.
 - [ ] **Collapse or expand all inline conversations** — add a Threads-toolbar toggle across all currently rendered Markdown files while keeping comment badges and markers visible.
-- [ ] **Make new features discoverable after an update** — show an unread indicator and dismissible changelog for the latest five releases.
 
 ### Azure DevOps v1.5.0
 
@@ -99,7 +105,7 @@ The targets version and release independently. These lists summarize the intende
 | Use a draggable, resizable, collapsible sidebar with persistent layout and selected tab | ✅ Resizing preserves tab scroll position | ✅ |
 | Browse PR-wide Changes, Threads, and Outline lists grouped in stable file order | ✅ | ✅ |
 | Navigate changed rendered blocks with cards, counters, clicks, and keyboard shortcuts | ✅ | ✅ |
-| Listen to changes with adjustable speed and voice; sync settings across open tabs and stop playback when online voices are disabled; online voices require opt-in and a privacy notice | ✅ Unreleased | 📋 |
+| Listen to changes with adjustable speed and voice; sync settings across open tabs and stop playback when online voices are disabled; online voices require opt-in and a privacy notice | ✅ GitHub v1.16.0 release candidate; verification pending | 📋 |
 | Show one summary card for a newly added, deleted, or renamed Markdown file where applicable | ✅ | ✅ |
 | Navigate threads globally and filter to unresolved conversations | ✅ | ✅ |
 | Hide resolved conversations throughout the rendered document and Threads | ✅ GitHub v1.14.0 | △ Threads-list filter only |
@@ -195,7 +201,7 @@ See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, a
 
 - [ ] **P2 — Collapse or expand all inline conversations**
   - **Outcome:** reviewers can return a comment-heavy rendered document to a compact reading view in one action, then reopen every conversation when needed.
-  - **GitHub:** 📋 Targeted for GitHub v1.16.0. Apply the action across all currently rendered Markdown files in the pull request.
+  - **GitHub:** 📋 Planned after v1.16.0; version not yet decided. Apply the action across all currently rendered Markdown files in the pull request.
   - **ADO:** 📋 Targeted for ADO v1.6.0. Apply the action to the current Markdown Preview, matching ADO's one-file-at-a-time review surface.
   - **Acceptance:** place a **Collapse all conversations** / **Expand all conversations** toggle in the Threads toolbar; collapse only conversation bodies while keeping badges, table-row markers, code-line markers, and the Threads list visible. Do not change resolution state, the unresolved filter, or saved sidebar preferences.
 
@@ -240,7 +246,7 @@ See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, a
 
 - [ ] **P2 — Make new features discoverable after an update**
   - **Outcome:** reviewers discover notable new features after an automatic update and can revisit recent release details later.
-  - **GitHub:** △ Unreleased in PR #22; real-PR validation pending.
+  - **GitHub:** ✅ GitHub v1.16.0 release candidate; real-PR validation pending.
   - **ADO:** 📋 Planned separately.
   - **Acceptance:** after a feature release, offer the changelog in the sidebar and an unread indicator on a separate help control; opening it clears the indicator, and an × closes it. Show the complete changelog for the latest five releases, newest first, including bug-fix-only releases without generating an extra announcement for them. Avoid opening it over a collapsed sidebar or an active comment draft, and preserve the selected tab and drafts. Bundle the notes locally without external requests or new permissions. Fresh installations may also show the latest announcement once.
 
@@ -252,7 +258,7 @@ See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, a
 
 - [ ] **P1 — Switch the next Markdown file to rich diff in virtualized large pull requests**
   - **Outcome:** reviewers of a large pull request can continue to the next Markdown file in one action instead of manually finding the file and switching its view.
-  - **GitHub:** 📋 Targeted for GitHub v1.16.0. Available only when GitHub's virtualized large-PR mode prevents the PR-wide render sweep.
+  - **GitHub:** 📋 Planned after v1.16.0; version not yet decided. Available only when GitHub's virtualized large-PR mode prevents the PR-wide render sweep.
   - **ADO:** — Preview already follows the selected file and does not have GitHub's per-file rich-diff mode.
   - **Acceptance:** replace passive large-PR guidance with a **Switch next Markdown file to rich diff** action. Use the ordered route file inventory to choose the next Markdown file after the current file, navigate through GitHub's native file destination, wait boundedly for that file to mount, and activate only its rich-diff toggle. Keep the page interactive, show progress in the initiating sidebar control, preserve the sidebar's collapsed state and selected tab, and refresh Threads, Changes, Outline, and comment markers after rich content appears. A newer navigation cancels an older pending switch. Do not wrap from the last Markdown file to the first; show that no later Markdown files remain. If navigation, mounting, or activation fails, leave the action retryable and do not start a page-wide scroll sweep. Validate the native destination against a live virtualized pull request before shipping.
 

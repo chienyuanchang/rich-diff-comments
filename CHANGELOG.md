@@ -4,6 +4,8 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 ## [Unreleased]
 
+## [1.16.0] — 2026-11-26
+
 ### Added
 
 - **Listen to the changes (optional).** Turn on Enable Listening in View options to add a play button to Changes. It reads changes aloud in order and highlights the current sentence. Use the Changes arrows or cards to skip changes, and `←` / `→` to move between sentences. You can browse elsewhere while listening without being pulled back; selecting a change or using the sentence arrows returns to it. If speech fails, Listening stops and shows a message instead of silently skipping text. Listening follows Show removed content for edits, announces removed blocks, and reads new files in full.

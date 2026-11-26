@@ -47,7 +47,7 @@ The targets version and release independently. These lists summarize the intende
 
 ### GitHub v1.16.0
 
-Release preparations are in [PR #23](https://github.com/chienyuanchang/rich-diff-comments/pull/23). Implementation, automated tests, and live-PR verification are complete; preflight and package verification remain release gates. The changelog date is 2026-11-26; update it if the release occurs later.
+Release preparations are in [PR #23](https://github.com/chienyuanchang/rich-diff-comments/pull/23). Implementation, automated tests, live-PR verification, preflight, and package verification are complete. Chrome and Edge store submissions are separate.
 
 - [x] **Listen to changes** — offer optional read-aloud playback, voice and speed settings, and opt-in online voices with a privacy notice.
 - [x] **Make new features discoverable after an update** — show an unread indicator and dismissible changelog for the latest five releases.

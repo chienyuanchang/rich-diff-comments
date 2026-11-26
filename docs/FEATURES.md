@@ -99,7 +99,7 @@ The targets version and release independently. These lists summarize the intende
 | Use a draggable, resizable, collapsible sidebar with persistent layout and selected tab | ✅ Resizing preserves tab scroll position | ✅ |
 | Browse PR-wide Changes, Threads, and Outline lists grouped in stable file order | ✅ | ✅ |
 | Navigate changed rendered blocks with cards, counters, clicks, and keyboard shortcuts | ✅ | ✅ |
-| Listen to changes with adjustable speed and voice; online voices require opt-in and a privacy notice; manual scrolling pauses follow and speech errors stop playback visibly | ✅ Unreleased | 📋 |
+| Listen to changes with adjustable speed and voice; sync settings across open tabs and stop playback when online voices are disabled; online voices require opt-in and a privacy notice | ✅ Unreleased | 📋 |
 | Show one summary card for a newly added, deleted, or renamed Markdown file where applicable | ✅ | ✅ |
 | Navigate threads globally and filter to unresolved conversations | ✅ | ✅ |
 | Hide resolved conversations throughout the rendered document and Threads | ✅ GitHub v1.14.0 | △ Threads-list filter only |

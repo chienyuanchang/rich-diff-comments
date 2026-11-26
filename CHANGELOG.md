@@ -13,11 +13,12 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 ### Changed
 
 - **The sidebar makes room for the help button and Listening controls.** Listening controls appear only when Listening is enabled.
+- **Listening settings stay in sync across open pull request tabs.** Changing the voice, speed, or Listening options updates the other tabs; turning off online voices or Listening also stops playback there.
 
 ### Fixed
 
 - **Navigating no longer hides the target under GitHub's sticky headers.** Moving to a change, thread, or Outline heading used to stop it a line too high, under the sticky file name bar; it now lands just below the toolbar and file header.
-- **Toolbar controls now sit evenly within the sidebar.** The space at the left and right edges stays balanced whether Listening is on or off.
+- **The sidebar keeps its controls visible and remembers its height.** The toolbar stays balanced with or without Listening, even when counts are large.
 
 ## [1.15.0] — 2026-11-24
 

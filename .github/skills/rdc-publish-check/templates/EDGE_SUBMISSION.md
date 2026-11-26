@@ -10,9 +10,9 @@ The versioned sections below describe v1.15.0 and must be updated before submitt
 
 ### Draft release notes
 
-- **Listen to the changes (optional).** Enable Listening in View options to hear changes read aloud and follow along with highlighted sentences. Browse elsewhere without the page pulling you back; choose a change or use the sentence arrows to return. If speech fails, Listening stops and shows a message.
+- **Listen to the changes (optional).** Enable Listening in View options to hear changes read aloud and follow along with highlighted sentences. Browse elsewhere without the page pulling you back; choose a change or use the sentence arrows to return. Listening settings stay in sync across open pull request tabs, and turning off online voices or Listening stops playback in the other tabs.
 - **Choose online voices (optional).** Allow online voices in View options to use additional voices. When an online voice is used, the PR text being read may be sent to its provider. Available voices vary by browser and device.
-- **Enjoy more balanced toolbar spacing.** The controls sit evenly at both ends of the sidebar, whether Listening is on or off.
+- **Enjoy a balanced sidebar that remembers its height.** Toolbar controls stay visible even when counts are large, with or without Listening.
 - **Discover new features in the sidebar.** Open the changelog to clear its unread indicator, close it with ×, and use the help button to browse the complete notes for the latest five releases.
 
 ### Draft privacy disclosure

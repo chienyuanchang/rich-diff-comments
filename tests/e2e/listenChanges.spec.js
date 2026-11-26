@@ -183,6 +183,118 @@ test('compact toolbar keeps counters and controls visible with Listening on and 
   await expectToolbarFits();
 });
 
+test('long counters keep the help button visible when a wide sidebar is collapsed', async ({ page }) => {
+  await setup(page, undefined, { enabled: false });
+  await page.locator('.grdc-sidebar').evaluate((sidebar) => {
+    sidebar.style.left = '300px';
+    sidebar.style.width = '800px';
+    sidebar.style.boxSizing = 'border-box';
+  });
+  await page.evaluate(() => {
+    for (const counter of document.querySelectorAll('.grdc-sidebar-changes-count, .grdc-sidebar-count')) {
+      counter.innerHTML = '12/34 <span class="grdc-sidebar-count-total">(123)</span>';
+    }
+  });
+  await expect.poll(() => page.locator('.grdc-sidebar-count').evaluate((counter) => counter.offsetWidth)).toBeGreaterThan(56);
+
+  const rightSpace = () => page.evaluate(() => {
+    const header = document.querySelector('.grdc-sidebar-header').getBoundingClientRect();
+    const help = document.querySelector('.grdc-sidebar-release-notes').getBoundingClientRect();
+    return header.right - help.right;
+  });
+  await page.locator('.grdc-sidebar-collapse').click();
+  await expect.poll(rightSpace).toBeGreaterThanOrEqual(7);
+  await page.locator('.grdc-sidebar-collapse').click();
+  await page.keyboard.press('t');
+  await expect.poll(rightSpace).toBeGreaterThanOrEqual(7);
+  await page.keyboard.press('t');
+  await page.getByRole('button', { name: /^View options/ }).click();
+  await page.getByRole('checkbox', { name: 'Enable Listening', exact: true }).check();
+  await page.keyboard.press('Escape');
+  await page.locator('.grdc-sidebar-collapse').click();
+  await expect.poll(rightSpace).toBeGreaterThanOrEqual(7);
+  await page.evaluate(() => {
+    for (const counter of document.querySelectorAll('.grdc-sidebar-changes-count, .grdc-sidebar-count')) {
+      counter.textContent = '0/0';
+    }
+  });
+  await expect.poll(() => page.locator('.grdc-sidebar').evaluate((sidebar) => parseFloat(sidebar.style.minWidth) || 496))
+    .toBeLessThanOrEqual(498);
+});
+
+test('resizing height is saved without retaining automatic counter width', async ({ page }) => {
+  await setup(page, undefined, { enabled: false });
+  const sidebar = page.locator('.grdc-sidebar');
+  await sidebar.evaluate((element) => {
+    element.style.width = '462px';
+    element.style.height = '240px';
+  });
+  const savedSize = () => page.evaluate(() => JSON.parse(localStorage.getItem('grdc_sidebar_size')));
+  await expect.poll(async () => (await savedSize())?.height).toBe(await sidebar.evaluate((element) => element.offsetHeight));
+  const originalWidth = (await savedSize()).width;
+  await page.evaluate(() => {
+    for (const counter of document.querySelectorAll('.grdc-sidebar-changes-count, .grdc-sidebar-count')) {
+      counter.innerHTML = '12/34 <span class="grdc-sidebar-count-total">(123)</span>';
+    }
+  });
+  await expect.poll(() => sidebar.evaluate((element) => parseFloat(element.style.minWidth))).toBeGreaterThan(462);
+  const before = await sidebar.boundingBox();
+  await page.mouse.move(before.x + before.width - 3, before.y + before.height - 3);
+  await page.mouse.down();
+  await page.mouse.move(before.x + before.width - 3, before.y + before.height + 117, { steps: 10 });
+  await page.mouse.up();
+  await expect.poll(() => sidebar.evaluate((element) => element.offsetHeight)).toBe(before.height + 120);
+  await expect.poll(async () => (await savedSize())?.height).toBe(await sidebar.evaluate((element) => element.offsetHeight));
+  expect((await savedSize()).width).toBe(originalWidth);
+
+  const savedHeight = (await savedSize()).height;
+  await gotoPRPage(page);
+  await injectExtension(page);
+  await waitForInit(page);
+  await expect(sidebar).toHaveCSS('height', `${savedHeight}px`);
+});
+
+test('a manual width reduction to the long-counter minimum is saved', async ({ page }) => {
+  await setup(page, undefined, { enabled: false });
+  const sidebar = page.locator('.grdc-sidebar');
+  await sidebar.evaluate((element) => {
+    element.style.left = '300px';
+    element.style.width = '620px';
+    element.style.height = '240px';
+  });
+  await page.evaluate(() => {
+    for (const counter of document.querySelectorAll('.grdc-sidebar-changes-count, .grdc-sidebar-count')) {
+      counter.innerHTML = '12/34 <span class="grdc-sidebar-count-total">(123)</span>';
+    }
+  });
+  await expect.poll(() => sidebar.evaluate((element) => parseFloat(element.style.minWidth))).toBeGreaterThan(462);
+  const savedWidth = () => page.evaluate(() => JSON.parse(localStorage.getItem('grdc_sidebar_size'))?.width);
+  await expect.poll(savedWidth).toBe(await sidebar.evaluate((element) => element.offsetWidth));
+  const before = await sidebar.boundingBox();
+  await page.mouse.move(before.x + before.width - 3, before.y + before.height - 3);
+  await page.mouse.down();
+  await page.mouse.move(before.x + before.width - 203, before.y + before.height - 3, { steps: 10 });
+  await page.mouse.up();
+  await expect.poll(() => sidebar.evaluate((element) => element.offsetWidth)).toBeLessThan(before.width - 100);
+  await expect.poll(savedWidth).toBe(await sidebar.evaluate((element) => element.offsetWidth));
+});
+
+test('resetting the sidebar discards a saved width even when counts need extra space', async ({ page }) => {
+  await setup(page, undefined, { enabled: false });
+  const sidebar = page.locator('.grdc-sidebar');
+  await sidebar.evaluate((element) => { element.style.width = '620px'; });
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('grdc_sidebar_size'))?.width)).toBeGreaterThan(600);
+  await page.evaluate(() => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'T', shiftKey: true, bubbles: true }));
+    for (const counter of document.querySelectorAll('.grdc-sidebar-changes-count, .grdc-sidebar-count')) {
+      counter.innerHTML = '12/34 <span class="grdc-sidebar-count-total">(123)</span>';
+    }
+    document.querySelector('.grdc-listen-enabled').dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect.poll(() => sidebar.evaluate((element) => parseFloat(element.style.minWidth))).toBeGreaterThan(462);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('grdc_sidebar_size'))?.width)).toBeLessThan(500);
+});
+
 test('← / → step by sentence while listening, and the spoken sentence is highlighted', async ({ page }) => {
   await setup(page);
   const highlighted = () => page.evaluate(() => {
@@ -294,6 +406,52 @@ test('Allow online voices is off by default, explains the privacy trade-off, and
   await page.keyboard.press('Escape');
   await page.locator('.grdc-sidebar-listen').click();
   await expect.poll(() => page.evaluate(() => window.__voicesUsed.at(-1))).toBe('Local');
+});
+
+test('Listening preferences sync across open PR tabs and disabling online voices stops playback', async ({ page }) => {
+  const voices = [
+    { name: 'Local', lang: 'en-US', localService: true, default: true },
+    { name: 'Google UK English Male', lang: 'en-GB', localService: false, default: false },
+  ];
+  await setup(page, voices);
+  const other = await page.context().newPage();
+  await setup(other, voices);
+
+  const openOptions = async (target) => target.getByRole('button', { name: /^View options/ }).click();
+  const online = (target) => target.locator('.grdc-listen-online');
+  const enabled = (target) => target.locator('.grdc-listen-enabled');
+
+  await openOptions(page);
+  await online(page).check();
+  await expect(online(other)).toBeChecked();
+  await expect(other.locator('.grdc-listen-voice option')).toHaveText([
+    'Default',
+    'Local (en-US)',
+    'Google UK English Male (en-GB) — online',
+  ]);
+  await page.locator('.grdc-listen-voice').selectOption('Google UK English Male');
+  await page.locator('.grdc-listen-rate').selectOption('1.5');
+  await expect(other.locator('.grdc-listen-voice')).toHaveValue('Google UK English Male');
+  await expect(other.locator('.grdc-listen-rate')).toHaveValue('1.5');
+  await page.keyboard.press('Escape');
+
+  await page.locator('.grdc-sidebar-listen').click();
+  await expect.poll(() => page.evaluate(() => window.__voicesUsed.at(-1))).toBe('Google UK English Male');
+  await openOptions(other);
+  await online(other).uncheck();
+  await expect(page.locator('.grdc-sidebar-listen')).toHaveAttribute('aria-pressed', 'false');
+  await expect(online(page)).not.toBeChecked();
+  await expect(page.locator('.grdc-listen-voice option')).toHaveText(['Default', 'Local (en-US)']);
+
+  await page.locator('.grdc-sidebar-listen').click();
+  await expect.poll(() => page.evaluate(() => window.__voicesUsed.at(-1))).toBe('Local');
+  await enabled(other).uncheck();
+  await expect(page.locator('.grdc-sidebar-listen')).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.speechSynthesis.speaking)).toBe(false);
+  await openOptions(page);
+  await enabled(page).check();
+  await expect(enabled(other)).toBeChecked();
+  await expect(other.locator('.grdc-sidebar-listen')).toBeVisible();
 });
 
 test('a speech error stops reading instead of silently skipping the sentence', async ({ page }) => {

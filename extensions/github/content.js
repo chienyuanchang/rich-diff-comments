@@ -3981,11 +3981,18 @@
     const header = sidebar.querySelector('.grdc-sidebar-header');
     if (!header) return;
     sidebar.style.minWidth = '';
-    const box = header.getBoundingClientRect();
-    const contentRight = Math.max(...Array.from(header.children, (child) => child.getBoundingClientRect().right));
-    const overflow = Math.ceil(contentRight + parseFloat(getComputedStyle(header).paddingRight) - box.right);
-    if (overflow > 0) {
-      sidebar.style.minWidth = `${parseFloat(getComputedStyle(sidebar).minWidth) + overflow}px`;
+    const style = getComputedStyle(header);
+    const sidebarStyle = getComputedStyle(sidebar);
+    const inset = sidebarStyle.boxSizing === 'border-box'
+      ? parseFloat(sidebarStyle.borderLeftWidth) + parseFloat(sidebarStyle.borderRightWidth) +
+        parseFloat(sidebarStyle.paddingLeft) + parseFloat(sidebarStyle.paddingRight)
+      : 0;
+    const widths = Array.from(header.children, (child) => child.getBoundingClientRect().width).filter(Boolean);
+    const required = Math.ceil(widths.reduce((sum, width) => sum + width, 0) +
+      Math.max(0, widths.length - 1) * parseFloat(style.columnGap) +
+      parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + inset);
+    if (required > parseFloat(sidebarStyle.minWidth)) {
+      sidebar.style.minWidth = `${required}px`;
     }
   }
 
@@ -4002,22 +4009,31 @@
   function observeSidebarResize(sidebar) {
     if (typeof ResizeObserver === 'undefined') return;
     let writeTimer = null;
+    let intendedWidth = sidebar.offsetWidth;
+    let previousWidth = intendedWidth;
+    let previousInlineWidth = sidebar.style.width;
     const ro = new ResizeObserver(() => {
       if (sidebar.classList.contains('grdc-sidebar-collapsed')) return;
       for (const item of sidebar._grdcResizeScrollLock || []) {
         if (item.scroller.isConnected) item.scroller.scrollTop = item.scrollTop;
       }
+      const width = sidebar.offsetWidth;
+      const autoMin = parseFloat(sidebar.style.minWidth);
+      // Remember the user's width rather than a temporary long-counter expansion.
+      if (!sidebar.style.width && previousInlineWidth) {
+        intendedWidth = SIDEBAR_MIN_WIDTH;
+      } else if (!autoMin || width > autoMin + 2 || (sidebar._grdcResizeScrollLock && width !== previousWidth)) {
+        intendedWidth = width;
+      }
+      previousWidth = width;
+      previousInlineWidth = sidebar.style.width;
       clearTimeout(writeTimer);
       writeTimer = setTimeout(() => {
         try {
-          const w = sidebar.offsetWidth;
           const h = sidebar.offsetHeight;
-          // Automatic widening for long counters is not a user resize.
-          const autoMin = parseFloat(sidebar.style.minWidth);
-          if (autoMin && w <= autoMin + 2) return;
           // Don't persist obviously-bogus sizes. Anything below the CSS
           // min-* is a transient render glitch, not a user resize.
-          const clamped = window.GRDC.clampSize(w, h, SIDEBAR_MIN_WIDTH, SIDEBAR_MIN_HEIGHT);
+          const clamped = window.GRDC.clampSize(intendedWidth, h, SIDEBAR_MIN_WIDTH, SIDEBAR_MIN_HEIGHT);
           if (clamped.width == null || clamped.height == null) return;
           localStorage.setItem(SIDEBAR_SIZE_KEY, JSON.stringify({
             width: clamped.width,
@@ -5727,7 +5743,8 @@
       return;
     }
     button.addEventListener('click', () => (listening ? stopListening() : listenFrom(changesCurrentIdx)));
-    sidebar.querySelector('.grdc-listen-enabled').addEventListener('change', (event) => {
+    const enabled = sidebar.querySelector('.grdc-listen-enabled');
+    enabled.addEventListener('change', (event) => {
       try { localStorage.setItem(LISTEN_ENABLED_KEY, event.target.checked ? '1' : '0'); } catch (_) {}
       if (!event.target.checked) {
         stopListening();
@@ -5741,6 +5758,7 @@
     if (!rate.value) rate.value = '1';
     rate.addEventListener('change', () => { try { localStorage.setItem(LISTEN_RATE_KEY, rate.value); } catch (_) {} });
     const voice = sidebar.querySelector('.grdc-listen-voice');
+    const online = sidebar.querySelector('.grdc-listen-online');
     const fillVoices = () => {
       let saved = '';
       try { saved = localStorage.getItem(LISTEN_VOICE_KEY) || ''; } catch (_) {}
@@ -5756,12 +5774,32 @@
     fillVoices();
     speech.addEventListener('voiceschanged', fillVoices);
     voice.addEventListener('change', () => { try { localStorage.setItem(LISTEN_VOICE_KEY, voice.value); } catch (_) {} });
-    sidebar.querySelector('.grdc-listen-online').addEventListener('change', (event) => {
+    online.addEventListener('change', (event) => {
       try { localStorage.setItem(LISTEN_ONLINE_KEY, event.target.checked ? '1' : '0'); } catch (_) {}
       // Turning online voices off must not let an online voice keep reading.
       if (!event.target.checked) stopListening();
       fillVoices();
       syncViewOptions(sidebar);
+    });
+    window.addEventListener('storage', (event) => {
+      if (event.key === LISTEN_ENABLED_KEY) {
+        enabled.checked = event.newValue === '1';
+        if (!enabled.checked) {
+          stopListening();
+          listenError = '';
+          updateListenButton();
+        }
+        syncViewOptions(sidebar);
+      } else if (event.key === LISTEN_ONLINE_KEY) {
+        online.checked = event.newValue === '1';
+        if (!online.checked) stopListening();
+        fillVoices();
+        syncViewOptions(sidebar);
+      } else if (event.key === LISTEN_RATE_KEY) {
+        rate.value = event.newValue || '1';
+      } else if (event.key === LISTEN_VOICE_KEY) {
+        fillVoices();
+      }
     });
   }
 

@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
-const { splitSentences, changeSpeech, fileSpeech, sentenceRange, localVoices, pickVoice } = require('../src/lib/readAloud.js');
+const { splitSentences, changeSpeech, fileSpeech, sentenceRange, localVoices, availableVoices, pickVoice, sentenceStep } = require('../src/lib/readAloud.js');
 
 const dom = (html) => new JSDOM(`<div class="prose-diff"><div class="markdown-body">${html}</div></div>`).window.document;
 
@@ -75,4 +75,26 @@ test('localVoices / pickVoice: only on-device voices, never a network one', () =
   assert.equal(pickVoice(voices, 'Google US English', 'en-US').name, 'David'); // a saved network voice is not used
   assert.equal(pickVoice([v('Google US English', 'en-US', false)], '', 'en'), null);
   assert.equal(pickVoice([], '', 'en'), null);
+});
+
+test('availableVoices / pickVoice with online voices allowed: network voices offered after on-device ones', () => {
+  const v = (name, lang, localService, isDefault) => ({ name, lang, localService, default: !!isDefault });
+  const voices = [v('Google UK English Male', 'en-GB', false), v('Zira', 'en-US', true), v('Hila', 'he-IL', true)];
+  assert.deepEqual(availableVoices(voices, 'en-US', false).map((x) => x.name), ['Zira', 'Hila']);
+  assert.deepEqual(availableVoices(voices, 'en-US', true).map((x) => x.name), ['Zira', 'Google UK English Male', 'Hila']);
+  assert.equal(pickVoice(voices, 'Google UK English Male', 'en-US', true).name, 'Google UK English Male');
+  assert.equal(pickVoice(voices, '', 'en-US', true).name, 'Zira'); // Default still prefers on-device
+  assert.equal(pickVoice([voices[0], voices[2]], '', 'en-US', true).name, 'Hila');
+  assert.equal(pickVoice([v('Google US English', 'en-US', false)], '', 'en', true).name, 'Google US English');
+});
+
+test('sentenceStep: ← after a change finished replays its last sentence instead of skipping one', () => {
+  // Third (last) sentence finished; waiting to move to the next change.
+  assert.deepEqual(sentenceStep({ idx: 2, k: 3, count: 3 }, -1, 5), { idx: 2, k: 2 });
+  assert.deepEqual(sentenceStep({ idx: 2, k: 3, count: 3 }, 1, 5), { idx: 3, k: 0 });
+  assert.deepEqual(sentenceStep({ idx: 2, k: 1, count: 3 }, -1, 5), { idx: 2, k: 0 });
+  assert.deepEqual(sentenceStep({ idx: 2, k: 0, count: 3 }, -1, 5), { idx: 1, k: -1 });
+  assert.deepEqual(sentenceStep({ idx: 0, k: 0, count: 3 }, -1, 5), { idx: 0, k: 0 });
+  assert.equal(sentenceStep({ idx: 4, k: 2, count: 3 }, 1, 5), null); // past the last change
+  assert.equal(sentenceStep(null, 1, 5), null);
 });

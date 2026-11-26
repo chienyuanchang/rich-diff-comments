@@ -36,6 +36,7 @@
     parseMarkersMap,
     computeTableRowLine,
     renderMarkdownPreview,
+    recentChangelog,
     findFenceRangeAroundLine,
     sortThreadHeads,
     codeLineMarkerLayout,
@@ -64,8 +65,9 @@
     changeSpeech,
     fileSpeech,
     sentenceRange,
-    localVoices,
+    availableVoices,
     pickVoice,
+    sentenceStep,
   } = (typeof window !== 'undefined' && window.GRDC) || {};
 
   // Wrap findTextInSource so we can keep the per-file diagnostic counter behavior
@@ -87,11 +89,16 @@
   const LISTEN_RATE_KEY = 'grdc_listen_rate';
   const LISTEN_VOICE_KEY = 'grdc_listen_voice';
   const LISTEN_ENABLED_KEY = 'grdc_listen_enabled';
+  const LISTEN_ONLINE_KEY = 'grdc_listen_online_voices';
   const speech = (typeof window !== 'undefined' && window.speechSynthesis) || null;
   let listening = false;
   let listenGen = 0; // bumped on every start / stop so stale utterance callbacks do nothing
   let listenBlock = null;
   let listenSentence = null; // { idx, k, count } of the sentence being spoken
+  // Whether moving to the next change scrolls the page to it. Turned off when the reader
+  // scrolls the page themselves; turned back on by any explicit jump (play, ◀ ▶, a card, ← →).
+  let listenFollow = true;
+  let listenError = '';
   let fileLineMap = new Map(); // Map<element, { path, line }>
   let hideRemovedContent = false;
   const threadReviewAnchors = new WeakMap();
@@ -3501,9 +3508,100 @@
   // We clamp persisted sizes on both read and write so a transient narrow
   // render (e.g. during initial paint before content settles) can't poison
   // localStorage with a tiny size that the next page load would honor.
-  const SIDEBAR_MIN_WIDTH = 480;
+  const SIDEBAR_MIN_WIDTH = 462;
   const SIDEBAR_MIN_HEIGHT = 120;
   const SIDEBAR_TAB_KEY = 'grdc_sidebar_tab';
+  const RELEASE_NOTES_SEEN_KEY = 'grdc_release_notes_seen';
+
+  function syncReleaseNotesIndicator(sidebar) {
+    const button = sidebar.querySelector('.grdc-sidebar-release-notes');
+    let unread;
+    try {
+      unread = localStorage.getItem(RELEASE_NOTES_SEEN_KEY) !== window.GRDC_RELEASE_NOTES.announcementVersion;
+    } catch (error) {
+      console.warn('[GRDC] Could not read release notes state:', error);
+      unread = true;
+    }
+    const label = unread ? "What's new — unread" : "What's new";
+    button.dataset.unread = String(unread);
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    return unread;
+  }
+
+  function showReleaseNotes(sidebar, show) {
+    sidebar.classList.toggle('grdc-release-notes-open', show);
+    sidebar.querySelector('.grdc-release-notes').hidden = !show;
+    sidebar.querySelector('.grdc-sidebar-release-notes').setAttribute('aria-expanded', String(show));
+  }
+
+  function markReleaseNotesSeen(sidebar, version) {
+    try {
+      localStorage.setItem(RELEASE_NOTES_SEEN_KEY, version);
+    } catch (error) {
+      console.warn('[GRDC] Could not save release notes state:', error);
+    }
+    syncReleaseNotesIndicator(sidebar);
+  }
+
+  function setupReleaseNotes(sidebar, collapsed) {
+    const notes = window.GRDC_RELEASE_NOTES;
+    const history = sidebar.querySelector('.grdc-release-notes-history');
+    try {
+      for (const release of recentChangelog(window.GRDC_CHANGELOG, notes.announcementVersion)) {
+        const section = document.createElement('section');
+        const heading = document.createElement('h3');
+        heading.textContent = release.title;
+        const body = document.createElement('div');
+        const template = document.createElement('template');
+        template.innerHTML = renderMarkdownPreview(release.body.replace(/^(#{3,5})(\s)/gm, '#$1$2'));
+        // Keep bundled notes offline even if a future changelog contains images.
+        for (const image of template.content.querySelectorAll('img')) {
+          const label = image.alt || 'Image';
+          const source = image.getAttribute('src');
+          image.replaceWith(document.createTextNode(source ? `${label} (${source})` : label));
+        }
+        body.appendChild(template.content);
+        section.append(heading, body);
+        history.appendChild(section);
+      }
+    } catch (error) {
+      console.error('[GRDC] Could not display the bundled changelog:', error);
+      const message = document.createElement('p');
+      message.setAttribute('role', 'alert');
+      message.textContent = 'Could not load the changelog. Reload the extension and try again.';
+      history.replaceChildren(message);
+    }
+    const button = sidebar.querySelector('.grdc-sidebar-release-notes');
+    button.addEventListener('click', () => {
+      if (sidebar.classList.contains('grdc-sidebar-collapsed')) {
+        sidebar.classList.remove('grdc-sidebar-collapsed');
+        try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, '0'); } catch (error) {
+          console.warn('[GRDC] Could not save sidebar state:', error);
+        }
+      }
+      markReleaseNotesSeen(sidebar, notes.announcementVersion);
+      showReleaseNotes(sidebar, true);
+    });
+    sidebar.querySelector('.grdc-release-notes-close').addEventListener('click', () => {
+      markReleaseNotesSeen(sidebar, notes.announcementVersion);
+      showReleaseNotes(sidebar, false);
+      button.focus();
+    });
+    const unread = syncReleaseNotesIndicator(sidebar);
+    const editing = document.querySelector('.grdc-editor-textarea') ||
+      document.activeElement?.matches('textarea, [contenteditable="true"]') ||
+      Array.from(document.querySelectorAll('textarea:not([readonly]):not([disabled])'))
+        .some((textarea) => textarea.value.trim());
+    if (unread && !collapsed && !editing) showReleaseNotes(sidebar, true);
+  }
+
+  window.addEventListener('storage', (event) => {
+    if (event.key !== RELEASE_NOTES_SEEN_KEY) return;
+    const sidebar = document.querySelector('.grdc-sidebar');
+    if (sidebar) syncReleaseNotesIndicator(sidebar);
+  });
+
   function syncViewOptions(sidebar) {
     const removed = sidebar.querySelector('.grdc-show-removed');
     const resolved = sidebar.querySelector('.grdc-show-resolved');
@@ -3515,9 +3613,11 @@
     button.title = label;
     button.setAttribute('aria-label', label);
     const listenEnabled = sidebar.querySelector('.grdc-listen-enabled');
+    const listenOnline = sidebar.querySelector('.grdc-listen-online');
     sidebar.classList.toggle('grdc-listen-on', listenEnabled.checked);
+    fitSidebarToHeader(sidebar);
     sidebar.querySelector('.grdc-restore-defaults').disabled =
-      removed.checked && resolved.checked && !autoRender.checked && !listenEnabled.checked;
+      removed.checked && resolved.checked && !autoRender.checked && !listenEnabled.checked && !listenOnline.checked;
   }
   let sidebarCurrentIdx = 0;
   // Per-block index for the "prev/next change" feature — separate from
@@ -3871,7 +3971,37 @@
     const sidebar = document.querySelector('.grdc-sidebar');
     if (!sidebar) return;
     const isCollapsed = sidebar.classList.toggle('grdc-sidebar-collapsed');
+    if (isCollapsed) showReleaseNotes(sidebar, false);
     try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, isCollapsed ? '1' : '0'); } catch (_) {}
+  }
+
+  // The default width fits typical counters with no slack; widen only when
+  // long counts (e.g. `12/34 (123)`) would otherwise clip the toolbar.
+  function fitSidebarToHeader(sidebar) {
+    const header = sidebar.querySelector('.grdc-sidebar-header');
+    if (!header) return;
+    sidebar.style.minWidth = '';
+    const style = getComputedStyle(header);
+    const sidebarStyle = getComputedStyle(sidebar);
+    const inset = sidebarStyle.boxSizing === 'border-box'
+      ? parseFloat(sidebarStyle.borderLeftWidth) + parseFloat(sidebarStyle.borderRightWidth) +
+        parseFloat(sidebarStyle.paddingLeft) + parseFloat(sidebarStyle.paddingRight)
+      : 0;
+    const widths = Array.from(header.children, (child) => child.getBoundingClientRect().width).filter(Boolean);
+    const required = Math.ceil(widths.reduce((sum, width) => sum + width, 0) +
+      Math.max(0, widths.length - 1) * parseFloat(style.columnGap) +
+      parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + inset);
+    if (required > parseFloat(sidebarStyle.minWidth)) {
+      sidebar.style.minWidth = `${required}px`;
+    }
+  }
+
+  function observeSidebarHeaderFit(sidebar) {
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => fitSidebarToHeader(sidebar));
+    for (const counter of sidebar.querySelectorAll('.grdc-sidebar-changes-count, .grdc-sidebar-count')) {
+      ro.observe(counter);
+    }
   }
 
   // Persist resize: watch for size changes via ResizeObserver and write to
@@ -3879,19 +4009,31 @@
   function observeSidebarResize(sidebar) {
     if (typeof ResizeObserver === 'undefined') return;
     let writeTimer = null;
+    let intendedWidth = sidebar.offsetWidth;
+    let previousWidth = intendedWidth;
+    let previousInlineWidth = sidebar.style.width;
     const ro = new ResizeObserver(() => {
       if (sidebar.classList.contains('grdc-sidebar-collapsed')) return;
       for (const item of sidebar._grdcResizeScrollLock || []) {
         if (item.scroller.isConnected) item.scroller.scrollTop = item.scrollTop;
       }
+      const width = sidebar.offsetWidth;
+      const autoMin = parseFloat(sidebar.style.minWidth);
+      // Remember the user's width rather than a temporary long-counter expansion.
+      if (!sidebar.style.width && previousInlineWidth) {
+        intendedWidth = SIDEBAR_MIN_WIDTH;
+      } else if (!autoMin || width > autoMin + 2 || (sidebar._grdcResizeScrollLock && width !== previousWidth)) {
+        intendedWidth = width;
+      }
+      previousWidth = width;
+      previousInlineWidth = sidebar.style.width;
       clearTimeout(writeTimer);
       writeTimer = setTimeout(() => {
         try {
-          const w = sidebar.offsetWidth;
           const h = sidebar.offsetHeight;
           // Don't persist obviously-bogus sizes. Anything below the CSS
           // min-* is a transient render glitch, not a user resize.
-          const clamped = window.GRDC.clampSize(w, h, SIDEBAR_MIN_WIDTH, SIDEBAR_MIN_HEIGHT);
+          const clamped = window.GRDC.clampSize(intendedWidth, h, SIDEBAR_MIN_WIDTH, SIDEBAR_MIN_HEIGHT);
           if (clamped.width == null || clamped.height == null) return;
           localStorage.setItem(SIDEBAR_SIZE_KEY, JSON.stringify({
             width: clamped.width,
@@ -4136,7 +4278,12 @@
             </svg>
             <span class="grdc-filter-indicator" aria-hidden="true"></span>
           </button>
+          <button type="button" class="grdc-sidebar-release-notes" title="What's new" aria-label="What's new" aria-expanded="false" aria-controls="grdc-release-notes" data-unread="false">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 1.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Zm0 1.25a2.1 2.1 0 0 0-2.1 2.1.75.75 0 0 0 1.5 0 .6.6 0 1 1 .95.49c-.69.49-1.1 1.08-1.1 1.91v.25a.75.75 0 0 0 1.5 0v-.25c0-.21.06-.36.47-.65A2.1 2.1 0 0 0 8 3.75ZM8 10a.9.9 0 1 0 0 1.8A.9.9 0 0 0 8 10Z"/></svg>
+            <span class="grdc-release-notes-indicator" aria-hidden="true"></span>
+          </button>
         </div>
+        <div class="grdc-error grdc-listen-status" role="alert"></div>
         <div id="grdc-view-options" class="grdc-view-options" popover role="dialog" aria-label="View options">
           <div class="grdc-view-options-title">View options</div>
           <fieldset><legend>Visibility</legend>
@@ -4152,6 +4299,8 @@
               <option value="0.8">0.8×</option><option value="1">1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="1.75">1.75×</option><option value="2">2×</option><option value="2.5">2.5×</option><option value="3">3×</option>
             </select></label>
             <label class="grdc-listen-option grdc-listen-setting">Voice <select class="grdc-listen-voice"><option value="">Default</option></select></label>
+            <label class="grdc-listen-setting"><input type="checkbox" class="grdc-listen-online" aria-describedby="grdc-listen-online-note"> Allow online voices</label>
+            <p id="grdc-listen-online-note" class="grdc-listen-setting grdc-listen-online-note">When you use an online voice, the PR text being read may be sent to its provider, such as Google or Microsoft.</p>
           </fieldset>
           <button type="button" class="grdc-restore-defaults">Restore defaults</button>
         </div>
@@ -4160,6 +4309,13 @@
           <button class="grdc-sidebar-tab" data-grdc-tab="threads" role="tab" aria-selected="false" title="Threads (2)">Threads</button>
           <button class="grdc-sidebar-tab" data-grdc-tab="outline" role="tab" aria-selected="false" title="Outline (3)">Outline</button>
         </div>
+        <section id="grdc-release-notes" class="grdc-release-notes" aria-labelledby="grdc-release-notes-title" hidden>
+          <div class="grdc-release-notes-heading">
+            <h2 id="grdc-release-notes-title">What's new</h2>
+            <button type="button" class="grdc-release-notes-close" aria-label="Close What's new">×</button>
+          </div>
+          <div class="grdc-release-notes-history"></div>
+        </section>
         <div class="grdc-sidebar-pane grdc-sidebar-pane-threads" data-grdc-pane="threads">
           <div class="grdc-sidebar-list" role="list"></div>
         </div>
@@ -4177,15 +4333,18 @@
         </div>
       `;
       document.body.appendChild(sidebar);
+      setupReleaseNotes(sidebar, collapsed);
 
       const headerEl = sidebar.querySelector('.grdc-sidebar-header');
       attachSidebarDrag(sidebar, headerEl);
       applySidebarPersistedPos(sidebar);
       attachSidebarResizeScrollLock(sidebar);
       observeSidebarResize(sidebar);
+      observeSidebarHeaderFit(sidebar);
 
       sidebar.querySelector('.grdc-sidebar-collapse').addEventListener('click', () => {
         const isCollapsed = sidebar.classList.toggle('grdc-sidebar-collapsed');
+        if (isCollapsed) showReleaseNotes(sidebar, false);
         try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, isCollapsed ? '1' : '0'); } catch (_) {}
       });
       const viewButton = sidebar.querySelector('.grdc-sidebar-header-filter');
@@ -4228,6 +4387,7 @@
         for (const [selector, checked] of [
           ['.grdc-auto-render', false],
           ['.grdc-listen-enabled', false],
+          ['.grdc-listen-online', false],
           ['.grdc-show-removed', true],
           ['.grdc-show-resolved', true],
         ]) {
@@ -4285,6 +4445,7 @@
       sidebar.querySelector('.grdc-sidebar-render-md').addEventListener('click', async (e) => {
         e.preventDefault();
         await expandAndRenderAllMd(sidebar);
+        showReleaseNotes(sidebar, false);
         setSidebarTab(sidebar, 'outline');
       });
 
@@ -4323,6 +4484,7 @@
     sidebar.querySelector('.grdc-show-removed').checked = !hideRemovedContent;
     sidebar.querySelector('.grdc-auto-render').checked = localStorage.getItem(AUTO_RENDER_KEY) === '1';
     sidebar.querySelector('.grdc-listen-enabled').checked = localStorage.getItem(LISTEN_ENABLED_KEY) === '1';
+    sidebar.querySelector('.grdc-listen-online').checked = localStorage.getItem(LISTEN_ONLINE_KEY) === '1';
     syncViewOptions(sidebar);
 
     // When Threads is empty but Outline still has content, force-switch
@@ -5581,9 +5743,14 @@
       return;
     }
     button.addEventListener('click', () => (listening ? stopListening() : listenFrom(changesCurrentIdx)));
-    sidebar.querySelector('.grdc-listen-enabled').addEventListener('change', (event) => {
+    const enabled = sidebar.querySelector('.grdc-listen-enabled');
+    enabled.addEventListener('change', (event) => {
       try { localStorage.setItem(LISTEN_ENABLED_KEY, event.target.checked ? '1' : '0'); } catch (_) {}
-      if (!event.target.checked) stopListening();
+      if (!event.target.checked) {
+        stopListening();
+        listenError = '';
+        updateListenButton();
+      }
       syncViewOptions(sidebar);
     });
     const rate = sidebar.querySelector('.grdc-listen-rate');
@@ -5591,28 +5758,72 @@
     if (!rate.value) rate.value = '1';
     rate.addEventListener('change', () => { try { localStorage.setItem(LISTEN_RATE_KEY, rate.value); } catch (_) {} });
     const voice = sidebar.querySelector('.grdc-listen-voice');
+    const online = sidebar.querySelector('.grdc-listen-online');
     const fillVoices = () => {
       let saved = '';
       try { saved = localStorage.getItem(LISTEN_VOICE_KEY) || ''; } catch (_) {}
-      const voices = localVoices(speech.getVoices(), navigator.language);
+      const online = allowOnlineVoices();
+      const voices = availableVoices(speech.getVoices(), navigator.language, online);
       voice.innerHTML = '<option value="">Default</option>' + voices.map((v) =>
-        `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name.replace(/^Microsoft\s+/, ''))} (${escapeHtml(v.lang)})</option>`).join('');
+        `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name.replace(/^Microsoft\s+/, ''))} (${escapeHtml(v.lang)})${v.localService === true ? '' : ' \u2014 online'}</option>`).join('');
       voice.value = voices.some((v) => v.name === saved) ? saved : '';
-      // Without an on-device voice there is nothing to play: the browser would fall back to a network one.
+      // Without an allowed voice there is nothing to play: left unset, the browser could fall back to a network one.
       button.disabled = !voices.length;
-      button.title = voices.length ? '' : 'No on-device voice is installed, so Listen is off (network voices would send the text to a speech provider).';
+      updateListenButton();
     };
     fillVoices();
     speech.addEventListener('voiceschanged', fillVoices);
     voice.addEventListener('change', () => { try { localStorage.setItem(LISTEN_VOICE_KEY, voice.value); } catch (_) {} });
+    online.addEventListener('change', (event) => {
+      try { localStorage.setItem(LISTEN_ONLINE_KEY, event.target.checked ? '1' : '0'); } catch (_) {}
+      // Turning online voices off must not let an online voice keep reading.
+      if (!event.target.checked) stopListening();
+      fillVoices();
+      syncViewOptions(sidebar);
+    });
+    window.addEventListener('storage', (event) => {
+      if (event.key === LISTEN_ENABLED_KEY) {
+        enabled.checked = event.newValue === '1';
+        if (!enabled.checked) {
+          stopListening();
+          listenError = '';
+          updateListenButton();
+        }
+        syncViewOptions(sidebar);
+      } else if (event.key === LISTEN_ONLINE_KEY) {
+        online.checked = event.newValue === '1';
+        if (!online.checked) stopListening();
+        fillVoices();
+        syncViewOptions(sidebar);
+      } else if (event.key === LISTEN_RATE_KEY) {
+        rate.value = event.newValue || '1';
+      } else if (event.key === LISTEN_VOICE_KEY) {
+        fillVoices();
+      }
+    });
+  }
+
+  function allowOnlineVoices() {
+    try { return localStorage.getItem(LISTEN_ONLINE_KEY) === '1'; } catch (_) { return false; }
   }
 
   function updateListenButton() {
     const button = document.querySelector('.grdc-sidebar-listen');
     if (!button) return;
+    const status = document.querySelector('.grdc-listen-status');
+    if (status) status.textContent = listenError;
     button.setAttribute('aria-pressed', String(listening));
     button.setAttribute('aria-label', listening ? 'Stop listening' : 'Listen to the changes');
-    button.title = listening ? 'Stop listening' : 'Listen to the changes — reads each change aloud, then the next';
+    button.classList.toggle('grdc-listen-error', !listening && !!listenError);
+    if (button.disabled) {
+      button.title = 'No on-device voice is installed. To use a voice from a speech provider, turn on Allow online voices in View options.';
+    } else if (listening) {
+      button.title = listenFollow
+        ? 'Stop listening'
+        : 'Stop listening \u2014 the page no longer follows the reading because you scrolled; use \u25c0 \u25b6 or click a change to jump back';
+    } else {
+      button.title = listenError || 'Listen to the changes \u2014 reads each change aloud, then the next';
+    }
   }
 
   function setListenBlock(block) {
@@ -5633,20 +5844,27 @@
   }
 
   // Start reading change `idx` at sentence `startAt` (negative counts from the end).
-  function listenFrom(idx, startAt) {
+  // `auto` marks the automatic move to the next change, which only scrolls while the
+  // page is following the reading; every other call is an explicit jump and follows again.
+  function listenFrom(idx, startAt, auto) {
     const sidebar = document.querySelector('.grdc-sidebar');
     const blocks = (sidebar && sidebar._grdcChangeBlocks) || [];
     if (!speech || idx < 0 || idx >= blocks.length) { stopListening(); return; }
     const my = ++listenGen;
     const block = blocks[idx];
     listening = true;
+    listenError = '';
+    const resumeFollow = !auto && !listenFollow;
+    if (!auto) listenFollow = true;
     changesCurrentIdx = idx;
     if (block !== listenBlock) {
       setListenBlock(block);
-      scrollToChange(block);
+      if (listenFollow) scrollToChange(block);
       updateChangesCount(sidebar);
       const card = sidebar.querySelectorAll('.grdc-sidebar-changes-list .grdc-sidebar-card')[idx];
       if (card) revealSidebarCard(card);
+    } else if (resumeFollow) {
+      scrollToChange(block);
     }
     updateListenButton();
 
@@ -5673,20 +5891,24 @@
         setTimeout(() => {
           if (my !== listenGen) return;
           const now = (sidebar._grdcChangeBlocks || []).indexOf(block);
-          listenFrom((now >= 0 ? now : idx) + 1);
+          listenFrom((now >= 0 ? now : idx) + 1, 0, true);
         }, 400);
         return;
       }
       const utterance = new SpeechSynthesisUtterance(sentences[k]);
       utterance.rate = Number(sidebar.querySelector('.grdc-listen-rate').value) || 1;
-      // Always set an on-device voice: left unset, the browser may pick a network voice.
-      const voice = pickVoice(speech.getVoices(), sidebar.querySelector('.grdc-listen-voice').value, navigator.language);
+      // Always set an allowed voice: left unset, the browser may pick a network voice.
+      const voice = pickVoice(speech.getVoices(), sidebar.querySelector('.grdc-listen-voice').value, navigator.language, allowOnlineVoices());
       if (!voice) { stopListening(); return; }
       utterance.voice = voice; utterance.lang = voice.lang;
       utterance.onend = () => speakSentence(k + 1);
       utterance.onerror = (e) => {
-        if (e.error === 'interrupted' || e.error === 'canceled') return;
-        speakSentence(k + 1);
+        if (my !== listenGen) return;
+        // Stop rather than skip, so no text goes unread without the reader knowing.
+        console.warn('[GRDC] Listening stopped: speech error', e.error);
+        stopListening();
+        listenError = `Listening stopped: the voice could not read a sentence (${e.error || 'speech error'}). Press play to try again.`;
+        updateListenButton();
       };
       speech.speak(utterance);
     };
@@ -5706,12 +5928,11 @@
   // ← / → while listening: previous / next sentence, crossing into the neighbouring change.
   function listenStep(dir) {
     if (!listening || !listenSentence) return;
-    const { idx, k, count } = listenSentence;
-    const next = Math.min(k, count - 1) + dir;
-    if (next >= 0 && next < count) listenFrom(idx, next);
-    else if (dir > 0) listenFrom(idx + 1, 0);
-    else if (idx > 0) listenFrom(idx - 1, -1);
-    else listenFrom(0, 0);
+    const sidebar = document.querySelector('.grdc-sidebar');
+    const total = ((sidebar && sidebar._grdcChangeBlocks) || []).length;
+    const target = sentenceStep(listenSentence, dir, total);
+    if (target) listenFrom(target.idx, target.k);
+    else stopListening();
   }
 
   document.addEventListener('keydown', (e) => {
@@ -5725,6 +5946,28 @@
   }, true);
 
   if (typeof window !== 'undefined') window.addEventListener('pagehide', () => stopListening());
+
+  // The reader scrolling the page themselves (wheel, touch, scrollbar, scroll keys) stops the
+  // reading from pulling the page back when it moves to the next change. Scrolling inside our
+  // sidebar does not count.
+  const PAGE_SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
+  function pauseListenFollow(e) {
+    if (!listening || !listenFollow) return;
+    const t = e.target;
+    if (t && t.closest && t.closest('.grdc-sidebar')) return;
+    if (e.type === 'keydown') {
+      if (!PAGE_SCROLL_KEYS.has(e.key) || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(t.tagName))) return;
+    }
+    // A press on the page's own scrollbar targets the root element.
+    if (e.type === 'mousedown' && t !== document.documentElement) return;
+    listenFollow = false;
+    // Also end any scroll correction still settling on the change being read.
+    pageNavigationSequence++;
+    updateListenButton();
+  }
+  ['wheel', 'touchmove', 'mousedown', 'keydown'].forEach((type) =>
+    document.addEventListener(type, pauseListenFollow, { capture: true, passive: true }));
 
   function scrollToChange(blockEl) {
     if (!blockEl) return;
@@ -5815,6 +6058,7 @@
         sidebar.classList.remove('grdc-sidebar-collapsed');
         try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, '0'); } catch (_) {}
       }
+      showReleaseNotes(sidebar, false);
       const target = e.key === '1' ? 'changes'
         : e.key === '2' ? 'threads'
         : 'outline';

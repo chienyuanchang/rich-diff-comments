@@ -154,11 +154,36 @@
       (b.lang.startsWith(l) - a.lang.startsWith(l)) || (b.default - a.default) || a.name.localeCompare(b.name));
   }
 
-  // The voice to speak with: the saved one if it is on-device, else the best on-device one; null if none.
-  function pickVoice(voices, savedName, lang) {
-    const local = localVoices(voices, lang);
-    return local.find((v) => v.name === savedName) || local[0] || null;
+  // Voices the user may pick. Without allowOnline, on-device voices only. With it, network
+  // voices are added too, but sort after on-device voices in the same language.
+  function availableVoices(voices, lang, allowOnline) {
+    if (!allowOnline) return localVoices(voices, lang);
+    const l = (lang || 'en').slice(0, 2);
+    return (voices || []).filter((v) => v && typeof v.name === 'string').sort((a, b) =>
+      (String(b.lang || '').startsWith(l) - String(a.lang || '').startsWith(l)) ||
+      ((b.localService === true) - (a.localService === true)) ||
+      (b.default - a.default) || a.name.localeCompare(b.name));
   }
 
-  return { splitSentences, changeSpeech, fileSpeech, sentenceRange, localVoices, pickVoice };
+  // Prefer an on-device default, even when online voices in the page language are available.
+  function pickVoice(voices, savedName, lang, allowOnline) {
+    const allowed = availableVoices(voices, lang, allowOnline);
+    return allowed.find((v) => v.name === savedName) ||
+      allowed.find((v) => v.localService === true) || allowed[0] || null;
+  }
+
+  // Where ← / → go from the sentence being read. `k === count` means the block has
+  // just finished and the next change is about to start, so ← replays its last sentence.
+  // Returns { idx, k } (k < 0 counts from the end of that change) or null when there is nowhere to go.
+  function sentenceStep(position, dir, changeCount) {
+    if (!position || (dir !== 1 && dir !== -1)) return null;
+    const { idx, count } = position;
+    const k = Math.max(0, Math.min(position.k, count));
+    const next = k + dir;
+    if (next >= 0 && next < count) return { idx, k: next };
+    if (dir > 0) return idx + 1 < changeCount ? { idx: idx + 1, k: 0 } : null;
+    return idx > 0 ? { idx: idx - 1, k: -1 } : { idx: 0, k: 0 };
+  }
+
+  return { splitSentences, changeSpeech, fileSpeech, sentenceRange, localVoices, availableVoices, pickVoice, sentenceStep };
 });

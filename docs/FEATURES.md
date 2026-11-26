@@ -45,16 +45,11 @@ Priority applies to the shared user outcome:
 
 The targets version and release independently. These lists summarize the intended scope of each next release; the detailed shared outcomes and per-target statuses remain defined once in the roadmap sections below.
 
-### GitHub v1.15.0
-
-The release notes use a draft date of 2026-11-24; update it if the release occurs later. Live-PR verification is complete; the release is pending.
-
-- [ ] **Automatically render a Markdown file selected from the file picker** — add an opt-in **Render Markdown when selected** setting to View options so a Markdown file chosen from GitHub's file tree or **Jump to file** opens in rich diff, unless the reviewer manually chose source for that file. Group the settings into sections, use a gear icon, and add a **Restore defaults** button.
-
 ### GitHub v1.16.0
 
 - [ ] **Switch the next Markdown file to rich diff in large pull requests** — replace passive one-file guidance with a sequential action that opens the next Markdown file in PR order and activates its rich diff without starting the unsupported PR-wide render sweep.
 - [ ] **Collapse or expand all inline conversations** — add a Threads-toolbar toggle across all currently rendered Markdown files while keeping comment badges and markers visible.
+- [ ] **Make new features discoverable after an update** — show an unread indicator and dismissible changelog for the latest five releases.
 
 ### Azure DevOps v1.5.0
 
@@ -77,6 +72,7 @@ The release notes use a draft date of 2026-11-24; update it if the release occur
 | Add a review comment from rendered paragraphs, headings, list items, table rows, and code blocks | ✅ GitHub v1.0.0 | ✅ ADO v1.2.0 |
 | Create single-line and multi-line comments with editable source-line targets | ✅ GitHub v1.0.0 | ✅ ADO v1.0.0 |
 | Track a specific line inside a fenced code block from the pointer position | ✅ | ✅ |
+| Automatically render a selected Markdown file without overriding a manual source choice | ✅ GitHub v1.15.0, opt-in | ↔ Preview stays open across file selections |
 | Keep the comment button aligned with the selected rendered line | ✅ | ✅ ADO v1.2.0 |
 | Show new comments inline immediately without a manual refresh | ✅ | ✅ |
 | Use the signed-in browser session without requiring a PAT | ✅ | ✅ |
@@ -103,7 +99,7 @@ The release notes use a draft date of 2026-11-24; update it if the release occur
 | Use a draggable, resizable, collapsible sidebar with persistent layout and selected tab | ✅ Resizing preserves tab scroll position | ✅ |
 | Browse PR-wide Changes, Threads, and Outline lists grouped in stable file order | ✅ | ✅ |
 | Navigate changed rendered blocks with cards, counters, clicks, and keyboard shortcuts | ✅ | ✅ |
-| Listen to the changes (opt-in via Enable Listening): read each changed block aloud in order, with speed and voice in View options | ✅ Unreleased | 📋 |
+| Listen to changes with adjustable speed and voice; sync settings across open tabs and stop playback when online voices are disabled; online voices require opt-in and a privacy notice | ✅ Unreleased | 📋 |
 | Show one summary card for a newly added, deleted, or renamed Markdown file where applicable | ✅ | ✅ |
 | Navigate threads globally and filter to unresolved conversations | ✅ | ✅ |
 | Hide resolved conversations throughout the rendered document and Threads | ✅ GitHub v1.14.0 | △ Threads-list filter only |
@@ -242,6 +238,12 @@ See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, a
 
 ### Navigation and focus
 
+- [ ] **P2 — Make new features discoverable after an update**
+  - **Outcome:** reviewers discover notable new features after an automatic update and can revisit recent release details later.
+  - **GitHub:** △ Unreleased in PR #22; real-PR validation pending.
+  - **ADO:** 📋 Planned separately.
+  - **Acceptance:** after a feature release, offer the changelog in the sidebar and an unread indicator on a separate help control; opening it clears the indicator, and an × closes it. Show the complete changelog for the latest five releases, newest first, including bug-fix-only releases without generating an extra announcement for them. Avoid opening it over a collapsed sidebar or an active comment draft, and preserve the selected tab and drafts. Bundle the notes locally without external requests or new permissions. Fresh installations may also show the latest announcement once.
+
 - [ ] **P1 — Preserve sidebar state and show active feedback while preparing rendered views**
   - **Outcome:** reviewers can prepare the rendered review surface without losing their compact sidebar layout and can see that longer setup phases are still active.
   - **GitHub:** ✅ GitHub v1.13.0. The book action prepares Outline without expanding a collapsed sidebar, and long rich-diff finishing phases show continuous activity.
@@ -253,16 +255,6 @@ See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, a
   - **GitHub:** 📋 Targeted for GitHub v1.16.0. Available only when GitHub's virtualized large-PR mode prevents the PR-wide render sweep.
   - **ADO:** — Preview already follows the selected file and does not have GitHub's per-file rich-diff mode.
   - **Acceptance:** replace passive large-PR guidance with a **Switch next Markdown file to rich diff** action. Use the ordered route file inventory to choose the next Markdown file after the current file, navigate through GitHub's native file destination, wait boundedly for that file to mount, and activate only its rich-diff toggle. Keep the page interactive, show progress in the initiating sidebar control, preserve the sidebar's collapsed state and selected tab, and refresh Threads, Changes, Outline, and comment markers after rich content appears. A newer navigation cancels an older pending switch. Do not wrap from the last Markdown file to the first; show that no later Markdown files remain. If navigation, mounting, or activation fails, leave the action retryable and do not start a page-wide scroll sweep. Validate the native destination against a live virtualized pull request before shipping.
-
-- [ ] **P1 — Automatically render a Markdown file selected from the file picker**
-  - **Outcome:** reviewers who prefer rendered review can choose a Markdown file from the host's file tree or file picker and land directly in the rendered view, without a separate switch to rich diff.
-  - **GitHub:** △ Implemented and manually verified for GitHub v1.15.0; release is pending. Opt-in **Render Markdown when selected** checkbox in **View options**, off by default. When enabled, selecting a Markdown file from GitHub's file tree or **Jump to file** activates that file's rich diff once it mounts, including on the first selection, unless the reviewer manually chose source for that file.
-  - **ADO:** ↔ Preview is already sticky across the pull request; once it is open, selecting another Markdown file keeps it in Preview.
-  - **Why opt-in:** many reviewers open a Markdown file to inspect its source diff, and silently changing GitHub's native view would surprise them. Reviewers who want it can turn it on once and keep it.
-  - **Acceptance:** render only the selected file and never start the PR-wide render sweep, including in GitHub's virtualized large-PR mode. Wait a limited time for the file to mount, keep the page interactive, and refresh Threads, Changes, Outline, and comment markers after rich content appears. A newer selection cancels an older pending one. Respect a per-file manual switch to source on later selections; clear that choice when the reviewer switches the file back to rich diff, reloads the page, leaves Files changed, or changes pull requests. Leave non-Markdown files untouched. Save the auto-render preference across page reloads and pull requests. Share the single-file activation path with **Switch the next Markdown file to rich diff**.
-  - **View options layout:** group **Show removed content** and **Show resolved comments** under **Visibility**, and **Render Markdown when selected** under **Behavior**. Place **Restore defaults** after both sections.
-  - **Settings icon:** replace the funnel with a gear while retaining the **View options** label. Show a small indicator on the gear whenever either visibility option hides content, including when the menu is closed; expose that state in the tooltip and accessible name. Enabling auto-render alone does not show the indicator.
-  - **Restore defaults:** add a **Restore defaults** button to View options that checks **Show removed content** and **Show resolved comments** and turns off **Render Markdown when selected**. It applies immediately, keeps the dropdown open, clears the hidden-content indicator, and does not change sidebar position, size, collapsed state, or selected tab. Disable it when every option already matches its default.
 
 - [ ] **P2 — Use discoverable sidebar collapse instead of full dismissal**
   - **Outcome:** reviewers can reclaim page space without creating a fully hidden state that is difficult to discover or recover from.

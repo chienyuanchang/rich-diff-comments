@@ -26,6 +26,8 @@ The preflight script (`scripts/preflight.ps1`) implements the **policy-lens chec
 ## CHANGELOG / release-notes writing rules
 
 > **⚠️ CHANGELOG, README "What's new" blocks, and submission-template release notes are user-facing, not engineering notes.** Every bullet must read like a feature announcement to someone who has never opened the source code.
+
+For every GitHub release, update `CHANGELOG.md`; GitHub dev-sync bundles it for the in-product history automatically. Advance the announcement version in `extensions/github/releaseNotes.js` only for feature releases; leave it unchanged for bug-fix-only releases so those remain in the history without triggering a new in-product announcement.
 >
 > Applies to **every** doc that ships release notes:
 >
@@ -159,7 +161,7 @@ Before submitting, edit these two files **in place** with the changes for this r
 - [ ] **Description** (the long marketing copy) — update if a feature added in this version belongs in the listing description. Per [Disclosure Requirements](https://developer.chrome.com/docs/webstore/program-policies/disclosure-requirements), all functionality must be disclosed to users. If a new feature is significant enough to appear in screenshots, it should appear in the description.
 
 - [ ] **"What's new in recent releases" lead block at the TOP of the Description**—every release must rotate this block so it shows up to the **latest 3 versions** from the target changelog, newest first, each under a `vX.Y.Z (YYYY-MM-DD)` sub-header.
-  - Existing users who auto-update only see the **store listing description**, not the changelog or release notes — so the "What's new" block at the top of the description is the only place they'll learn what changed.
+  - Existing users who visit the store listing after an auto-update can discover changes in this block; the GitHub target also provides an in-product feature summary.
   - Putting it **first** (before the evergreen "GitHub's Files changed rich-diff…" pitch) means returning visitors immediately see the new value without having to re-read the full description.
   - Showing **3 versions** (not just the current one) catches users who skip a release: someone auto-updating from v1.3.0 → v1.5.0 still sees v1.4.0's changes here. Same reasoning as the bottom "What's new in this version" section, just in shorter form.
   - Keep it short—**1–2 bullets per version, 4–6 total**, one line each, in the same user-facing voice as the target changelog.

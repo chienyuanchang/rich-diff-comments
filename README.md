@@ -25,7 +25,7 @@ GitHub rich diff and Azure DevOps Preview render Markdown beautifully, but neith
 - **Threads sidebar** docked to the right edge lists every review thread (author, snippet, file:line, and target-supported status tags) — click to jump, with prev/next chevrons and a comment counter.
 - **Outline tab** in the sidebar shows the heading tree of every changed `.md` file with comment-count pills, per-section folding, and bulk `Fold H1 / H2 / H3` / `Expand all` controls.
 - **Changes tab** in the sidebar lists every changed block (paragraph / list item / table row / code block / heading / blockquote) with a `+` / `−` / `±` kind glyph, file:line, and a snippet. The header also gets a `◀ N/M ▶` counter so you can step through changes without opening the tab. Best way to scan a Markdown PR for the first time without re-reading the unchanged prose.
-- **Listen to the changes** (GitHub, optional — turn on Enable Listening in View options): the play button next to the Changes counter reads each change aloud with the browser's voice and moves on to the next; the sentence being spoken is highlighted, `◀` / `▶` skip changes and `←` / `→` step by sentence while it reads. Speed and voice are in View options. Only voices installed on your device are used, so the text is never sent to a speech service.
+- **Listen to the changes** (GitHub, optional — turn on Enable Listening in View options): the play button next to the Changes counter reads changes aloud and highlights the current sentence. `◀` / `▶` skip changes, and `←` / `→` step by sentence. Scrolling the page stops it from pulling you back; selecting a change or using the sentence arrows resumes following. If speech fails, Listening stops and shows a message. Speed and voice are in View options. By default, only browser-reported on-device voices are offered. Allow online voices also offers network voices, which may send the PR text being read to their provider. Available voices vary by browser and device; Default prefers an on-device voice when available.
 - **Native file navigation stays synchronized:** clicking a file in either host's file tree updates the rendered review surface and the extension's Changes, Threads, and Outline context; extension navigation selects the corresponding native file.
 - **Copy Markdown:** copy a rendered comment's original Markdown body for reuse in another discussion or document.
 - **Keyboard shortcuts:** `j` / `k` next / previous thread, `h` / `l` first / last thread, `[` / `]` previous / next change, `{` / `}` (Shift+[, Shift+]) first / last change, `1` / `2` / `3` switch sidebar tab (Changes / Threads / Outline), `t` toggle the sidebar, `Shift+T` reset its position.
@@ -33,6 +33,7 @@ GitHub rich diff and Azure DevOps Preview render Markdown beautifully, but neith
 
 ### GitHub-specific features
 
+- **What's new:** discover feature updates in a dismissible sidebar changelog. An unread indicator appears on the help button; open it to clear the indicator and browse the complete notes for the latest five releases. A fresh installation may show it once.
 - **Start rendered review across the pull request:** render every changed Markdown file as rich diff in one sweep when GitHub's PR mode can retain them; optimized large PRs receive one-file-at-a-time guidance.
 - **View options:** use the sidebar's gear to show or hide removed content and resolved comments independently. An indicator shows when content is hidden. You can also opt in to automatically rendering a Markdown file selected from the file tree or Jump to file. This applies on the first selection and later selections unless you manually switch that file to source diff. Later selections keep it in source while you stay on the same pull request's Files changed page. Your source choice resets when you leave Files changed, reload, or switch pull requests, while the auto-render setting stays saved. Restore defaults resets the options.
 - **Rich-diff integration:** preserve GitHub's added/removed rendering, expose outdated-thread state and author-association badges, and keep heading anchor links working in rendered Markdown.
@@ -73,7 +74,7 @@ No separate login, setup, or Personal Access Token is required. See [INSTALL.md]
   - **Azure DevOps:** `extensions/ado/`
 5. Open a pull request's changed-files view. Select rich diff for a GitHub Markdown file, or use the Azure DevOps sidebar's **Open Markdown Preview** action.
 
-After editing a target's content script, click the reload icon on the extension card and hard-refresh the PR (Ctrl+Shift+R). If you edit anything under `src/lib/`, run `.\scripts\dev-sync.ps1 -Target github` or `-Target ado` first, then reload that extension.
+After editing a target's content script, click the reload icon on the extension card and hard-refresh the PR (Ctrl+Shift+R). If you edit anything under `src/lib/`, run `.\scripts\dev-sync.ps1 -Target github` or `-Target ado` first, then reload that extension. After editing `CHANGELOG.md`, sync the GitHub target to refresh its bundled changelog.
 
 ## Usage
 
@@ -88,6 +89,8 @@ After editing a target's content script, click the reload icon on the extension 
 extensions/github/     Chrome / Edge load unpacked from here
   manifest.json           Extension manifest (Manifest V3)
   content.js              Main content script (DOM + fetch glue)
+  releaseNotes.js         Feature-announcement version
+  changelogData.js        Generated from repo-root CHANGELOG.md (git-ignored)
   styles.css              Comment button and box styles
   icons/                  Extension icons
   src/lib/                Mirrored from repo-root src/lib (git-ignored)

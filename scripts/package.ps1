@@ -3,7 +3,7 @@
 # Builds a publish-ready zip for Chrome Web Store / Edge Add-ons.
 #
 # Runs dev-sync.ps1 first to ensure the target folder has the latest
-# shared src/lib/*.js, target adapter, and target privacy policy mirrored in, then packages
+# shared src/lib/*.js, target adapter, target privacy policy, and GitHub changelog mirrored in, then packages
 # extensions/<target>/ so the zip contents are exactly what Chrome sees
 # when the folder is dev-loaded.
 #
@@ -57,6 +57,13 @@ try {
     "icons",
     "PRIVACY.md"
   ) | Where-Object { Test-Path $_ }
+
+  if ($Target -eq 'github') {
+    foreach ($releaseFile in @("releaseNotes.js", "changelogData.js")) {
+      if (-not (Test-Path $releaseFile)) { throw "GitHub $releaseFile is missing" }
+      $include += $releaseFile
+    }
+  }
 
   Compress-Archive -Path $include -DestinationPath $Output -Force
 

@@ -19,7 +19,7 @@ for (const [tabName, selector] of [
       const tab = sidebar.querySelector(`.grdc-sidebar-tab[data-grdc-tab="${tabName}"]`);
       tab.hidden = false;
       tab.click();
-      sidebar.style.width = '480px';
+      sidebar.style.width = '482px';
       sidebar.style.height = '300px';
 
       const scroller = sidebar.querySelector(selector);

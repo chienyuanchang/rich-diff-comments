@@ -2,10 +2,10 @@
 #
 # Copies shared source-of-truth files into an extension target folder
 # so Chrome / Edge can load the folder directly. Runs before package.ps1
-# and any time you edit src/lib/* while an extension is dev-loaded.
+# and any time you edit src/lib/* or the GitHub changelog while an extension is dev-loaded.
 #
 # Why: Chromium requires all files a manifest references to live at or
-# below the manifest's folder. Our shared src/lib/*.js, target adapters, and privacy policies
+# below the manifest's folder. Our shared src/lib/*.js, target adapters, privacy policies, and GitHub changelog
 # live at the repo root as the single source of truth. This script
 # mirrors them into extensions/<target>/ at build/dev time. The mirrored
 # copies are git-ignored via .gitignore.
@@ -68,6 +68,17 @@ try {
     Copy-Item -Path $srcAdapter -Destination $dstAdapters -Force
     $relAdapter = (Join-Path $dstAdapters "$Target.js").Replace($root, '.')
     Write-Host "[dev-sync] $Target : src/adapters/$Target.js copied -> $relAdapter"
+  }
+
+  if ($Target -eq 'github') {
+    $changelogPath = Join-Path $root 'CHANGELOG.md'
+    if (-not (Test-Path $changelogPath)) { throw "GitHub CHANGELOG.md is missing" }
+    $changelog = [System.IO.File]::ReadAllText($changelogPath, [System.Text.Encoding]::UTF8)
+    $json = ConvertTo-Json -InputObject $changelog -Compress
+    $script = 'globalThis.GRDC_CHANGELOG = ' + $json + ';' + "`n"
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText((Join-Path $targetDir 'changelogData.js'), $script, $utf8NoBom)
+    Write-Host "[dev-sync] github : CHANGELOG.md bundled -> changelogData.js"
   }
 
   # Target privacy mirror. GitHub keeps the historical PRIVACY.md source;

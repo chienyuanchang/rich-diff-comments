@@ -38,7 +38,7 @@ The extension does not request any other permissions and does not have access to
 
 ## Local storage
 
-The extension stores sidebar layout, display preferences, and the last dismissed feature announcement in your browser's local storage under the `github.com` origin. It does not store credentials, comment drafts, raw Markdown files, or review-thread contents. Version 1.10.0 also deletes the two legacy PAT-related keys used by an older dormant fallback without reading their values.
+The extension stores sidebar layout, display preferences, and the last feature announcement you opened or dismissed in your browser's local storage under the `github.com` origin. It does not store credentials, comment drafts, raw Markdown files, or review-thread contents. Version 1.10.0 also deletes the two legacy PAT-related keys used by an older dormant fallback without reading their values.
 
 ## Authentication
 

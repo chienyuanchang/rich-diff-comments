@@ -160,12 +160,12 @@ test('new rich diffs inherit the mode and another pull request resets it', async
   await expect(page.locator('#later-old')).toBeVisible();
 });
 
-test('View options stays at the toolbar edge at minimum and expanded widths', async ({ page }) => {
+test('help follows View options at the toolbar edge at minimum and expanded widths', async ({ page }) => {
   await setup(page);
   const toggle = page.getByRole('button', { name: /^View options/ });
   for (const collapsed of [false, true]) {
     if (collapsed) await page.locator('.grdc-sidebar-collapse').click();
-    for (const width of [520, 640]) {
+    for (const width of [462, 640]) {
       await page.locator('.grdc-sidebar').evaluate((sidebar, value) => {
         sidebar.style.width = `${value}px`;
         sidebar.style.left = '500px';
@@ -176,10 +176,12 @@ test('View options stays at the toolbar edge at minimum and expanded widths', as
       const buttonBox = await toggle.boundingBox();
       expect(buttonBox.width).toBe(24);
       expect(buttonBox.height).toBe(24);
-      expect(helpBox.x - separatorBox.x - separatorBox.width).toBe(8);
-      expect(buttonBox.x - helpBox.x - helpBox.width).toBeGreaterThanOrEqual(8);
-      expect(headerBox.x + headerBox.width - buttonBox.x - buttonBox.width).toBe(8);
-      await expect(page.locator('.grdc-sidebar-header')).toHaveCSS('column-gap', '8px');
+      expect(helpBox.width).toBe(24);
+      expect(helpBox.height).toBe(24);
+      expect(buttonBox.x - separatorBox.x - separatorBox.width).toBeGreaterThanOrEqual(4);
+      expect(helpBox.x - buttonBox.x - buttonBox.width).toBe(4);
+      expect(headerBox.x + headerBox.width - helpBox.x - helpBox.width).toBe(8);
+      await expect(page.locator('.grdc-sidebar-header')).toHaveCSS('column-gap', '4px');
       await expect(page.locator('.grdc-sidebar-header')).toHaveCSS('padding-left', '8px');
       await expect(page.locator('.grdc-sidebar-header')).toHaveCSS('padding-right', '8px');
       await expect(toggle).toHaveCSS('margin-right', '0px');
@@ -203,7 +205,7 @@ for (const theme of [
     for (const collapsed of [false, true]) {
       if (collapsed) await page.locator('.grdc-sidebar-collapse').click();
       await page.mouse.move(20, 700);
-      await expect(page.locator('.grdc-sidebar')).toHaveCSS('min-width', '520px');
+      await expect(page.locator('.grdc-sidebar')).toHaveCSS('min-width', '462px');
       for (const option of ['Show removed content', 'Show resolved comments']) {
         const button = funnel;
         const inactiveBox = await button.boundingBox();

@@ -27,7 +27,7 @@ The preflight script (`scripts/preflight.ps1`) implements the **policy-lens chec
 
 > **⚠️ CHANGELOG, README "What's new" blocks, and submission-template release notes are user-facing, not engineering notes.** Every bullet must read like a feature announcement to someone who has never opened the source code.
 
-For GitHub feature releases, update the bundled `extensions/github/releaseNotes.js` with the release version and a concise selection of user-facing feature highlights. Do not change its version for bug-fix-only releases; leaving it unchanged avoids a new in-product announcement.
+For every GitHub release, update `CHANGELOG.md`; GitHub dev-sync bundles it for the in-product history automatically. Advance the announcement version in `extensions/github/releaseNotes.js` only for feature releases; leave it unchanged for bug-fix-only releases so those remain in the history without triggering a new in-product announcement.
 >
 > Applies to **every** doc that ships release notes:
 >

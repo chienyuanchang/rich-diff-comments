@@ -163,7 +163,7 @@ async function gotoPRPage(page, { unreadReleaseNotes = false } = {}) {
     if (!unread && !localStorage.getItem('grdc_release_notes_seen')) {
       localStorage.setItem('grdc_release_notes_seen', version);
     }
-  }, { version: RELEASE_NOTES.version, unread: unreadReleaseNotes });
+  }, { version: RELEASE_NOTES.announcementVersion, unread: unreadReleaseNotes });
 }
 
 /**
@@ -173,7 +173,12 @@ async function gotoPRPage(page, { unreadReleaseNotes = false } = {}) {
  */
 async function injectExtension(page) {
   for (const scriptPath of CONTENT_SCRIPTS) {
-    await page.addScriptTag({ path: resolveScriptPath(scriptPath) });
+    if (scriptPath === 'changelogData.js') {
+      const changelog = fs.readFileSync(path.join(REPO_ROOT, 'CHANGELOG.md'), 'utf8');
+      await page.addScriptTag({ content: `globalThis.GRDC_CHANGELOG = ${JSON.stringify(changelog)};` });
+    } else {
+      await page.addScriptTag({ path: resolveScriptPath(scriptPath) });
+    }
   }
 }
 

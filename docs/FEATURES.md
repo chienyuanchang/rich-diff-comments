@@ -49,7 +49,7 @@ The targets version and release independently. These lists summarize the intende
 
 - [ ] **Switch the next Markdown file to rich diff in large pull requests** — replace passive one-file guidance with a sequential action that opens the next Markdown file in PR order and activates its rich diff without starting the unsupported PR-wide render sweep.
 - [ ] **Collapse or expand all inline conversations** — add a Threads-toolbar toggle across all currently rendered Markdown files while keeping comment badges and markers visible.
-- [ ] **Make new features discoverable after an update** — show a dismissible summary and an unread indicator, with a way to revisit the latest notes.
+- [ ] **Make new features discoverable after an update** — show an unread indicator and dismissible changelog for the latest five releases.
 
 ### Azure DevOps v1.5.0
 
@@ -239,10 +239,10 @@ See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, a
 ### Navigation and focus
 
 - [ ] **P2 — Make new features discoverable after an update**
-  - **Outcome:** reviewers discover notable new features after an automatic update and can revisit a concise summary later.
+  - **Outcome:** reviewers discover notable new features after an automatic update and can revisit recent release details later.
   - **GitHub:** △ Unreleased in PR #22; real-PR validation pending.
   - **ADO:** 📋 Planned separately.
-  - **Acceptance:** after a feature release, offer a dismissible summary in the sidebar and an unread indicator on a separate help control; allow the latest notes to be reopened after dismissal. Avoid opening the summary over a collapsed sidebar or an active comment draft, and preserve the selected tab and drafts. Do not automatically announce bug-fix-only releases. Bundle the notes locally without external requests or new permissions. Fresh installations may also show the latest announcement once.
+  - **Acceptance:** after a feature release, offer the changelog in the sidebar and an unread indicator on a separate help control; opening it clears the indicator, and an × closes it. Show the complete changelog for the latest five releases, newest first, including bug-fix-only releases without generating an extra announcement for them. Avoid opening it over a collapsed sidebar or an active comment draft, and preserve the selected tab and drafts. Bundle the notes locally without external requests or new permissions. Fresh installations may also show the latest announcement once.
 
 - [ ] **P1 — Preserve sidebar state and show active feedback while preparing rendered views**
   - **Outcome:** reviewers can prepare the rendered review surface without losing their compact sidebar layout and can see that longer setup phases are still active.

@@ -36,6 +36,7 @@
     parseMarkersMap,
     computeTableRowLine,
     renderMarkdownPreview,
+    recentChangelog,
     findFenceRangeAroundLine,
     sortThreadHeads,
     codeLineMarkerLayout,
@@ -3507,7 +3508,7 @@
   // We clamp persisted sizes on both read and write so a transient narrow
   // render (e.g. during initial paint before content settles) can't poison
   // localStorage with a tiny size that the next page load would honor.
-  const SIDEBAR_MIN_WIDTH = 520;
+  const SIDEBAR_MIN_WIDTH = 462;
   const SIDEBAR_MIN_HEIGHT = 120;
   const SIDEBAR_TAB_KEY = 'grdc_sidebar_tab';
   const RELEASE_NOTES_SEEN_KEY = 'grdc_release_notes_seen';
@@ -3516,7 +3517,7 @@
     const button = sidebar.querySelector('.grdc-sidebar-release-notes');
     let unread;
     try {
-      unread = localStorage.getItem(RELEASE_NOTES_SEEN_KEY) !== window.GRDC_RELEASE_NOTES.version;
+      unread = localStorage.getItem(RELEASE_NOTES_SEEN_KEY) !== window.GRDC_RELEASE_NOTES.announcementVersion;
     } catch (error) {
       console.warn('[GRDC] Could not read release notes state:', error);
       unread = true;
@@ -3534,33 +3535,56 @@
     sidebar.querySelector('.grdc-sidebar-release-notes').setAttribute('aria-expanded', String(show));
   }
 
+  function markReleaseNotesSeen(sidebar, version) {
+    try {
+      localStorage.setItem(RELEASE_NOTES_SEEN_KEY, version);
+    } catch (error) {
+      console.warn('[GRDC] Could not save release notes state:', error);
+    }
+    syncReleaseNotesIndicator(sidebar);
+  }
+
   function setupReleaseNotes(sidebar, collapsed) {
     const notes = window.GRDC_RELEASE_NOTES;
-    const list = sidebar.querySelector('.grdc-release-notes-list');
-    sidebar.querySelector('.grdc-release-notes-version').textContent = `Version ${notes.version}`;
-    for (const highlight of notes.highlights) {
-      const item = document.createElement('li');
-      item.textContent = highlight;
-      list.appendChild(item);
+    const history = sidebar.querySelector('.grdc-release-notes-history');
+    try {
+      for (const release of recentChangelog(window.GRDC_CHANGELOG, notes.announcementVersion)) {
+        const section = document.createElement('section');
+        const heading = document.createElement('h3');
+        heading.textContent = release.title;
+        const body = document.createElement('div');
+        const template = document.createElement('template');
+        template.innerHTML = renderMarkdownPreview(release.body.replace(/^(#{3,5})(\s)/gm, '#$1$2'));
+        // Keep bundled notes offline even if a future changelog contains images.
+        for (const image of template.content.querySelectorAll('img')) {
+          const label = image.alt || 'Image';
+          const source = image.getAttribute('src');
+          image.replaceWith(document.createTextNode(source ? `${label} (${source})` : label));
+        }
+        body.appendChild(template.content);
+        section.append(heading, body);
+        history.appendChild(section);
+      }
+    } catch (error) {
+      console.error('[GRDC] Could not display the bundled changelog:', error);
+      const message = document.createElement('p');
+      message.setAttribute('role', 'alert');
+      message.textContent = 'Could not load the changelog. Reload the extension and try again.';
+      history.replaceChildren(message);
     }
     const button = sidebar.querySelector('.grdc-sidebar-release-notes');
     button.addEventListener('click', () => {
-      const wasCollapsed = sidebar.classList.contains('grdc-sidebar-collapsed');
-      if (wasCollapsed) {
+      if (sidebar.classList.contains('grdc-sidebar-collapsed')) {
         sidebar.classList.remove('grdc-sidebar-collapsed');
         try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, '0'); } catch (error) {
           console.warn('[GRDC] Could not save sidebar state:', error);
         }
       }
-      showReleaseNotes(sidebar, wasCollapsed || sidebar.querySelector('.grdc-release-notes').hidden);
+      markReleaseNotesSeen(sidebar, notes.announcementVersion);
+      showReleaseNotes(sidebar, true);
     });
-    sidebar.querySelector('.grdc-release-notes-dismiss').addEventListener('click', () => {
-      try {
-        localStorage.setItem(RELEASE_NOTES_SEEN_KEY, notes.version);
-      } catch (error) {
-        console.warn('[GRDC] Could not save release notes state:', error);
-      }
-      syncReleaseNotesIndicator(sidebar);
+    sidebar.querySelector('.grdc-release-notes-close').addEventListener('click', () => {
+      markReleaseNotesSeen(sidebar, notes.announcementVersion);
       showReleaseNotes(sidebar, false);
       button.focus();
     });
@@ -3591,6 +3615,7 @@
     const listenEnabled = sidebar.querySelector('.grdc-listen-enabled');
     const listenOnline = sidebar.querySelector('.grdc-listen-online');
     sidebar.classList.toggle('grdc-listen-on', listenEnabled.checked);
+    fitSidebarToHeader(sidebar);
     sidebar.querySelector('.grdc-restore-defaults').disabled =
       removed.checked && resolved.checked && !autoRender.checked && !listenEnabled.checked && !listenOnline.checked;
   }
@@ -3950,6 +3975,28 @@
     try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, isCollapsed ? '1' : '0'); } catch (_) {}
   }
 
+  // The default width fits typical counters with no slack; widen only when
+  // long counts (e.g. `12/34 (123)`) would otherwise clip the toolbar.
+  function fitSidebarToHeader(sidebar) {
+    const header = sidebar.querySelector('.grdc-sidebar-header');
+    if (!header) return;
+    sidebar.style.minWidth = '';
+    const box = header.getBoundingClientRect();
+    const contentRight = Math.max(...Array.from(header.children, (child) => child.getBoundingClientRect().right));
+    const overflow = Math.ceil(contentRight + parseFloat(getComputedStyle(header).paddingRight) - box.right);
+    if (overflow > 0) {
+      sidebar.style.minWidth = `${parseFloat(getComputedStyle(sidebar).minWidth) + overflow}px`;
+    }
+  }
+
+  function observeSidebarHeaderFit(sidebar) {
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => fitSidebarToHeader(sidebar));
+    for (const counter of sidebar.querySelectorAll('.grdc-sidebar-changes-count, .grdc-sidebar-count')) {
+      ro.observe(counter);
+    }
+  }
+
   // Persist resize: watch for size changes via ResizeObserver and write to
   // localStorage on a debounce so we don't thrash storage during the drag.
   function observeSidebarResize(sidebar) {
@@ -3965,6 +4012,9 @@
         try {
           const w = sidebar.offsetWidth;
           const h = sidebar.offsetHeight;
+          // Automatic widening for long counters is not a user resize.
+          const autoMin = parseFloat(sidebar.style.minWidth);
+          if (autoMin && w <= autoMin + 2) return;
           // Don't persist obviously-bogus sizes. Anything below the CSS
           // min-* is a transient render glitch, not a user resize.
           const clamped = window.GRDC.clampSize(w, h, SIDEBAR_MIN_WIDTH, SIDEBAR_MIN_HEIGHT);
@@ -4205,16 +4255,16 @@
             </button>
           </span>
           <span class="grdc-sidebar-separator" aria-hidden="true"></span>
-          <button type="button" class="grdc-sidebar-release-notes" title="What's new" aria-label="What's new" aria-expanded="false" aria-controls="grdc-release-notes" data-unread="false">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 1.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Zm0 1.25a2.1 2.1 0 0 0-2.1 2.1.75.75 0 0 0 1.5 0 .6.6 0 1 1 .95.49c-.69.49-1.1 1.08-1.1 1.91v.25a.75.75 0 0 0 1.5 0v-.25c0-.21.06-.36.47-.65A2.1 2.1 0 0 0 8 3.75ZM8 10a.9.9 0 1 0 0 1.8A.9.9 0 0 0 8 10Z"/></svg>
-            <span class="grdc-release-notes-indicator" aria-hidden="true"></span>
-          </button>
           <button type="button" class="grdc-sidebar-header-filter" title="View options" aria-label="View options" aria-haspopup="dialog" aria-expanded="false" aria-controls="grdc-view-options" popovertarget="grdc-view-options" data-filtered="false">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round">
               <path d="M6.7 1h2.6l.3 1.5c.4.1.8.25 1.1.45l1.3-.85 1.85 1.85-.85 1.3c.2.3.35.7.45 1.1l1.5.35v2.6l-1.5.3c-.1.4-.25.8-.45 1.1l.85 1.3-1.85 1.85-1.3-.85c-.3.2-.7.35-1.1.45L9.3 15H6.7l-.3-1.55a5 5 0 0 1-1.1-.45l-1.3.85-1.85-1.85.85-1.3a5 5 0 0 1-.45-1.1L1 9.3V6.7l1.55-.35c.1-.4.25-.8.45-1.1l-.85-1.3L4 2.1l1.3.85c.3-.2.7-.35 1.1-.45Z"/>
               <circle cx="8" cy="8" r="1.7"/>
             </svg>
             <span class="grdc-filter-indicator" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="grdc-sidebar-release-notes" title="What's new" aria-label="What's new" aria-expanded="false" aria-controls="grdc-release-notes" data-unread="false">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 1.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Zm0 1.25a2.1 2.1 0 0 0-2.1 2.1.75.75 0 0 0 1.5 0 .6.6 0 1 1 .95.49c-.69.49-1.1 1.08-1.1 1.91v.25a.75.75 0 0 0 1.5 0v-.25c0-.21.06-.36.47-.65A2.1 2.1 0 0 0 8 3.75ZM8 10a.9.9 0 1 0 0 1.8A.9.9 0 0 0 8 10Z"/></svg>
+            <span class="grdc-release-notes-indicator" aria-hidden="true"></span>
           </button>
         </div>
         <div class="grdc-error grdc-listen-status" role="alert"></div>
@@ -4244,10 +4294,11 @@
           <button class="grdc-sidebar-tab" data-grdc-tab="outline" role="tab" aria-selected="false" title="Outline (3)">Outline</button>
         </div>
         <section id="grdc-release-notes" class="grdc-release-notes" aria-labelledby="grdc-release-notes-title" hidden>
-          <h2 id="grdc-release-notes-title">What's new</h2>
-          <p class="grdc-release-notes-version"></p>
-          <ul class="grdc-release-notes-list"></ul>
-          <button type="button" class="grdc-release-notes-dismiss">Got it</button>
+          <div class="grdc-release-notes-heading">
+            <h2 id="grdc-release-notes-title">What's new</h2>
+            <button type="button" class="grdc-release-notes-close" aria-label="Close What's new">×</button>
+          </div>
+          <div class="grdc-release-notes-history"></div>
         </section>
         <div class="grdc-sidebar-pane grdc-sidebar-pane-threads" data-grdc-pane="threads">
           <div class="grdc-sidebar-list" role="list"></div>
@@ -4273,6 +4324,7 @@
       applySidebarPersistedPos(sidebar);
       attachSidebarResizeScrollLock(sidebar);
       observeSidebarResize(sidebar);
+      observeSidebarHeaderFit(sidebar);
 
       sidebar.querySelector('.grdc-sidebar-collapse').addEventListener('click', () => {
         const isCollapsed = sidebar.classList.toggle('grdc-sidebar-collapsed');

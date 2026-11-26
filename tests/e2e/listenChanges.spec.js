@@ -91,36 +91,96 @@ test('Play reads each change aloud and moves on; ‹ › jump while listening; P
   expect((await spoken(page)).length).toBe(before);
 });
 
-test('toolbar keeps balanced outer insets with Listening on and off', async ({ page }) => {
+test('compact toolbar keeps counters and controls visible with Listening on and off', async ({ page }) => {
   await setup(page, undefined, { enabled: false });
 
-  const expectBalancedInsets = async () => {
-    const insets = await page.evaluate(() => {
+  const expectToolbarFits = async () => {
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const layout = await page.evaluate(() => {
       const header = document.querySelector('.grdc-sidebar-header');
       const leftIcon = header.querySelector('.grdc-sidebar-collapse svg').getBoundingClientRect();
-      const rightIcon = header.querySelector('.grdc-sidebar-header-filter svg').getBoundingClientRect();
+      const rightIcon = header.querySelector('.grdc-sidebar-release-notes svg').getBoundingClientRect();
       const bounds = header.getBoundingClientRect();
+      const controls = Array.from(header.children)
+        .map((element) => element.getBoundingClientRect())
+        .filter((rect) => rect.width && rect.height)
+        .map((rect) => ({ left: rect.left, right: rect.right }));
+      const groups = Array.from(header.querySelectorAll('.grdc-sidebar-changes-nav, .grdc-sidebar-nav'))
+        .map((group) => Array.from(group.children)
+          .map((element) => element.getBoundingClientRect())
+          .filter((rect) => rect.width && rect.height)
+          .map((rect) => ({ left: rect.left, right: rect.right })));
+      const counters = Array.from(header.querySelectorAll('.grdc-sidebar-changes-count, .grdc-sidebar-count'))
+        .map((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const text = range.getBoundingClientRect();
+          const box = element.getBoundingClientRect();
+          return { height: text.height, textLeft: text.left, textRight: text.right, left: box.left, right: box.right, width: box.width };
+        });
+      const largeButtons = Array.from(header.querySelectorAll(
+        '.grdc-sidebar-render-md, .grdc-sidebar-diff-icon, .grdc-sidebar-prev-change, .grdc-sidebar-next-change, .grdc-sidebar-thread-icon, .grdc-sidebar-listen'
+      )).map((button) => button.getBoundingClientRect())
+        .filter((rect) => rect.width && rect.height)
+        .map((rect) => ({ width: rect.width, height: rect.height }));
       return {
         left: leftIcon.left - bounds.left,
         right: bounds.right - rightIcon.right,
+        headerLeft: bounds.left,
+        headerRight: bounds.right,
+        controls,
+        groups,
+        counters,
+        largeButtons,
       };
     });
-    expect(Math.abs(insets.left - insets.right)).toBeLessThanOrEqual(1);
+    expect(Math.abs(layout.left - layout.right)).toBeLessThanOrEqual(1);
+    expect(layout.controls[0].left).toBeGreaterThanOrEqual(layout.headerLeft + 7);
+    expect(layout.controls.at(-1).right).toBeLessThanOrEqual(layout.headerRight - 7);
+    for (let i = 1; i < layout.controls.length; i++) {
+      expect(layout.controls[i].left).toBeGreaterThanOrEqual(layout.controls[i - 1].right);
+    }
+    for (const group of layout.groups) {
+      for (let i = 1; i < group.length; i++) {
+        expect(group[i].left).toBeGreaterThanOrEqual(group[i - 1].right);
+      }
+    }
+    for (const counter of layout.counters) {
+      expect(counter.width).toBeGreaterThanOrEqual(56);
+      expect(counter.height).toBeLessThanOrEqual(16);
+      expect(counter.textLeft).toBeGreaterThanOrEqual(counter.left - 0.5);
+      expect(counter.textRight).toBeLessThanOrEqual(counter.right + 0.5);
+    }
+    for (const button of layout.largeButtons) {
+      expect(button.width).toBeGreaterThanOrEqual(30);
+      expect(button.height).toBeGreaterThanOrEqual(30);
+    }
   };
 
-  await expectBalancedInsets();
-  await page.evaluate(() => {
-    document.querySelector('.grdc-sidebar-changes-count').textContent = '12/34 (123)';
-    document.querySelector('.grdc-sidebar-count').textContent = '12/34 (123)';
+  await expectToolbarFits();
+  const settingsGap = await page.evaluate(() => {
+    const separator = Array.from(document.querySelectorAll('.grdc-sidebar-header > .grdc-sidebar-separator')).at(-1);
+    return document.querySelector('.grdc-sidebar-header-filter').getBoundingClientRect().left -
+      separator.getBoundingClientRect().right;
   });
-  await expectBalancedInsets();
+  expect(settingsGap).toBeLessThanOrEqual(5);
+  await page.evaluate(() => {
+    for (const counter of document.querySelectorAll('.grdc-sidebar-changes-count, .grdc-sidebar-count')) {
+      counter.innerHTML = '12/34 <span class="grdc-sidebar-count-total">(123)</span>';
+    }
+  });
+  await expectToolbarFits();
   await page.getByRole('button', { name: /^View options/ }).click();
   await page.getByRole('checkbox', { name: 'Enable Listening', exact: true }).check();
   await page.keyboard.press('Escape');
-  await expectBalancedInsets();
+  await expectToolbarFits();
 
   await page.locator('.grdc-sidebar-collapse').click();
-  await expectBalancedInsets();
+  await expectToolbarFits();
+  await page.getByRole('button', { name: /^View options/ }).click();
+  await page.getByRole('checkbox', { name: 'Enable Listening', exact: true }).uncheck();
+  await page.keyboard.press('Escape');
+  await expectToolbarFits();
 });
 
 test('← / → step by sentence while listening, and the spoken sentence is highlighted', async ({ page }) => {
@@ -326,7 +386,7 @@ test('Listening is off by default; Enable Listening shows the play button, speed
   const enable = menu.getByRole('checkbox', { name: 'Enable Listening' });
   const restore = menu.getByRole('button', { name: 'Restore defaults' });
   await expect(play).toBeHidden();
-  await expect(page.locator('.grdc-sidebar')).toHaveCSS('min-width', '520px');
+  await expect(page.locator('.grdc-sidebar')).toHaveCSS('min-width', '462px');
 
   await page.getByRole('button', { name: /^View options/ }).click();
   await expect(menu.getByRole('group', { name: 'Listening' })).toBeVisible();
@@ -342,7 +402,7 @@ test('Listening is off by default; Enable Listening shows the play button, speed
   expect(await page.evaluate(() => localStorage.getItem('grdc_listen_enabled'))).toBe('1');
   await page.keyboard.press('Escape');
   await expect(play).toBeVisible();
-  await expect(page.locator('.grdc-sidebar')).toHaveCSS('min-width', '552px');
+  await expect(page.locator('.grdc-sidebar')).toHaveCSS('min-width', '496px');
 
   // Turning it off stops speech in progress; Restore defaults turns it off too.
   await play.click();

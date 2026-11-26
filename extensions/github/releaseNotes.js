@@ -1,14 +1,9 @@
 (function (root) {
   'use strict';
 
-  // Change this version only when publishing new feature announcements.
+  // Bug-fix releases still appear in the changelog, but do not advance this marker.
   const notes = {
-    version: '1.16.0',
-    highlights: [
-      'Listen to changes aloud and follow along with highlighted sentences.',
-      'Choose online voices in View options, with a privacy notice before use.',
-      'Browse elsewhere while listening without being pulled back to the current change.',
-    ],
+    announcementVersion: '1.16.0',
   };
 
   if (typeof module === 'object' && module.exports) module.exports = notes;

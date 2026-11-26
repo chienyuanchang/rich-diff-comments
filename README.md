@@ -33,7 +33,7 @@ GitHub rich diff and Azure DevOps Preview render Markdown beautifully, but neith
 
 ### GitHub-specific features
 
-- **What's new:** discover feature updates in a dismissible sidebar summary. An unread indicator appears on the help button, which also lets you reopen the latest summary. A fresh installation may show the summary once.
+- **What's new:** discover feature updates in a dismissible sidebar changelog. An unread indicator appears on the help button; open it to clear the indicator and browse the complete notes for the latest five releases. A fresh installation may show it once.
 - **Start rendered review across the pull request:** render every changed Markdown file as rich diff in one sweep when GitHub's PR mode can retain them; optimized large PRs receive one-file-at-a-time guidance.
 - **View options:** use the sidebar's gear to show or hide removed content and resolved comments independently. An indicator shows when content is hidden. You can also opt in to automatically rendering a Markdown file selected from the file tree or Jump to file. This applies on the first selection and later selections unless you manually switch that file to source diff. Later selections keep it in source while you stay on the same pull request's Files changed page. Your source choice resets when you leave Files changed, reload, or switch pull requests, while the auto-render setting stays saved. Restore defaults resets the options.
 - **Rich-diff integration:** preserve GitHub's added/removed rendering, expose outdated-thread state and author-association badges, and keep heading anchor links working in rendered Markdown.
@@ -74,7 +74,7 @@ No separate login, setup, or Personal Access Token is required. See [INSTALL.md]
   - **Azure DevOps:** `extensions/ado/`
 5. Open a pull request's changed-files view. Select rich diff for a GitHub Markdown file, or use the Azure DevOps sidebar's **Open Markdown Preview** action.
 
-After editing a target's content script, click the reload icon on the extension card and hard-refresh the PR (Ctrl+Shift+R). If you edit anything under `src/lib/`, run `.\scripts\dev-sync.ps1 -Target github` or `-Target ado` first, then reload that extension.
+After editing a target's content script, click the reload icon on the extension card and hard-refresh the PR (Ctrl+Shift+R). If you edit anything under `src/lib/`, run `.\scripts\dev-sync.ps1 -Target github` or `-Target ado` first, then reload that extension. After editing `CHANGELOG.md`, sync the GitHub target to refresh its bundled changelog.
 
 ## Usage
 
@@ -89,7 +89,8 @@ After editing a target's content script, click the reload icon on the extension 
 extensions/github/     Chrome / Edge load unpacked from here
   manifest.json           Extension manifest (Manifest V3)
   content.js              Main content script (DOM + fetch glue)
-  releaseNotes.js         Bundled feature announcements
+  releaseNotes.js         Feature-announcement version
+  changelogData.js        Generated from repo-root CHANGELOG.md (git-ignored)
   styles.css              Comment button and box styles
   icons/                  Extension icons
   src/lib/                Mirrored from repo-root src/lib (git-ignored)

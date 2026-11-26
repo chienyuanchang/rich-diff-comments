@@ -47,7 +47,7 @@ The targets version and release independently. These lists summarize the intende
 
 ### GitHub v1.16.0
 
-Release candidate in [PR #23](https://github.com/chienyuanchang/rich-diff-comments/pull/23). Implementation and automated tests are complete; live-PR verification, preflight, packaging, and store disclosure review remain. The changelog uses a draft date of 2026-11-26; update it if the release occurs later.
+Release preparations are in [PR #23](https://github.com/chienyuanchang/rich-diff-comments/pull/23). Implementation, automated tests, and live-PR verification are complete; preflight and package verification remain release gates. The changelog date is 2026-11-26; update it if the release occurs later.
 
 - [x] **Listen to changes** — offer optional read-aloud playback, voice and speed settings, and opt-in online voices with a privacy notice.
 - [x] **Make new features discoverable after an update** — show an unread indicator and dismissible changelog for the latest five releases.
@@ -115,7 +115,7 @@ These are candidates for later releases, not additions to the v1.5.0 or v1.6.0 s
 | Use a draggable, resizable, collapsible sidebar with persistent layout and selected tab | ✅ Resizing preserves tab scroll position | ✅ |
 | Browse PR-wide Changes, Threads, and Outline lists grouped in stable file order | ✅ | ✅ |
 | Navigate changed rendered blocks with cards, counters, clicks, and keyboard shortcuts | ✅ | ✅ |
-| Listen to changes with adjustable speed and voice; sync settings across open tabs and stop playback when online voices are disabled; online voices require opt-in and a privacy notice | △ GitHub v1.16.0 release candidate in PR #23; real-PR verification pending | 📋 |
+| Listen to changes with adjustable speed and voice; sync settings across open tabs and stop playback when online voices are disabled; online voices require opt-in and a privacy notice | ✅ GitHub v1.16.0 | 📋 |
 | Show one summary card for a newly added, deleted, or renamed Markdown file where applicable | ✅ | ✅ |
 | Navigate threads globally and filter to unresolved conversations | ✅ | ✅ |
 | Hide resolved conversations throughout the rendered document and Threads | ✅ GitHub v1.14.0 | △ Threads-list filter only; broader parity planned |
@@ -263,14 +263,14 @@ See [GitHub feature notes](./github/FEATURES.md) for View options, navigation, a
 
 - [ ] **P2 — Listen to changes**
   - **Outcome:** reviewers can optionally hear Markdown changes read aloud, follow the current sentence, and navigate changes and sentences while retaining control of the page.
-  - **GitHub:** △ GitHub v1.16.0 release candidate in PR #23; real-PR verification pending.
+  - **GitHub:** ✅ GitHub v1.16.0.
   - **ADO:** 📋 Parity candidate; version not yet decided. Its PR-wide Changes list and single-file Preview require ADO-specific navigation and speech mapping.
   - **Shared acceptance:** Listening is off by default. Provide voice and speed choices, sentence navigation, and visible speech errors; prefer browser-reported on-device voices and require separate opt-in with a privacy notice for online voices. Sync Listening, voice, speed, and online-voice preferences across open tabs on the same origin and browser profile; disabling Listening or online voices stops playback in the other tabs. Manual scrolling pauses automatic following until explicit Listening navigation resumes it.
   - **ADO validation before implementation:** define behavior for removed, deleted-file, renamed, and unavailable stops without inventing removed Preview content. Verify cross-file playback against ADO's asynchronous file selection and Preview remounts; never read stale content or include injected comment UI. Decide how automatic playback crosses files without pulling a reviewer away after manual scrolling.
 
 - [ ] **P2 — Make new features discoverable after an update**
   - **Outcome:** reviewers discover notable new features after an automatic update and can revisit recent release details later.
-  - **GitHub:** △ GitHub v1.16.0 release candidate in PR #23; real-PR validation pending.
+  - **GitHub:** ✅ GitHub v1.16.0.
   - **ADO:** 📋 Parity candidate; version not yet decided. Use ADO's own changelog and independent feature-announcement version.
   - **Acceptance:** after a feature release, offer the changelog in the sidebar and an unread indicator on a separate help control; opening it clears the indicator, and an × closes it. Show the complete changelog for up to the latest five releases, newest first, including bug-fix-only releases without generating an extra announcement for them. Sync the unread state across open tabs on the same origin and browser profile. Avoid opening it over a collapsed sidebar or an active comment draft, and preserve the selected tab and drafts. Bundle the target's notes locally without external requests or new permissions. Fresh installations may also show the latest announcement once.
 

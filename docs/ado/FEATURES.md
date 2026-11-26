@@ -27,7 +27,7 @@ For the original port sequence and detailed acceptance records, see the [ADO ada
 ## Current platform constraints
 
 - Comment actions differ in scope. Edit and Delete apply only to the reviewer's own comments, while Copy link appears beside every visible comment. Azure DevOps identifies the containing conversation with `discussionId` and the selected comment with its publication-time fragment, allowing each reply to retain its distinct native destination. The native surface also exposes Like, Resolve/Reopen, and a work-item picker with Issue, Epic, and Task choices. Investigation confirmed that picker loads a private in-page contribution form, so extension support is deferred beyond v1.4.0. A later version should open ADO's standalone native creation form in a new tab; formal PR/thread linking still requires a captured supported relation payload and must not be guessed.
-- Preview omits deleted content and does not visually distinguish changed blocks. Changes navigation is calculated by the extension, but persistent rendered-diff highlighting remains an ADO-specific opportunity.
+- Native Preview omits deleted content and does not visually distinguish changed blocks. The extension compares source versions for Changes navigation and adds persistent highlighting to mapped added and modified blocks.
 - List-item mapping now accepts only Markdown list-marker lines, preventing matching bullet text from being assigned to a section heading. Automated coverage verifies the third bullet's posted ADO line; the original live PR still needs manual confirmation before release.
 - List-item `+` buttons use the first rendered line's height, keeping single-line and nested-list controls centered on the bullet text. Automated geometry coverage also protects ordinary single-line paragraphs; live confirmation remains pending.
 - Table threads remain below the complete table to preserve valid markup, while a persistent marker in the affected row's first cell identifies the exact source row. The marker shows a count for multiple threads and cycles through their badges by mouse or keyboard without collapsing an already open conversation.
@@ -43,14 +43,16 @@ For the original port sequence and detailed acceptance records, see the [ADO ada
 - The sidebar intentionally lists Markdown-file threads only. Threads on other file types have no rendered Preview destination in this extension.
 - The sidebar's full-hide × and separate restore launcher create a hidden state that can be difficult to rediscover. The intended behavior is collapse/expand only: removing full dismissal must retain the `t` keyboard toggle and preserve the saved position, size, active tab, filter, and collapsed state.
 - When the sidebar starts collapsed, its header shows **Loading…** until the initial Changes and Threads catalogs finish. Expanded panes report their own progress: **Finding changed Markdown files…**, **Loading review threads…**, or **Loading pull request outline…** instead of showing a premature empty state.
+- ADO's PR-wide Changes list can include files whose Preview is not currently mounted, as well as deleted or unavailable files. Read-aloud parity needs route-aware Preview mapping and explicit behavior for non-renderable stops; GitHub's speech helpers contain GitHub-specific rendered-content and injected-UI assumptions.
+- The GitHub announcement bundle is generated from the GitHub changelog only. An ADO announcement would need its own locally bundled `CHANGELOG_ADO.md` and independent version marker. Browser storage is origin-scoped: `dev.azure.com` and each `*.visualstudio.com` origin cannot be assumed to synchronize with one another.
 
-## Open ADO design notes
+## ADO design notes
 
 ### Persistent change highlighting
 
-ADO Preview renders only the final document. The extension already compares target and source text for the Changes pane, so a future ADO-only enhancement can add persistent added/modified rails or tints to mapped rendered blocks. Removed content cannot be displayed without introducing a separate rendered representation.
+ADO Preview renders only the final document. The extension compares target and source text for the Changes pane and applies persistent added/modified rails or tints to mapped rendered blocks. Removed content cannot be displayed without introducing a separate rendered representation.
 
-The MVP uses green for additions and the existing warning/brown treatment for modified blocks. A newly added file receives a subtle file-level green marker instead of an all-green document; edited files highlight only added and mixed hunks. Highlights follow progressive Changes analysis and Preview remounts without adding another source fetch.
+Added blocks use green and modified blocks use the warning/brown treatment. A newly added file receives a subtle file-level green marker instead of an all-green document; edited files highlight only added and mixed hunks. Highlights follow progressive Changes analysis and Preview remounts without adding another source fetch.
 
 ### Deleted-line comments
 

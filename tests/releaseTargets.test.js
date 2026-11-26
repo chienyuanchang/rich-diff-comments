@@ -18,6 +18,13 @@ const promoScript = read('design', 'promo-tiles', 'generate.ps1');
 const githubManifest = JSON.parse(read('extensions', 'github', 'manifest.json'));
 const adoManifest = JSON.parse(read('extensions', 'ado', 'manifest.json'));
 
+test('GitHub feature notes are loaded before the content script and included in its package', () => {
+  const scripts = githubManifest.content_scripts[0].js;
+  assert.ok(scripts.indexOf('releaseNotes.js') >= 0);
+  assert.ok(scripts.indexOf('releaseNotes.js') < scripts.indexOf('content.js'));
+  assert.match(packageScript, /if \(\$Target -eq 'github'\)\s*\{\s*if \(-not \(Test-Path "releaseNotes\.js"\)\) \{[^}]*\}\s*\$include \+= "releaseNotes\.js"/);
+});
+
 test('release scripts require an explicit supported target contract', () => {
   for (const [name, script] of [
     ['package.ps1', packageScript],

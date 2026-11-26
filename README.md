@@ -33,6 +33,7 @@ GitHub rich diff and Azure DevOps Preview render Markdown beautifully, but neith
 
 ### GitHub-specific features
 
+- **What's new:** discover feature updates in a dismissible sidebar summary. An unread indicator appears on the help button, which also lets you reopen the latest summary. A fresh installation may show the summary once.
 - **Start rendered review across the pull request:** render every changed Markdown file as rich diff in one sweep when GitHub's PR mode can retain them; optimized large PRs receive one-file-at-a-time guidance.
 - **View options:** use the sidebar's gear to show or hide removed content and resolved comments independently. An indicator shows when content is hidden. You can also opt in to automatically rendering a Markdown file selected from the file tree or Jump to file. This applies on the first selection and later selections unless you manually switch that file to source diff. Later selections keep it in source while you stay on the same pull request's Files changed page. Your source choice resets when you leave Files changed, reload, or switch pull requests, while the auto-render setting stays saved. Restore defaults resets the options.
 - **Rich-diff integration:** preserve GitHub's added/removed rendering, expose outdated-thread state and author-association badges, and keep heading anchor links working in rendered Markdown.
@@ -88,6 +89,7 @@ After editing a target's content script, click the reload icon on the extension 
 extensions/github/     Chrome / Edge load unpacked from here
   manifest.json           Extension manifest (Manifest V3)
   content.js              Main content script (DOM + fetch glue)
+  releaseNotes.js         Bundled feature announcements
   styles.css              Comment button and box styles
   icons/                  Extension icons
   src/lib/                Mirrored from repo-root src/lib (git-ignored)

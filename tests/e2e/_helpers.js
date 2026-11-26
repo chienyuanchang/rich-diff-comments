@@ -29,6 +29,7 @@ const path = require('path');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const EXT_ROOT = path.join(REPO_ROOT, 'extensions', 'github');
+const RELEASE_NOTES = require('../../extensions/github/releaseNotes');
 
 const MANIFEST = JSON.parse(
   fs.readFileSync(path.join(EXT_ROOT, 'manifest.json'), 'utf8')
@@ -138,7 +139,7 @@ async function setupFixture(page, fixtureName, opts) {
 /**
  * Navigate to the fake PR URL (which `setupFixture()` registered).
  */
-async function gotoPRPage(page) {
+async function gotoPRPage(page, { unreadReleaseNotes = false } = {}) {
   await page.goto(FAKE_PR_URL, { waitUntil: 'domcontentloaded' });
   // styles.css would normally be loaded by the extension via manifest;
   // in our test setup we inject it explicitly so CSS-driven layout
@@ -157,9 +158,12 @@ async function gotoPRPage(page) {
   // is still visible and interactive (needed by keyboard-shortcut tests
   // that toggle its state) but out of the way of typical fixture
   // content at x=0..~600.
-  await page.evaluate(() => {
-    localStorage.setItem('grdc_sidebar_pos', JSON.stringify({ left: 840, top: 8 }));
-  });
+  await page.evaluate(({ version, unread }) => {
+    localStorage.setItem('grdc_sidebar_pos', JSON.stringify({ left: 700, top: 8 }));
+    if (!unread && !localStorage.getItem('grdc_release_notes_seen')) {
+      localStorage.setItem('grdc_release_notes_seen', version);
+    }
+  }, { version: RELEASE_NOTES.version, unread: unreadReleaseNotes });
 }
 
 /**

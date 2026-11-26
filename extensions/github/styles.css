@@ -939,16 +939,16 @@ li.grdc-hoverable .grdc-comment-btn {
   top: 16px;
   left: 50%;
   transform: translateX(-50%);
-  width: 480px;
+  width: 520px;
   height: auto;
-  min-width: 480px;
+  min-width: 520px;
   min-height: 120px;
   /* Cap height but NOT width — narrow viewports should still let the
-     sidebar be 480px (users will scroll the page horizontally if needed,
+     sidebar be 520px (users will scroll the page horizontally if needed,
      and the alternative is the funnel + nav clusters getting clipped
      because `max-width: 90vw` would cap the sidebar below its content).
-     Width bumped from 420 → 480 in 1.8.0 to fit the file-scoped
-     counter format `3/8 (45)`; 512 when Listening is enabled (its button).
+     Width fits the file-scoped counters and What's new button;
+     552px when Listening is enabled (its button).
      See `.grdc-sidebar-collapsed` comment. */
   max-height: calc(100vh - 40px);
   display: flex;
@@ -969,7 +969,7 @@ li.grdc-hoverable .grdc-comment-btn {
   font-size: 12px;
   color: var(--fgColor-default, var(--color-fg-default, #1f2328));
   z-index: 100;
-  /* Both axes resizable, with min-width: 400px and min-height: 120px
+  /* Both axes resizable, with min-width: 520px and min-height: 120px
      floors enforced via CSS. The browser's native resize handle respects
      `min-width` / `min-height`, so users can grow but not shrink past
      these. Allowing horizontal resize lets people widen the sidebar to
@@ -981,12 +981,8 @@ li.grdc-hoverable .grdc-comment-btn {
    affordance on a 1-line widget) AND override any persisted height so
    the sidebar shrinks to just the header. `min-height: 0` is required
    because the uncollapsed rule sets `min-height: 120px`.
-   Width: INHERITS from the parent .grdc-sidebar (400px default, or the
-   user's persisted width). The collapsed strip is the same width as the
-   expanded sidebar so the funnel on the right edge stays in the same
-   screen position. Earlier versions used `width: auto !important` which
-   shrank the strip to its content but pulled the funnel inward and
-   looked visually disconnected from the expanded layout. */
+   The collapsed strip uses the compact minimum width, regardless of an
+   expanded sidebar's saved width. */
 .grdc-sidebar-collapsed {
   resize: none;
   height: auto !important;
@@ -996,13 +992,8 @@ li.grdc-hoverable .grdc-comment-btn {
      width which left a wide empty strip when the user had resized the
      sidebar large; now the collapsed strip is always the same compact
      size matching the locked width.
-     480 (1.8.0 bump from 420): with the file-scoped counter format
-     `3/8 (45)` added in Option 3a, each counter is ~28px wider than the
-     old `3/8` format. Two counters + separators + filter margin pushed
-     past 420 and the funnel got visually clipped off the right edge in
-     collapsed mode. 480 restores comfortable spacing for `NN/NN (NNN)`
-     on both counters. */
-  width: 480px !important;
+     The width leaves room for both counters and the What's new button. */
+  width: 520px !important;
 }
 /* Force the collapsed header to stay on ONE row. The expanded header uses
    `flex-wrap: wrap` so a user-shrunk sidebar degrades gracefully, but the
@@ -1022,10 +1013,7 @@ li.grdc-hoverable .grdc-comment-btn {
 .grdc-sidebar-header {
   display: flex;
   align-items: center;
-  /* Locked to one row — no wrap. The sidebar's `min-width: 400px` and
-   * no-horizontal-resize guarantee the content always fits. Wrapping
-   * to a second row would defeat the v2 design's clean horizontal
-   * navigation bar. */
+  /* Keep the navigation bar on one row. */
   flex-wrap: nowrap;
   /* Keep the original group spacing; navigation clusters use tighter gaps. */
   gap: 8px;
@@ -1151,6 +1139,24 @@ li.grdc-hoverable .grdc-comment-btn {
   margin-left: auto;
   margin-right: 0;
   transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.grdc-sidebar-release-notes {
+  position: relative;
+  flex-shrink: 0;
+}
+.grdc-release-notes-indicator {
+  display: none;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border: 1px solid white;
+  border-radius: 50%;
+  background: var(--bgColor-danger-emphasis, var(--color-danger-emphasis, #d1242f));
+}
+.grdc-sidebar-release-notes[data-unread="true"] .grdc-release-notes-indicator {
+  display: block;
 }
 .grdc-filter-indicator {
   display: none;
@@ -1416,6 +1422,31 @@ li.grdc-hoverable .grdc-comment-btn {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+}
+.grdc-release-notes {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px;
+  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
+  color: var(--fgColor-default, var(--color-fg-default, #1f2328));
+}
+.grdc-release-notes[hidden],
+.grdc-release-notes-open .grdc-sidebar-tabs,
+.grdc-release-notes-open .grdc-sidebar-pane,
+.grdc-sidebar-collapsed .grdc-release-notes { display: none; }
+.grdc-release-notes h2 { margin: 0; font-size: 15px; }
+.grdc-release-notes-version { margin: 4px 0; }
+.grdc-release-notes-list { padding-left: 20px; }
+.grdc-release-notes-list li { margin: 6px 0; }
+.grdc-release-notes-dismiss {
+  padding: 4px 10px;
+  border: 1px solid var(--borderColor-default, var(--color-border-default, #d0d7de));
+  border-radius: 4px;
+  background: var(--bgColor-default, var(--color-canvas-default, #ffffff));
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
 }
 
 /* Outline pane */
@@ -1765,8 +1796,10 @@ li.grdc-hoverable .grdc-comment-btn {
   }
   /* Tabs row + outline toolbar: dark canvas */
   .grdc-sidebar-tabs,
-  .grdc-sidebar-outline-toolbar {
+  .grdc-sidebar-outline-toolbar,
+  .grdc-release-notes {
     background: rgba(13, 17, 23, 1);
+    color: rgba(230, 237, 243, 1);
     border-color: rgba(48, 54, 61, 1);
   }
   .grdc-sidebar-outline-toolbar button {
@@ -1776,6 +1809,10 @@ li.grdc-hoverable .grdc-comment-btn {
   }
   .grdc-sidebar-outline-toolbar button:hover {
     background: rgba(48, 54, 61, 1);
+  }
+  .grdc-release-notes-dismiss {
+    background: rgba(33, 38, 45, 1);
+    border-color: rgba(48, 54, 61, 1);
   }
   /* Cards: slightly lifted surface on dark */
   .grdc-sidebar-card {
@@ -1805,8 +1842,8 @@ li.grdc-hoverable .grdc-comment-btn {
    Off: no play button, speed or voice. On: one more 24px button + 8px gap. */
 .grdc-sidebar:not(.grdc-listen-on) .grdc-sidebar-listen,
 .grdc-sidebar:not(.grdc-listen-on) .grdc-listen-setting { display: none; }
-.grdc-sidebar.grdc-listen-on { width: 512px; min-width: 512px; }
-.grdc-sidebar.grdc-listen-on.grdc-sidebar-collapsed { width: 512px !important; }
+.grdc-sidebar.grdc-listen-on { width: 552px; min-width: 552px; }
+.grdc-sidebar.grdc-listen-on.grdc-sidebar-collapsed { width: 552px !important; }
 /* Play / stop toggle in the Changes nav. */
 .grdc-sidebar-listen .grdc-listen-pause,
 .grdc-sidebar-listen[aria-pressed="true"] .grdc-listen-play { display: none; }

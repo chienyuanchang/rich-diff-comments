@@ -8,10 +8,11 @@ All notable changes to Markdown PR Comments for GitHub (formerly *Rich Diff Comm
 
 - **Listen to the changes (optional).** Turn on Enable Listening in View options to add a play button to Changes. It reads changes aloud in order and highlights the current sentence. Use the Changes arrows or cards to skip changes, and `←` / `→` to move between sentences. You can browse elsewhere while listening without being pulled back; selecting a change or using the sentence arrows returns to it. If speech fails, Listening stops and shows a message instead of silently skipping text. Listening follows Show removed content for edits, announces removed blocks, and reads new files in full.
 - **Choose online voices (optional).** Listening offers your browser's on-device voices by default. Turn on Allow online voices in View options to include voices provided over the network. When you use an online voice, the PR text being read may be sent to its provider. Available voices vary by browser and device; if no on-device voice is available, allowing online voices can enable playback.
+- **See what's new.** Feature updates appear in the sidebar with a short summary and an unread indicator. Dismiss the summary when you're ready, and reopen it from the help button whenever you want.
 
 ### Changed
 
-- **The sidebar makes room for Listening controls** when Listening is enabled. Its size stays the same when Listening is off.
+- **The sidebar makes room for the help button and Listening controls.** Listening controls appear only when Listening is enabled.
 
 ### Fixed
 

@@ -58,6 +58,11 @@ try {
     "PRIVACY.md"
   ) | Where-Object { Test-Path $_ }
 
+  if ($Target -eq 'github') {
+    if (-not (Test-Path "releaseNotes.js")) { throw "GitHub releaseNotes.js is missing" }
+    $include += "releaseNotes.js"
+  }
+
   Compress-Archive -Path $include -DestinationPath $Output -Force
 
   $size = (Get-Item $Output).Length

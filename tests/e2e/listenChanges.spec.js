@@ -109,6 +109,11 @@ test('toolbar keeps balanced outer insets with Listening on and off', async ({ p
   };
 
   await expectBalancedInsets();
+  await page.evaluate(() => {
+    document.querySelector('.grdc-sidebar-changes-count').textContent = '12/34 (123)';
+    document.querySelector('.grdc-sidebar-count').textContent = '12/34 (123)';
+  });
+  await expectBalancedInsets();
   await page.getByRole('button', { name: /^View options/ }).click();
   await page.getByRole('checkbox', { name: 'Enable Listening', exact: true }).check();
   await page.keyboard.press('Escape');
@@ -321,7 +326,7 @@ test('Listening is off by default; Enable Listening shows the play button, speed
   const enable = menu.getByRole('checkbox', { name: 'Enable Listening' });
   const restore = menu.getByRole('button', { name: 'Restore defaults' });
   await expect(play).toBeHidden();
-  await expect(page.locator('.grdc-sidebar')).toHaveCSS('min-width', '480px');
+  await expect(page.locator('.grdc-sidebar')).toHaveCSS('min-width', '520px');
 
   await page.getByRole('button', { name: /^View options/ }).click();
   await expect(menu.getByRole('group', { name: 'Listening' })).toBeVisible();
@@ -337,7 +342,7 @@ test('Listening is off by default; Enable Listening shows the play button, speed
   expect(await page.evaluate(() => localStorage.getItem('grdc_listen_enabled'))).toBe('1');
   await page.keyboard.press('Escape');
   await expect(play).toBeVisible();
-  await expect(page.locator('.grdc-sidebar')).toHaveCSS('min-width', '512px');
+  await expect(page.locator('.grdc-sidebar')).toHaveCSS('min-width', '552px');
 
   // Turning it off stops speech in progress; Restore defaults turns it off too.
   await play.click();

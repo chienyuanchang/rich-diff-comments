@@ -13,6 +13,7 @@ The versioned sections below describe v1.15.0 and must be updated before submitt
 - **Listen to the changes (optional).** Enable Listening in View options to hear changes read aloud and follow along with highlighted sentences. Browse elsewhere without the page pulling you back; choose a change or use the sentence arrows to return. If speech fails, Listening stops and shows a message.
 - **Choose online voices (optional).** Allow online voices in View options to use additional voices. When an online voice is used, the PR text being read may be sent to its provider. Available voices vary by browser and device.
 - **Enjoy more balanced toolbar spacing.** The controls sit evenly at both ends of the sidebar, whether Listening is on or off.
+- **Discover new features in the sidebar.** A dismissible summary and an unread indicator help you find updates, and the help button lets you revisit them.
 
 ### Draft privacy disclosure
 
